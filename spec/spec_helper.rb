@@ -7,14 +7,14 @@ Bundler.require
 
 require 'active_record'
 
-ActiveRecord::Base.configurations = {'test' => {:adapter => 'sqlite3', :database => ':memory:'}}
-ActiveRecord::Base.establish_connection('test')
+config = {:adapter => 'sqlite3', :database => ':memory:'}
+ActiveRecord::Base.establish_connection(config)
 
 class User < ActiveRecord::Base
 #   scope :tender, where { :name =~ 'tender%' }
 end
 
-class CreateAllTables < ActiveRecord::Migration
+class CreateAllTables < ActiveRecord::Migration[8.1]
   def up
     create_table(:users) {|t| t.string :name; t.integer :age}
   end

@@ -11,7 +11,7 @@ module ActiveRecord
     module QueryMethods
       def where(opts = nil, *rest, &block)
         if block
-          col, op, val = Module.new { using ActiveRecord::Refinements::WhereBlockSyntax }.module_eval &block
+          col, op, val = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
           arel_node = case op
           when :==
             table[col].eq val
@@ -31,9 +31,7 @@ module ActiveRecord
             raise "unexpected op: #{op}"
           end
 
-          clone.tap do |relation|
-            relation.where_values += build_where(arel_node)
-          end
+          super(arel_node)
         else
           super
         end

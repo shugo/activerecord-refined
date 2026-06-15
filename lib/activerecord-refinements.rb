@@ -1,9 +1,6 @@
 require 'activerecord-refinements/version'
 require 'active_record'
+require 'active_record/relation'
 require 'active_record/refinements'
 
-module ActiveRecord
-  module QueryMethods
-    prepend ActiveRecord::Refinements::QueryMethods
-  end
-end
+ActiveRecord::QueryMethods.prepend ActiveRecord::Refinements::QueryMethods
