@@ -6,20 +6,8 @@ module ActiveRecord
           define_method(op) {|val| AST::Comparison.new(self, op, val) }
         end
 
-        %i[name id type].each do |method_name|
-          define_method(method_name) { AST::Column.new(self, method_name) }
-        end
-
-        def method_missing(method_name, *args, &block)
-          if args.empty? && !block
-            AST::Column.new(self, method_name)
-          else
-            super
-          end
-        end
-
-        def respond_to_missing?(method_name, include_private = false)
-          true
+        def [](column_name)
+          AST::Column.new(self, column_name)
         end
       end
     end
@@ -32,6 +20,32 @@ module ActiveRecord
         else
           super
         end
+      end
+
+      def joins(*args, &block)
+        if block
+          super(build_join_node(args.first, Arel::Nodes::InnerJoin, &block))
+        else
+          super
+        end
+      end
+
+      def left_outer_joins(*args, &block)
+        if block
+          joins(build_join_node(args.first, Arel::Nodes::OuterJoin, &block))
+        else
+          super
+        end
+      end
+
+      private
+
+      def build_join_node(target_table, join_class, &block)
+        ast = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
+        join_class.new(
+          Arel::Table.new(target_table),
+          Arel::Nodes::On.new(ast.to_arel(table))
+        )
       end
     end
   end

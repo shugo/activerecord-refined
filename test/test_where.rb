@@ -58,7 +58,22 @@ class WhereBlockSyntaxTest < Minitest::Test
 
   def test_qualified_column
     assert_match(/WHERE "users"."name" = 'matz'/,
-      User.where { :users.name == 'matz' }.to_sql)
+      User.where { :users[:name] == 'matz' }.to_sql)
+  end
+
+  def test_column_to_column_comparison
+    sql = User.where { :users[:name] == :users[:age] }.to_sql
+    assert_match(/"users"."name" = "users"."age"/, sql)
+  end
+
+  def test_joins_with_block
+    sql = Author.joins(:posts) { :posts[:author_id] == :authors[:id] }.to_sql
+    assert_match(/INNER JOIN "posts" ON "posts"."author_id" = "authors"."id"/, sql)
+  end
+
+  def test_left_outer_joins_with_block
+    sql = Author.left_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }.to_sql
+    assert_match(/LEFT OUTER JOIN "posts" ON "posts"."author_id" = "authors"."id"/, sql)
   end
 
   def test_default_where_syntax

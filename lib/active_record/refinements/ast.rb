@@ -54,12 +54,14 @@ module ActiveRecord
 
         def to_arel(table)
           arel_column = case column
-                        when Node
-                          column.to_arel(table)
-                        else
-                          table[column]
+                        when Node then column.to_arel(table)
+                        else table[column]
                         end
-          arel_column.public_send(OPERATOR_MAP.fetch(operator), value)
+          arel_value = case value
+                       when Node then value.to_arel(table)
+                       else value
+                       end
+          arel_column.public_send(OPERATOR_MAP.fetch(operator), arel_value)
         end
       end
       class And < Predicate
