@@ -21,6 +21,23 @@ module ActiveRecord
         end
       end
 
+      class Column < Node
+        attr_reader :table_name, :column_name
+
+        def initialize(table_name, column_name)
+          @table_name = table_name
+          @column_name = column_name
+        end
+
+        def to_arel(_table)
+          Arel::Table.new(table_name)[column_name]
+        end
+
+        %i[== != =~ > >= < <=].each do |op|
+          define_method(op) {|val| Comparison.new(self, op, val) }
+        end
+      end
+
       class Comparison < Predicate
         OPERATOR_MAP = {
           :== => :eq, :!= => :not_eq, :=~ => :matches,
@@ -36,7 +53,13 @@ module ActiveRecord
         end
 
         def to_arel(table)
-          table[column].public_send(OPERATOR_MAP.fetch(operator), value)
+          arel_column = case column
+                        when Node
+                          column.to_arel(table)
+                        else
+                          table[column]
+                        end
+          arel_column.public_send(OPERATOR_MAP.fetch(operator), value)
         end
       end
       class And < Predicate
