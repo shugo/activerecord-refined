@@ -19,5 +19,6 @@ Gem::Specification.new do |gem|
 
   gem.add_dependency 'activerecord', ['>= 7.0']
   gem.add_development_dependency 'sqlite3', ['>= 0']
-  gem.add_development_dependency 'rspec', ['>= 0']
+  gem.add_development_dependency 'minitest', ['>= 0']
+  gem.add_development_dependency 'rake', ['>= 0']
 end

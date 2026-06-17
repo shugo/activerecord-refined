@@ -1,8 +1,7 @@
 $LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
 $LOAD_PATH.unshift(File.dirname(__FILE__))
 
-require 'rspec'
-require 'rspec/autorun'
+require 'minitest/autorun'
 Bundler.require
 
 require 'active_record'
@@ -11,7 +10,6 @@ config = {:adapter => 'sqlite3', :database => ':memory:'}
 ActiveRecord::Base.establish_connection(config)
 
 class User < ActiveRecord::Base
-#   scope :tender, where { :name =~ 'tender%' }
 end
 
 class CreateAllTables < ActiveRecord::Migration[8.1]
@@ -21,6 +19,3 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
 end
 ActiveRecord::Migration.verbose = false
 CreateAllTables.new.up
-
-# app.config.root = File.dirname(__FILE__)
-# Rails.backtrace_cleaner.remove_silencers!
