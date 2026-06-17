@@ -8,6 +8,17 @@ module ActiveRecord
       end
 
       class Predicate < Node
+        def &(other)
+          And.new(self, other)
+        end
+
+        def |(other)
+          Or.new(self, other)
+        end
+
+        def !
+          Not.new(self)
+        end
       end
 
       class Comparison < Predicate
@@ -26,6 +37,43 @@ module ActiveRecord
 
         def to_arel(table)
           table[column].public_send(OPERATOR_MAP.fetch(operator), value)
+        end
+      end
+      class And < Predicate
+        attr_reader :left, :right
+
+        def initialize(left, right)
+          @left = left
+          @right = right
+        end
+
+        def to_arel(table)
+          left.to_arel(table).and(right.to_arel(table))
+        end
+      end
+
+      class Or < Predicate
+        attr_reader :left, :right
+
+        def initialize(left, right)
+          @left = left
+          @right = right
+        end
+
+        def to_arel(table)
+          left.to_arel(table).or(right.to_arel(table))
+        end
+      end
+
+      class Not < Predicate
+        attr_reader :operand
+
+        def initialize(operand)
+          @operand = operand
+        end
+
+        def to_arel(table)
+          Arel::Nodes::Not.new(operand.to_arel(table))
         end
       end
     end

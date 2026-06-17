@@ -33,6 +33,29 @@ class WhereBlockSyntaxTest < Minitest::Test
     assert_raises(ArgumentError) { :omg > 1 }
   end
 
+  def test_and
+    assert_match(/WHERE "users"."name" = 'matz' AND "users"."age" > 18/,
+      User.where { (:name == 'matz') & (:age > 18) }.to_sql)
+  end
+
+  def test_or
+    assert_match(/WHERE \(?\"users\".\"name\" = 'matz' OR \"users\".\"name\" = 'nobu'\)?/,
+      User.where { (:name == 'matz') | (:name == 'nobu') }.to_sql)
+  end
+
+  def test_not
+    assert_match(/WHERE NOT \(?\"users\".\"name\" = 'matz'\)?/,
+      User.where { !(:name == 'matz') }.to_sql)
+  end
+
+  def test_complex_combination
+    sql = User.where { ((:name == 'matz') & (:age > 18)) | !(:name == 'nobu') }.to_sql
+    assert_match(/"users"."name" = 'matz'/, sql)
+    assert_match(/"users"."age" > 18/, sql)
+    assert_match(/NOT/, sql)
+    assert_match(/OR/, sql)
+  end
+
   def test_default_where_syntax
     assert_match(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)
