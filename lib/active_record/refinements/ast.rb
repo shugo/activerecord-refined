@@ -36,6 +36,10 @@ module ActiveRecord
         %i[== != =~ !~ > >= < <=].each do |op|
           define_method(op) {|val| Comparison.new(self, op, val) }
         end
+
+        def null?
+          Comparison.new(self, :==, nil)
+        end
       end
 
       class Comparison < Predicate

@@ -6,6 +6,10 @@ module ActiveRecord
           define_method(op) {|val| AST::Comparison.new(self, op, val) }
         end
 
+        def null?
+          AST::Comparison.new(self, :==, nil)
+        end
+
         def [](column_name)
           AST::Column.new(self, column_name)
         end

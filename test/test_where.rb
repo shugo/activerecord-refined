@@ -72,6 +72,16 @@ class WhereBlockSyntaxTest < Minitest::Test
       User.where { :age != (18..65) }.to_sql)
   end
 
+  def test_is_null
+    assert_match(/WHERE "users"."name" IS NULL/,
+      User.where { :name.null? }.to_sql)
+  end
+
+  def test_is_null_qualified
+    assert_match(/WHERE "users"."name" IS NULL/,
+      User.where { :users[:name].null? }.to_sql)
+  end
+
   def test_in
     assert_match(/WHERE "users"."age" IN \(1, 2, 3\)/,
       User.where { :age == [1, 2, 3] }.to_sql)
