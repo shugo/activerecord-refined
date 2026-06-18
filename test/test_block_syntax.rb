@@ -143,6 +143,47 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/HAVING SUM\("users"."age"\) > 100/, sql)
   end
 
+  def test_select_avg_function
+    assert_match(/SELECT AVG\("users"."age"\)/,
+      User.select { avg(:age) }.to_sql)
+  end
+
+  def test_select_count_function
+    assert_match(/SELECT COUNT\("users"."id"\)/,
+      User.select { count(:id) }.to_sql)
+  end
+
+  def test_select_sum_function
+    assert_match(/SELECT SUM\("users"."age"\)/,
+      User.select { sum(:age) }.to_sql)
+  end
+
+  def test_select_min_function
+    assert_match(/SELECT MIN\("users"."age"\)/,
+      User.select { min(:age) }.to_sql)
+  end
+
+  def test_select_max_function
+    assert_match(/SELECT MAX\("users"."age"\)/,
+      User.select { max(:age) }.to_sql)
+  end
+
+  def test_function_qualified_column
+    assert_match(/SELECT AVG\("users"."age"\)/,
+      User.select { avg(:users[:age]) }.to_sql)
+  end
+
+  def test_having_function
+    sql = User.group(:name).having { sum(:age) > 100 }.to_sql
+    assert_match(/GROUP BY "users"."name"/, sql)
+    assert_match(/HAVING SUM\("users"."age"\) > 100/, sql)
+  end
+
+  def test_function_and_method_syntax_match
+    assert_equal User.select { :age.average }.to_sql,
+      User.select { avg(:age) }.to_sql
+  end
+
   def test_default_where_syntax
     assert_match(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

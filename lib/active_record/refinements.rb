@@ -20,11 +20,20 @@ module ActiveRecord
       end
     end
 
+    class BlockContext
+      AGGREGATE_FUNCTIONS = {
+        count: :count, sum: :sum, avg: :average, min: :minimum, max: :maximum,
+      }.freeze
+
+      AGGREGATE_FUNCTIONS.each do |name, arel_func|
+        define_method(name) {|column| AST::Aggregate.new(column, arel_func) }
+      end
+    end
+
     module QueryMethods
       def where(opts = nil, *rest, &block)
         if block
-          ast = block.with_refinements(ActiveRecord::Refinements::BlockSyntax).call
-          super(ast.to_arel(table))
+          super(evaluate_block(&block).to_arel(table))
         else
           super
         end
@@ -32,8 +41,7 @@ module ActiveRecord
 
       def select(*fields, &block)
         if block
-          ast = block.with_refinements(ActiveRecord::Refinements::BlockSyntax).call
-          super(ast.to_arel(table), &nil)
+          super(evaluate_block(&block).to_arel(table), &nil)
         else
           super
         end
@@ -41,8 +49,7 @@ module ActiveRecord
 
       def having(opts = nil, *rest, &block)
         if block
-          ast = block.with_refinements(ActiveRecord::Refinements::BlockSyntax).call
-          super(ast.to_arel(table))
+          super(evaluate_block(&block).to_arel(table))
         else
           super
         end
@@ -66,8 +73,13 @@ module ActiveRecord
 
       private
 
+      def evaluate_block(&block)
+        refined = block.with_refinements(ActiveRecord::Refinements::BlockSyntax)
+        BlockContext.new.instance_exec(&refined)
+      end
+
       def build_join_node(target_table, join_class, &block)
-        ast = block.with_refinements(ActiveRecord::Refinements::BlockSyntax).call
+        ast = evaluate_block(&block)
         join_class.new(
           Arel::Table.new(target_table),
           Arel::Nodes::On.new(ast.to_arel(table))
