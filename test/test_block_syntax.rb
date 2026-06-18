@@ -234,6 +234,26 @@ class TestBlockSyntax < Minitest::Test
       User.select { [:name, sum(:age)] }.to_sql)
   end
 
+  def test_select_function_with_alias
+    assert_match(/SELECT UPPER\("users"."name"\) AS upper_name, "users"."age"/,
+      User.select { [upper(:name).as(:upper_name), :age] }.to_sql)
+  end
+
+  def test_select_column_alias
+    assert_match(/SELECT "users"."name" AS n/,
+      User.select { :name.as(:n) }.to_sql)
+  end
+
+  def test_select_qualified_column_alias
+    assert_match(/SELECT "users"."name" AS n/,
+      User.select { :users[:name].as(:n) }.to_sql)
+  end
+
+  def test_select_aggregate_alias
+    assert_match(/SELECT COUNT\("users"."id"\) AS cnt/,
+      User.select { count(:id).as(:cnt) }.to_sql)
+  end
+
   def test_default_where_syntax
     assert_match(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

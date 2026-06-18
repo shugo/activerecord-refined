@@ -14,6 +14,10 @@ module ActiveRecord
           define_method(func) { AST::Aggregate.new(self, func) }
         end
 
+        def as(alias_name)
+          AST::As.new(self, alias_name)
+        end
+
         def [](column_name)
           AST::Column.new(self, column_name)
         end

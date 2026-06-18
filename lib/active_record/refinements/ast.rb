@@ -5,6 +5,10 @@ module ActiveRecord
         def to_arel(table)
           raise ScriptError, "subclass must override this method"
         end
+
+        def as(alias_name)
+          As.new(self, alias_name)
+        end
       end
 
       class Predicate < Node
@@ -64,6 +68,24 @@ module ActiveRecord
 
         %i[== != =~ !~ > >= < <=].each do |op|
           define_method(op) {|val| Comparison.new(self, op, val) }
+        end
+      end
+
+      class As < Node
+        attr_reader :operand, :alias_name
+
+        def initialize(operand, alias_name)
+          @operand = operand
+          @alias_name = alias_name
+        end
+
+        def to_arel(table)
+          arel_operand = case operand
+                         when Node then operand.to_arel(table)
+                         when Symbol then table[operand]
+                         else operand
+                         end
+          arel_operand.as(alias_name.to_s)
         end
       end
 
