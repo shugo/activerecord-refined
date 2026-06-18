@@ -36,7 +36,6 @@ module ActiveRecord
         %i[== != =~ > >= < <=].each do |op|
           define_method(op) {|val| Comparison.new(self, op, val) }
         end
-
       end
 
       class Comparison < Predicate
@@ -69,6 +68,7 @@ module ActiveRecord
           end
         end
       end
+
       class And < Predicate
         attr_reader :left, :right
 
