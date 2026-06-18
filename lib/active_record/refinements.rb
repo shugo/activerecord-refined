@@ -47,7 +47,9 @@ module ActiveRecord
 
       def select(*fields, &block)
         if block
-          super(evaluate_block(&block).to_arel(table), &nil)
+          result = evaluate_block(&block)
+          arel = Array(result).map {|node| to_arel_field(node) }
+          super(*arel, &nil)
         else
           super
         end
@@ -82,6 +84,14 @@ module ActiveRecord
       def evaluate_block(&block)
         refined = block.with_refinements(ActiveRecord::Refinements::BlockSyntax)
         BlockContext.new.instance_exec(&refined)
+      end
+
+      def to_arel_field(node)
+        case node
+        when AST::Node then node.to_arel(table)
+        when Symbol then table[node]
+        else node
+        end
       end
 
       def build_join_node(target_table, join_class, &block)

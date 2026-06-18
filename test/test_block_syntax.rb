@@ -219,6 +219,21 @@ class TestBlockSyntax < Minitest::Test
       User.select { upper(:users[:name]) }.to_sql)
   end
 
+  def test_select_multiple_fields
+    assert_match(/SELECT UPPER\("users"."name"\), "users"."age"/,
+      User.select { [upper(:name), :age] }.to_sql)
+  end
+
+  def test_select_multiple_columns
+    assert_match(/SELECT "users"."name", "users"."age"/,
+      User.select { [:name, :age] }.to_sql)
+  end
+
+  def test_select_multiple_with_aggregate
+    assert_match(/SELECT "users"."name", SUM\("users"."age"\)/,
+      User.select { [:name, sum(:age)] }.to_sql)
+  end
+
   def test_default_where_syntax
     assert_match(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)
