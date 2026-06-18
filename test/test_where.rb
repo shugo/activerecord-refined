@@ -112,6 +112,37 @@ class WhereBlockSyntaxTest < Minitest::Test
     assert_match(/LEFT OUTER JOIN "posts" ON "posts"."author_id" = "authors"."id"/, sql)
   end
 
+  def test_select_aggregate
+    assert_match(/SELECT SUM\("users"."age"\)/,
+      User.select { :age.sum }.to_sql)
+  end
+
+  def test_select_aggregate_qualified
+    assert_match(/SELECT COUNT\("users"."id"\)/,
+      User.select { :users[:id].count }.to_sql)
+  end
+
+  def test_select_average
+    assert_match(/SELECT AVG\("users"."age"\)/,
+      User.select { :age.average }.to_sql)
+  end
+
+  def test_select_maximum
+    assert_match(/SELECT MAX\("users"."age"\)/,
+      User.select { :age.maximum }.to_sql)
+  end
+
+  def test_select_minimum
+    assert_match(/SELECT MIN\("users"."age"\)/,
+      User.select { :age.minimum }.to_sql)
+  end
+
+  def test_having_aggregate
+    sql = User.group(:name).having { :age.sum > 100 }.to_sql
+    assert_match(/GROUP BY "users"."name"/, sql)
+    assert_match(/HAVING SUM\("users"."age"\) > 100/, sql)
+  end
+
   def test_default_where_syntax
     assert_match(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

@@ -10,6 +10,10 @@ module ActiveRecord
           AST::Comparison.new(self, :==, nil)
         end
 
+        %i[count sum average maximum minimum].each do |func|
+          define_method(func) { AST::Aggregate.new(self, func) }
+        end
+
         def [](column_name)
           AST::Column.new(self, column_name)
         end
@@ -18,6 +22,24 @@ module ActiveRecord
 
     module QueryMethods
       def where(opts = nil, *rest, &block)
+        if block
+          ast = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
+          super(ast.to_arel(table))
+        else
+          super
+        end
+      end
+
+      def select(*fields, &block)
+        if block
+          ast = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
+          super(ast.to_arel(table), &nil)
+        else
+          super
+        end
+      end
+
+      def having(opts = nil, *rest, &block)
         if block
           ast = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
           super(ast.to_arel(table))

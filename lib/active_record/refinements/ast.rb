@@ -40,6 +40,31 @@ module ActiveRecord
         def null?
           Comparison.new(self, :==, nil)
         end
+
+        %i[count sum average maximum minimum].each do |func|
+          define_method(func) { Aggregate.new(self, func) }
+        end
+      end
+
+      class Aggregate < Node
+        attr_reader :operand, :function
+
+        def initialize(operand, function)
+          @operand = operand
+          @function = function
+        end
+
+        def to_arel(table)
+          arel_operand = case operand
+                         when Node then operand.to_arel(table)
+                         else table[operand]
+                         end
+          arel_operand.public_send(function)
+        end
+
+        %i[== != =~ !~ > >= < <=].each do |op|
+          define_method(op) {|val| Comparison.new(self, op, val) }
+        end
       end
 
       class Comparison < Predicate
