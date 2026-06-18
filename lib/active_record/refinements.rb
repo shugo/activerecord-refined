@@ -28,6 +28,12 @@ module ActiveRecord
       AGGREGATE_FUNCTIONS.each do |name, arel_func|
         define_method(name) {|column| AST::Aggregate.new(column, arel_func) }
       end
+
+      SCALAR_FUNCTIONS = %i[upper lower length trim coalesce abs round].freeze
+
+      SCALAR_FUNCTIONS.each do |name|
+        define_method(name) {|*args| AST::Function.new(name.to_s.upcase, args) }
+      end
     end
 
     module QueryMethods

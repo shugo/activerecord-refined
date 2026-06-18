@@ -184,6 +184,41 @@ class TestBlockSyntax < Minitest::Test
       User.select { avg(:age) }.to_sql
   end
 
+  def test_upper_function
+    assert_match(/SELECT UPPER\("users"."name"\)/,
+      User.select { upper(:name) }.to_sql)
+  end
+
+  def test_lower_function
+    assert_match(/SELECT LOWER\("users"."name"\)/,
+      User.select { lower(:name) }.to_sql)
+  end
+
+  def test_length_function_in_where
+    assert_match(/WHERE LENGTH\("users"."name"\) > 3/,
+      User.where { length(:name) > 3 }.to_sql)
+  end
+
+  def test_coalesce_function_with_literal
+    assert_match(/SELECT COALESCE\("users"."name", 'unknown'\)/,
+      User.select { coalesce(:name, 'unknown') }.to_sql)
+  end
+
+  def test_function_comparison
+    assert_match(/WHERE UPPER\("users"."name"\) = 'MATZ'/,
+      User.where { upper(:name) == 'MATZ' }.to_sql)
+  end
+
+  def test_nested_function
+    assert_match(/SELECT UPPER\(COALESCE\("users"."name", 'x'\)\)/,
+      User.select { upper(coalesce(:name, 'x')) }.to_sql)
+  end
+
+  def test_function_qualified_column_arg
+    assert_match(/SELECT UPPER\("users"."name"\)/,
+      User.select { upper(:users[:name]) }.to_sql)
+  end
+
   def test_default_where_syntax
     assert_match(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

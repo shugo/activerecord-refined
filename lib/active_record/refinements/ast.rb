@@ -67,6 +67,30 @@ module ActiveRecord
         end
       end
 
+      class Function < Node
+        attr_reader :name, :args
+
+        def initialize(name, args)
+          @name = name
+          @args = args
+        end
+
+        def to_arel(table)
+          arel_args = args.map do |arg|
+            case arg
+            when Node then arg.to_arel(table)
+            when Symbol then table[arg]
+            else Arel::Nodes.build_quoted(arg)
+            end
+          end
+          Arel::Nodes::NamedFunction.new(name, arel_args)
+        end
+
+        %i[== != =~ !~ > >= < <=].each do |op|
+          define_method(op) {|val| Comparison.new(self, op, val) }
+        end
+      end
+
       class Comparison < Predicate
         OPERATOR_MAP = {
           :== => :eq, :!= => :not_eq, :=~ => :matches, :!~ => :does_not_match,
