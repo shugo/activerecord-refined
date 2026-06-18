@@ -279,6 +279,27 @@ class TestBlockSyntax < Minitest::Test
       User.order { :users[:name].desc }.to_sql)
   end
 
+  def test_group_single
+    assert_match(/GROUP BY "users"."name"/,
+      User.group { :name }.to_sql)
+  end
+
+  def test_group_multiple
+    assert_match(/GROUP BY "users"."name", "users"."age"/,
+      User.group { [:name, :age] }.to_sql)
+  end
+
+  def test_group_qualified_column
+    assert_match(/GROUP BY "users"."name"/,
+      User.group { :users[:name] }.to_sql)
+  end
+
+  def test_group_with_having
+    sql = User.group { :name }.having { sum(:age) > 100 }.to_sql
+    assert_match(/GROUP BY "users"."name"/, sql)
+    assert_match(/HAVING SUM\("users"."age"\) > 100/, sql)
+  end
+
   def test_default_where_syntax
     assert_match(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

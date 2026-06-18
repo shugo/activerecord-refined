@@ -85,6 +85,16 @@ module ActiveRecord
         end
       end
 
+      def group(*args, &block)
+        if block
+          result = evaluate_block(&block)
+          arel = Array(result).map {|node| to_arel_field(node) }
+          super(*arel, &nil)
+        else
+          super
+        end
+      end
+
       def joins(*args, &block)
         if block
           super(build_join_node(args.first, Arel::Nodes::InnerJoin, &block))
