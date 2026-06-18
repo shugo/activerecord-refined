@@ -61,8 +61,13 @@ module ActiveRecord
                        when Node then value.to_arel(table)
                        else value
                        end
-          if operator == :== && Range === value
+          case
+          when operator == :== && Range === value
             arel_column.between(value)
+          when operator == :== && Array === value
+            arel_column.in(value)
+          when operator == :!= && Array === value
+            arel_column.not_in(value)
           else
             arel_column.public_send(OPERATOR_MAP.fetch(operator), arel_value)
           end
