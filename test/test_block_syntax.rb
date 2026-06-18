@@ -254,6 +254,31 @@ class TestBlockSyntax < Minitest::Test
       User.select { count(:id).as(:cnt) }.to_sql)
   end
 
+  def test_order_default_asc
+    assert_match(/ORDER BY "users"."age"/,
+      User.order { :age }.to_sql)
+  end
+
+  def test_order_desc
+    assert_match(/ORDER BY "users"."age" DESC/,
+      User.order { :age.desc }.to_sql)
+  end
+
+  def test_order_asc
+    assert_match(/ORDER BY "users"."age" ASC/,
+      User.order { :age.asc }.to_sql)
+  end
+
+  def test_order_multiple
+    assert_match(/ORDER BY "users"."age" DESC, "users"."name" ASC/,
+      User.order { [:age.desc, :name.asc] }.to_sql)
+  end
+
+  def test_order_qualified_column
+    assert_match(/ORDER BY "users"."name" DESC/,
+      User.order { :users[:name].desc }.to_sql)
+  end
+
   def test_default_where_syntax
     assert_match(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

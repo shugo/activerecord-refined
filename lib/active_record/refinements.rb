@@ -18,6 +18,14 @@ module ActiveRecord
           AST::As.new(self, alias_name)
         end
 
+        def asc
+          AST::Ordering.new(self, :asc)
+        end
+
+        def desc
+          AST::Ordering.new(self, :desc)
+        end
+
         def [](column_name)
           AST::Column.new(self, column_name)
         end
@@ -62,6 +70,16 @@ module ActiveRecord
       def having(opts = nil, *rest, &block)
         if block
           super(evaluate_block(&block).to_arel(table))
+        else
+          super
+        end
+      end
+
+      def order(*args, &block)
+        if block
+          result = evaluate_block(&block)
+          arel = Array(result).map {|node| to_arel_field(node) }
+          super(*arel, &nil)
         else
           super
         end

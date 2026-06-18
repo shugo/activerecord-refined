@@ -9,6 +9,14 @@ module ActiveRecord
         def as(alias_name)
           As.new(self, alias_name)
         end
+
+        def asc
+          Ordering.new(self, :asc)
+        end
+
+        def desc
+          Ordering.new(self, :desc)
+        end
       end
 
       class Predicate < Node
@@ -86,6 +94,24 @@ module ActiveRecord
                          else operand
                          end
           arel_operand.as(alias_name.to_s)
+        end
+      end
+
+      class Ordering < Node
+        attr_reader :operand, :direction
+
+        def initialize(operand, direction)
+          @operand = operand
+          @direction = direction
+        end
+
+        def to_arel(table)
+          arel_operand = case operand
+                         when Node then operand.to_arel(table)
+                         when Symbol then table[operand]
+                         else operand
+                         end
+          arel_operand.public_send(direction)
         end
       end
 
