@@ -33,14 +33,14 @@ module ActiveRecord
           Arel::Table.new(table_name)[column_name]
         end
 
-        %i[== != =~ > >= < <=].each do |op|
+        %i[== != =~ !~ > >= < <=].each do |op|
           define_method(op) {|val| Comparison.new(self, op, val) }
         end
       end
 
       class Comparison < Predicate
         OPERATOR_MAP = {
-          :== => :eq, :!= => :not_eq, :=~ => :matches,
+          :== => :eq, :!= => :not_eq, :=~ => :matches, :!~ => :does_not_match,
           :> => :gt, :>= => :gteq, :< => :lt, :<= => :lteq
         }.freeze
 
@@ -64,6 +64,8 @@ module ActiveRecord
           case
           when operator == :== && Range === value
             arel_column.between(value)
+          when operator == :!= && Range === value
+            arel_column.not_between(value)
           when operator == :== && Array === value
             arel_column.in(value)
           when operator == :!= && Array === value

@@ -61,6 +61,17 @@ class WhereBlockSyntaxTest < Minitest::Test
       User.where { :age == (18..65) }.to_sql)
   end
 
+  def test_not_like
+    assert_match(/WHERE "users"."name" NOT LIKE 'tender%'/,
+      User.where { :name !~ 'tender%' }.to_sql)
+  end
+
+  def test_not_between
+    # Arel expands a bounded NOT BETWEEN into an OR of comparisons
+    assert_match(/WHERE \("users"."age" < 18 OR "users"."age" > 65\)/,
+      User.where { :age != (18..65) }.to_sql)
+  end
+
   def test_in
     assert_match(/WHERE "users"."age" IN \(1, 2, 3\)/,
       User.where { :age == [1, 2, 3] }.to_sql)

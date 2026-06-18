@@ -2,7 +2,7 @@ module ActiveRecord
   module Refinements
     module WhereBlockSyntax
       refine Symbol do
-        %i[== != =~ > >= < <=].each do |op|
+        %i[== != =~ !~ > >= < <=].each do |op|
           define_method(op) {|val| AST::Comparison.new(self, op, val) }
         end
 
