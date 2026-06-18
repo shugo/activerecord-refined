@@ -1,6 +1,6 @@
 module ActiveRecord
   module Refinements
-    module WhereBlockSyntax
+    module BlockSyntax
       refine Symbol do
         %i[== != =~ !~ > >= < <=].each do |op|
           define_method(op) {|val| AST::Comparison.new(self, op, val) }
@@ -23,7 +23,7 @@ module ActiveRecord
     module QueryMethods
       def where(opts = nil, *rest, &block)
         if block
-          ast = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
+          ast = block.with_refinements(ActiveRecord::Refinements::BlockSyntax).call
           super(ast.to_arel(table))
         else
           super
@@ -32,7 +32,7 @@ module ActiveRecord
 
       def select(*fields, &block)
         if block
-          ast = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
+          ast = block.with_refinements(ActiveRecord::Refinements::BlockSyntax).call
           super(ast.to_arel(table), &nil)
         else
           super
@@ -41,7 +41,7 @@ module ActiveRecord
 
       def having(opts = nil, *rest, &block)
         if block
-          ast = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
+          ast = block.with_refinements(ActiveRecord::Refinements::BlockSyntax).call
           super(ast.to_arel(table))
         else
           super
@@ -67,7 +67,7 @@ module ActiveRecord
       private
 
       def build_join_node(target_table, join_class, &block)
-        ast = block.with_refinements(ActiveRecord::Refinements::WhereBlockSyntax).call
+        ast = block.with_refinements(ActiveRecord::Refinements::BlockSyntax).call
         join_class.new(
           Arel::Table.new(target_table),
           Arel::Nodes::On.new(ast.to_arel(table))

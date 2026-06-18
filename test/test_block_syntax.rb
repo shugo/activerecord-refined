@@ -1,6 +1,6 @@
 require_relative 'test_helper'
 
-class WhereBlockSyntaxTest < Minitest::Test
+class TestBlockSyntax < Minitest::Test
   def test_equal
     assert_match(/WHERE "users"."name" = 'matz'/, User.where { :name == 'matz' }.to_sql)
   end
