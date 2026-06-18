@@ -36,6 +36,7 @@ module ActiveRecord
         %i[== != =~ > >= < <=].each do |op|
           define_method(op) {|val| Comparison.new(self, op, val) }
         end
+
       end
 
       class Comparison < Predicate
@@ -61,7 +62,11 @@ module ActiveRecord
                        when Node then value.to_arel(table)
                        else value
                        end
-          arel_column.public_send(OPERATOR_MAP.fetch(operator), arel_value)
+          if operator == :== && Range === value
+            arel_column.between(value)
+          else
+            arel_column.public_send(OPERATOR_MAP.fetch(operator), arel_value)
+          end
         end
       end
       class And < Predicate

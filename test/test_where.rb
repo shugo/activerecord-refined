@@ -56,6 +56,11 @@ class WhereBlockSyntaxTest < Minitest::Test
     assert_match(/OR/, sql)
   end
 
+  def test_between
+    assert_match(/WHERE "users"."age" BETWEEN 18 AND 65/,
+      User.where { :age == (18..65) }.to_sql)
+  end
+
   def test_qualified_column
     assert_match(/WHERE "users"."name" = 'matz'/,
       User.where { :users[:name] == 'matz' }.to_sql)
