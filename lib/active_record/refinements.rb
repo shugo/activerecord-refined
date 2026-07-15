@@ -114,7 +114,7 @@ module ActiveRecord
       private
 
       def evaluate_block(&block)
-        refined = block.with_refinements(ActiveRecord::Refinements::BlockSyntax)
+        refined = block.refined(ActiveRecord::Refinements::BlockSyntax)
         BlockContext.new.instance_exec(&refined)
       end
 
