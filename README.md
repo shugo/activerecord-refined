@@ -89,6 +89,21 @@ Author.where { :name.end_with?('son') }     # LIKE '%son'
 Author.where { :name.include?('test') }     # LIKE '%test%'
 ```
 
+`=~` and `!~` match a regular expression: `REGEXP` and `NOT REGEXP` on MySQL,
+`~` and `!~` on PostgreSQL. SQLite has no regexp operator of its own, so it
+raises there.
+
+```ruby
+Author.where { :name =~ '^A' }              # REGEXP / ~
+Author.where { :name !~ '^A' }              # NOT REGEXP / !~
+Author.where { :name =~ /son$/ }            # a Regexp literal works too
+```
+
+Only a literal's source crosses over; the database has its own dialect and no
+equivalent of Ruby's flags. Dropping one would silently change what the query
+matches, so `/son$/i` raises instead — pass the pattern as a string if the
+database can express what you mean.
+
 `==` always means SQL `=`, and passes its value through untouched. A Range or an
 Array therefore compares against a PostgreSQL range or array column, the same
 way ActiveRecord's own `where(period: from...to)` does for those column types:

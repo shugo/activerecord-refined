@@ -29,6 +29,14 @@ module ActiveRecord
           Comparison.new(self, :<=, other)
         end
 
+        def =~(pattern)
+          Match.new(self, pattern)
+        end
+
+        def !~(pattern)
+          Match.new(self, pattern, negated: true)
+        end
+
         def null?
           Comparison.new(self, :==, nil)
         end
@@ -247,6 +255,42 @@ module ActiveRecord
           # Arel matches case-insensitively unless told otherwise, which turns
           # into ILIKE on PostgreSQL. like? means SQL LIKE on every adapter.
           to_arel_operand(operand, table).matches(pattern, escape, true)
+        end
+      end
+
+      # Regular expression match: REGEXP on MySQL, ~ on PostgreSQL.  SQLite has
+      # no regexp operator built in, so Arel raises NotImplementedError there.
+      class Match < Predicate
+        attr_reader :operand, :pattern, :negated
+
+        def initialize(operand, pattern, negated: false)
+          @operand = operand
+          @pattern = pattern.is_a?(Regexp) ? regexp_source(pattern) : pattern
+          @negated = negated
+        end
+
+        def to_arel(table)
+          arel_operand = to_arel_operand(operand, table)
+          if negated
+            arel_operand.does_not_match_regexp(pattern)
+          else
+            arel_operand.matches_regexp(pattern)
+          end
+        end
+
+        private
+
+        # A Regexp literal reads naturally with =~, but only its source crosses
+        # over; the database has its own dialect and no notion of Ruby's flags.
+        # Dropping a flag would silently change what the query matches, so
+        # anything beyond a plain literal is refused rather than ignored.
+        def regexp_source(regexp)
+          unless regexp.options.zero?
+            raise ArgumentError,
+              "#{regexp.inspect} has options that SQL cannot express; " \
+              "pass the pattern as a string instead"
+          end
+          regexp.source
         end
       end
 

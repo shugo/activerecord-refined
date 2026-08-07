@@ -51,6 +51,25 @@ end
 ActiveRecord::Base.establish_connection(DATABASE_CONFIG)
 
 module SqlAssertions
+  # Arel spells the regexp match differently per adapter, and raises on the
+  # ones missing from this list.
+  REGEXP_OPERATORS = {
+    'postgresql' => ['~', '!~'],
+    'mysql2' => ['REGEXP', 'NOT REGEXP'],
+  }.freeze
+
+  def skip_without_regexp_support
+    skip "#{ADAPTER} has no regexp operator" unless REGEXP_OPERATORS.key?(ADAPTER)
+  end
+
+  def regexp_operator
+    Regexp.escape(REGEXP_OPERATORS.fetch(ADAPTER).first)
+  end
+
+  def not_regexp_operator
+    Regexp.escape(REGEXP_OPERATORS.fetch(ADAPTER).last)
+  end
+
   # MySQL quotes identifiers with backticks instead of double quotes, and
   # doubles the backslashes inside string literals because backslash is itself
   # an escape character there.  Normalising both lets a single expectation

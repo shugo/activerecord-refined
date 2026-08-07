@@ -91,6 +91,41 @@ class TestBlockSyntax < Minitest::Test
       User.where { :name.include?('100%') }.to_sql)
   end
 
+  def test_regexp
+    skip_without_regexp_support
+    assert_sql(/WHERE "users"."name" #{regexp_operator} '\^ma'/,
+      User.where { :name =~ '^ma' }.to_sql)
+  end
+
+  def test_not_regexp
+    skip_without_regexp_support
+    assert_sql(/WHERE "users"."name" #{not_regexp_operator} '\^ma'/,
+      User.where { :name !~ '^ma' }.to_sql)
+  end
+
+  def test_regexp_qualified
+    skip_without_regexp_support
+    assert_sql(/WHERE "users"."name" #{regexp_operator} '\^ma'/,
+      User.where { :users[:name] =~ '^ma' }.to_sql)
+  end
+
+  def test_regexp_on_function
+    skip_without_regexp_support
+    assert_sql(/WHERE UPPER\("users"."name"\) #{regexp_operator} '\^MA'/,
+      User.where { upper(:name) =~ '^MA' }.to_sql)
+  end
+
+  def test_regexp_literal
+    skip_without_regexp_support
+    assert_sql(/WHERE "users"."name" #{regexp_operator} 'love\$'/,
+      User.where { :name =~ /love$/ }.to_sql)
+  end
+
+  # Rejected while the block runs, so this holds on every adapter.
+  def test_regexp_literal_with_options_is_rejected
+    assert_raises(ArgumentError) { User.where { :name =~ /^ma/i } }
+  end
+
   def test_between
     assert_sql(/WHERE "users"."age" BETWEEN 18 AND 65/,
       User.where { :age.between?(18, 65) }.to_sql)
