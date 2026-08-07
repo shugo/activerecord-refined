@@ -1,5 +1,5 @@
 module ActiveRecord
-  module Refinements
+  module Refined
     module AST
       class Node
         def to_arel(table)

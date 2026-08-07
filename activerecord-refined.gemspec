@@ -1,16 +1,16 @@
 # -*- encoding: utf-8 -*-
 lib = File.expand_path('../lib', __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
-require 'activerecord-refinements/version'
+require 'activerecord-refined/version'
 
 Gem::Specification.new do |gem|
-  gem.name          = "activerecord-refinements"
-  gem.version       = Activerecord::Refinements::VERSION
-  gem.authors       = ["Akira Matsuda"]
-  gem.email         = ["ronnie@dio.jp"]
+  gem.name          = "activerecord-refined"
+  gem.version       = Activerecord::Refined::VERSION
+  gem.authors       = ["Shugo Maeda"]
+  gem.email         = ["shugo@ruby-lang.org"]
   gem.description   = 'Adding clean and powerful query syntax on AR using refinements'
   gem.summary       = 'ActiveRecord + Ruby 2.0 refinements'
-  gem.homepage      = 'https://github.com/amatsuda/activerecord-refinements'
+  gem.homepage      = 'https://github.com/shugo/activerecord-refined'
 
   gem.files         = `git ls-files`.split($/)
   gem.executables   = gem.files.grep(%r{^bin/}).map{ |f| File.basename(f) }

@@ -1,5 +1,5 @@
 module ActiveRecord
-  module Refinements
+  module Refined
     module BlockSyntax
       refine Symbol do
         %i[== != =~ !~ > >= < <=].each do |op|
@@ -114,8 +114,8 @@ module ActiveRecord
       private
 
       def evaluate_block(&block)
-        refined = block.refined(ActiveRecord::Refinements::BlockSyntax)
-        BlockContext.new.instance_exec(&refined)
+        refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
+        BlockContext.new.instance_exec(&refined_block)
       end
 
       def to_arel_field(node)

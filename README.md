@@ -1,4 +1,4 @@
-# ActiveRecord::Refinements
+# ActiveRecord::Refined
 
 ActiveRecord + Ruby 2.0 refinements
 
@@ -11,7 +11,7 @@ And unfortunately, due to the Refinements' spec change, this library does not wo
 
 Add this line to your application's Gemfile:
 
-    gem 'activerecord-refinements'
+    gem 'activerecord-refined'
 
 And then execute:
 
@@ -19,7 +19,7 @@ And then execute:
 
 Or install it yourself as:
 
-    $ gem install activerecord-refinements
+    $ gem install activerecord-refined
 
 ## Usage
 
