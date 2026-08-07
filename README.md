@@ -76,6 +76,9 @@ Author.where { :country.in?(%w[JP US]) }    # IN
 Author.where { :country.null? }             # IS NULL
 ```
 
+`like?` is case-sensitive `LIKE` on every adapter, including PostgreSQL, where
+Arel would otherwise reach for `ILIKE`.
+
 `start_with?`, `end_with?` and `include?` are shortcuts for the usual `like?`
 patterns. Unlike `like?`, they treat their argument as a literal string, so `%`
 and `_` in it are escaped rather than matched as wildcards:
@@ -149,6 +152,23 @@ Author.
 ```
 
 See `examples/` for complete, runnable scripts.
+
+## Running the tests
+
+The tests only build SQL, but they need a live connection to do it. SQLite is
+the default; set `ADAPTER` to run the same suite against another one.
+
+```sh
+rake test                    # sqlite3
+ADAPTER=postgresql rake test
+ADAPTER=mysql2 rake test
+rake test:all                # all three in turn
+```
+
+PostgreSQL and MySQL are reached on `127.0.0.1` as the current user with no
+password, which is how the devcontainer sets them up. Override with
+`DB_HOST`, `DB_USERNAME` and `DB_PASSWORD`. The `activerecord_refined_test`
+database is created on first use.
 
 ## Contributing
 

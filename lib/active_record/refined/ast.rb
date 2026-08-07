@@ -244,7 +244,9 @@ module ActiveRecord
         end
 
         def to_arel(table)
-          to_arel_operand(operand, table).matches(pattern, escape)
+          # Arel matches case-insensitively unless told otherwise, which turns
+          # into ILIKE on PostgreSQL. like? means SQL LIKE on every adapter.
+          to_arel_operand(operand, table).matches(pattern, escape, true)
         end
       end
 
