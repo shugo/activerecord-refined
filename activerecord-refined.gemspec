@@ -17,6 +17,10 @@ Gem::Specification.new do |gem|
   gem.test_files    = gem.files.grep(%r{^(test|spec|features)/})
   gem.require_paths = ["lib"]
 
+  # Proc#refined is available since Ruby 4.1. 4.1.0.dev is required to allow
+  # ruby-master builds, which sort before the 4.1.0 release.
+  gem.required_ruby_version = '>= 4.1.0.dev'
+
   gem.add_dependency 'activerecord', ['>= 7.0']
   gem.add_development_dependency 'sqlite3', ['>= 0']
   gem.add_development_dependency 'minitest', ['>= 0']
