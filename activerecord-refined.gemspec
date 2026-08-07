@@ -9,7 +9,7 @@ Gem::Specification.new do |gem|
   gem.authors       = ["Shugo Maeda"]
   gem.email         = ["shugo@ruby-lang.org"]
   gem.description   = 'Adding clean and powerful query syntax on AR using refinements'
-  gem.summary       = 'ActiveRecord + Ruby 2.0 refinements'
+  gem.summary       = 'ActiveRecord + Ruby 4.1 Proc#refined'
   gem.homepage      = 'https://github.com/shugo/activerecord-refined'
 
   gem.files         = `git ls-files`.split($/)
