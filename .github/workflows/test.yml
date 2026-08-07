@@ -1,0 +1,23 @@
+name: test
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # SQLite only here, so skip building the pg and mysql2 extensions.
+      BUNDLE_WITHOUT: db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          # Proc#refined has not been released yet, so master is the only
+          # Ruby that can run this.
+          ruby-version: head
+          bundler-cache: true
+      - run: bundle exec rake test

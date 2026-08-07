@@ -1,5 +1,7 @@
 # ActiveRecord::Refined
 
+[![test](https://github.com/shugo/activerecord-refined/actions/workflows/test.yml/badge.svg)](https://github.com/shugo/activerecord-refined/actions/workflows/test.yml)
+
 Adding clean and powerful query syntax on ActiveRecord using refinements.
 
 ```ruby
@@ -184,6 +186,14 @@ PostgreSQL and MySQL are reached on `127.0.0.1` as the current user with no
 password, which is how the devcontainer sets them up. Override with
 `DB_HOST`, `DB_USERNAME` and `DB_PASSWORD`. The `activerecord_refined_test`
 database is created on first use.
+
+The `pg` and `mysql2` gems are in the Gemfile's `db` group, since building them
+needs the client libraries installed. Skip them if SQLite is all you need,
+which is what CI does:
+
+```sh
+bundle config set --local without db
+```
 
 ## Contributing
 
