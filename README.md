@@ -5,7 +5,7 @@ Adding clean and powerful query syntax on ActiveRecord using refinements.
 ```ruby
 Author.
   joins(:posts) { :posts[:author_id] == :authors[:id] }.
-  where { (:authors[:age] == (20..40)) & (:posts[:published] == true) }
+  where { :authors[:age].in?(20..40) & (:posts[:published] == true) }
 # SELECT "authors".* FROM "authors"
 #   INNER JOIN "posts" ON "posts"."author_id" = "authors"."id"
 #   WHERE "authors"."age" BETWEEN 20 AND 40 AND "posts"."published" = TRUE
@@ -68,20 +68,42 @@ denotes a qualified column.
 
 ```ruby
 Author.where { :age >= 18 }
-Author.where { :name =~ 'A%' }              # LIKE
-Author.where { :name !~ '%test%' }          # NOT LIKE
-Author.where { :age == (20..40) }           # BETWEEN
-Author.where { :country == %w[JP US] }      # IN
-Author.where { :country != %w[JP US] }      # NOT IN
+Author.where { :name.like?('A%') }          # LIKE
+Author.where { :age.in?(20..40) }           # BETWEEN
+Author.where { :age.between?(20, 40) }      # BETWEEN
+Author.where { :age.in?(18..) }             # >= 18
+Author.where { :country.in?(%w[JP US]) }    # IN
 Author.where { :country.null? }             # IS NULL
 ```
 
+`start_with?`, `end_with?` and `include?` are shortcuts for the usual `like?`
+patterns. Unlike `like?`, they treat their argument as a literal string, so `%`
+and `_` in it are escaped rather than matched as wildcards:
+
+```ruby
+Author.where { :name.start_with?('A') }     # LIKE 'A%'
+Author.where { :name.end_with?('son') }     # LIKE '%son'
+Author.where { :name.include?('test') }     # LIKE '%test%'
+```
+
+`==` always means SQL `=`, and passes its value through untouched. A Range or an
+Array therefore compares against a PostgreSQL range or array column, the same
+way ActiveRecord's own `where(period: from...to)` does for those column types:
+
+```ruby
+Reservation.where { :period == (from...to) }   # daterange = '[from,to)'
+Article.where { :tags == %w[ruby rails] }      # text[] = '{ruby,rails}'
+```
+
 Combine predicates with `&`, `|` and `!`. Ruby's operator precedence makes the
-parentheses around each comparison necessary:
+parentheses around each comparison necessary, though the `?` methods above need
+none:
 
 ```ruby
 Author.where { (:age >= 18) & ((:country == 'JP') | (:country == 'US')) }
-Author.where { !((:age == (0..17)) | :country.null?) }
+Author.where { !(:age.in?(0..17) | :country.null?) }
+Author.where { !:country.in?(%w[JP US]) }   # NOT (country IN ('JP', 'US'))
+Author.where { !:name.like?('%test%') }     # NOT (name LIKE '%test%')
 ```
 
 ### Joins

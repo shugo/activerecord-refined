@@ -33,26 +33,26 @@ query1 =
   Author.
     joins(:posts) { :posts[:author_id] == :authors[:id] }.
     where {
-      ((:authors[:age] == (20..40)) & (:posts[:published] == true)) |
-        (:authors[:country] == %w[JP US])
+      (:authors[:age].in?(20..40) & (:posts[:published] == true)) |
+        :authors[:country].in?(%w[JP US])
     }
 
 puts "--- 1. INNER JOIN with compound conditions ---"
 puts query1.to_sql
 puts
 
-# 2. Multi-level JOIN (authors -> posts -> comments) + NOT LIKE / NOT IN
+# 2. Multi-level JOIN (authors -> posts -> comments) + negated LIKE / IN
 query2 =
   Author.
     joins(:posts) { :posts[:author_id] == :authors[:id] }.
     joins(:comments) { :comments[:post_id] == :posts[:id] }.
     where {
-      (:posts[:title] !~ '%draft%') &
-        (:comments[:score] != [0, -1]) &
+      !:posts[:title].include?('draft') &
+        !:comments[:score].in?([0, -1]) &
         (:authors[:age] >= 18)
     }
 
-puts "--- 2. Multi-table JOIN with NOT LIKE / NOT IN ---"
+puts "--- 2. Multi-table JOIN with negated LIKE / IN ---"
 puts query2.to_sql
 puts
 
@@ -61,7 +61,7 @@ query3 =
   Author.
     left_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }.
     where {
-      !((:posts[:likes] == (0..9)) | (:posts[:published] == false))
+      !(:posts[:likes].in?(0..9) | (:posts[:published] == false))
     }
 
 puts "--- 3. LEFT OUTER JOIN with negation ---"

@@ -2,13 +2,7 @@ module ActiveRecord
   module Refined
     module BlockSyntax
       refine Symbol do
-        %i[== != =~ !~ > >= < <=].each do |op|
-          define_method(op) {|val| AST::Comparison.new(self, op, val) }
-        end
-
-        def null?
-          AST::Comparison.new(self, :==, nil)
-        end
+        import_methods AST::Predications
 
         %i[count sum average maximum minimum].each do |func|
           define_method(func) { AST::Aggregate.new(self, func) }

@@ -74,7 +74,7 @@ query3 =
   Author.
     joins(:posts) { :posts[:author_id] == :authors[:id] }.
     joins(:comments) { :comments[:post_id] == :posts[:id] }.
-    where { (:posts[:title] !~ '%draft%') & (:comments[:score] >= 0) }.
+    where { !:posts[:title].include?('draft') & (:comments[:score] >= 0) }.
     group { :authors[:id] }.
     having { sum(:comments[:score]) > 10 }.
     order { sum(:comments[:score]).desc }.

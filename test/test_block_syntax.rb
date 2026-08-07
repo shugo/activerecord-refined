@@ -26,7 +26,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_like
-    assert_match(/WHERE "users"."name" LIKE 'tender%'/, User.where { :name =~ 'tender%' }.to_sql)
+    assert_match(/WHERE "users"."name" LIKE 'tender%'/, User.where { :name.like?('tender%') }.to_sql)
   end
 
   def test_outside_of_where_block
@@ -56,20 +56,64 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/OR/, sql)
   end
 
-  def test_between
-    assert_match(/WHERE "users"."age" BETWEEN 18 AND 65/,
-      User.where { :age == (18..65) }.to_sql)
+  def test_like_qualified
+    assert_match(/WHERE "users"."name" LIKE 'tender%'/,
+      User.where { :users[:name].like?('tender%') }.to_sql)
   end
 
   def test_not_like
-    assert_match(/WHERE "users"."name" NOT LIKE 'tender%'/,
-      User.where { :name !~ 'tender%' }.to_sql)
+    assert_match(/WHERE NOT \("users"."name" LIKE 'tender%'\)/,
+      User.where { !:name.like?('tender%') }.to_sql)
+  end
+
+  def test_start_with
+    assert_match(/WHERE "users"."name" LIKE 'tender%' ESCAPE '\\'/,
+      User.where { :name.start_with?('tender') }.to_sql)
+  end
+
+  def test_end_with
+    assert_match(/WHERE "users"."name" LIKE '%love' ESCAPE '\\'/,
+      User.where { :name.end_with?('love') }.to_sql)
+  end
+
+  def test_include
+    assert_match(/WHERE "users"."name" LIKE '%der%' ESCAPE '\\'/,
+      User.where { :name.include?('der') }.to_sql)
+  end
+
+  def test_start_with_escapes_wildcards
+    assert_match(/WHERE "users"."name" LIKE '100\\%\\_%' ESCAPE '\\'/,
+      User.where { :name.start_with?('100%_') }.to_sql)
+  end
+
+  def test_include_escapes_wildcards
+    assert_match(/WHERE "users"."name" LIKE '%100\\%%' ESCAPE '\\'/,
+      User.where { :name.include?('100%') }.to_sql)
+  end
+
+  def test_between
+    assert_match(/WHERE "users"."age" BETWEEN 18 AND 65/,
+      User.where { :age.between?(18, 65) }.to_sql)
+  end
+
+  def test_in_range
+    assert_match(/WHERE "users"."age" BETWEEN 18 AND 65/,
+      User.where { :age.in?(18..65) }.to_sql)
+  end
+
+  def test_in_endless_range
+    assert_match(/WHERE "users"."age" >= 18/,
+      User.where { :age.in?(18..) }.to_sql)
+  end
+
+  def test_in_exclusive_range
+    assert_match(/WHERE "users"."age" >= 18 AND "users"."age" < 65/,
+      User.where { :age.in?(18...65) }.to_sql)
   end
 
   def test_not_between
-    # Arel expands a bounded NOT BETWEEN into an OR of comparisons
-    assert_match(/WHERE \("users"."age" < 18 OR "users"."age" > 65\)/,
-      User.where { :age != (18..65) }.to_sql)
+    assert_match(/WHERE NOT \("users"."age" BETWEEN 18 AND 65\)/,
+      User.where { !:age.between?(18, 65) }.to_sql)
   end
 
   def test_is_null
@@ -84,12 +128,41 @@ class TestBlockSyntax < Minitest::Test
 
   def test_in
     assert_match(/WHERE "users"."age" IN \(1, 2, 3\)/,
-      User.where { :age == [1, 2, 3] }.to_sql)
+      User.where { :age.in?([1, 2, 3]) }.to_sql)
+  end
+
+  def test_in_qualified
+    assert_match(/WHERE "users"."age" IN \(1, 2, 3\)/,
+      User.where { :users[:age].in?([1, 2, 3]) }.to_sql)
   end
 
   def test_not_in
-    assert_match(/WHERE "users"."age" NOT IN \(1, 2, 3\)/,
-      User.where { :age != [1, 2, 3] }.to_sql)
+    assert_match(/WHERE NOT \("users"."age" IN \(1, 2, 3\)\)/,
+      User.where { !:age.in?([1, 2, 3]) }.to_sql)
+  end
+
+  # == passes a Range or an Array through as a value rather than expanding it,
+  # so that it compares against a PostgreSQL range or array column. The SQL
+  # literal depends on the column type, so assert on the Arel node instead.
+  def test_equal_range_is_an_equality
+    node = ActiveRecord::Refined::AST::Comparison.new(:period, :==, 18..65).
+      to_arel(User.arel_table)
+    assert_instance_of(Arel::Nodes::Equality, node)
+    assert_equal(18..65, node.right.value)
+  end
+
+  def test_equal_array_is_an_equality
+    node = ActiveRecord::Refined::AST::Comparison.new(:tags, :==, [1, 2, 3]).
+      to_arel(User.arel_table)
+    assert_instance_of(Arel::Nodes::Equality, node)
+    assert_equal([1, 2, 3], node.right.value)
+  end
+
+  def test_not_equal_array_is_an_inequality
+    node = ActiveRecord::Refined::AST::Comparison.new(:tags, :!=, [1, 2, 3]).
+      to_arel(User.arel_table)
+    assert_instance_of(Arel::Nodes::NotEqual, node)
+    assert_equal([1, 2, 3], node.right.value)
   end
 
   def test_qualified_column
@@ -229,6 +302,21 @@ class TestBlockSyntax < Minitest::Test
   def test_function_comparison
     assert_match(/WHERE UPPER\("users"."name"\) = 'MATZ'/,
       User.where { upper(:name) == 'MATZ' }.to_sql)
+  end
+
+  def test_function_like
+    assert_match(/WHERE UPPER\("users"."name"\) LIKE 'MA%'/,
+      User.where { upper(:name).like?('MA%') }.to_sql)
+  end
+
+  def test_function_in
+    assert_match(/WHERE UPPER\("users"."name"\) IN \('MATZ', 'NOBU'\)/,
+      User.where { upper(:name).in?(%w[MATZ NOBU]) }.to_sql)
+  end
+
+  def test_aggregate_in
+    assert_match(/HAVING SUM\("users"."age"\) BETWEEN 1 AND 10/,
+      User.group(:name).having { :age.sum.in?(1..10) }.to_sql)
   end
 
   def test_nested_function

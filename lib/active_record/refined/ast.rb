@@ -1,6 +1,63 @@
 module ActiveRecord
   module Refined
     module AST
+      # Predicate builders shared by symbols, qualified columns and
+      # expressions. Imported into the Symbol refinement with
+      # Refinement#import_methods, so every method must be defined with def.
+      module Predications
+        def ==(other)
+          Comparison.new(self, :==, other)
+        end
+
+        def !=(other)
+          Comparison.new(self, :!=, other)
+        end
+
+        def >(other)
+          Comparison.new(self, :>, other)
+        end
+
+        def >=(other)
+          Comparison.new(self, :>=, other)
+        end
+
+        def <(other)
+          Comparison.new(self, :<, other)
+        end
+
+        def <=(other)
+          Comparison.new(self, :<=, other)
+        end
+
+        def null?
+          Comparison.new(self, :==, nil)
+        end
+
+        def in?(values)
+          In.new(self, values)
+        end
+
+        def between?(min, max)
+          In.new(self, min..max)
+        end
+
+        def like?(pattern)
+          Like.new(self, pattern)
+        end
+
+        def start_with?(prefix)
+          Like.new(self, "#{Like.escape(prefix)}%", Like::ESCAPE)
+        end
+
+        def end_with?(suffix)
+          Like.new(self, "%#{Like.escape(suffix)}", Like::ESCAPE)
+        end
+
+        def include?(substring)
+          Like.new(self, "%#{Like.escape(substring)}%", Like::ESCAPE)
+        end
+      end
+
       class Node
         def to_arel(table)
           raise ScriptError, "subclass must override this method"
@@ -16,6 +73,18 @@ module ActiveRecord
 
         def desc
           Ordering.new(self, :desc)
+        end
+
+        private
+
+        # Resolves an operand denoting a column or an expression.
+        def to_arel_operand(operand, table)
+          case operand
+          when Node then operand.to_arel(table)
+          when :* then Arel.star
+          when Symbol then table[operand]
+          else operand
+          end
         end
       end
 
@@ -34,6 +103,8 @@ module ActiveRecord
       end
 
       class Column < Node
+        include Predications
+
         attr_reader :table_name, :column_name
 
         def initialize(table_name, column_name)
@@ -45,20 +116,14 @@ module ActiveRecord
           Arel::Table.new(table_name)[column_name]
         end
 
-        %i[== != =~ !~ > >= < <=].each do |op|
-          define_method(op) {|val| Comparison.new(self, op, val) }
-        end
-
-        def null?
-          Comparison.new(self, :==, nil)
-        end
-
         %i[count sum average maximum minimum].each do |func|
           define_method(func) { Aggregate.new(self, func) }
         end
       end
 
       class Aggregate < Node
+        include Predications
+
         attr_reader :operand, :function
 
         def initialize(operand, function)
@@ -67,16 +132,7 @@ module ActiveRecord
         end
 
         def to_arel(table)
-          arel_operand = case operand
-                         when Node then operand.to_arel(table)
-                         when :* then Arel.star
-                         else table[operand]
-                         end
-          arel_operand.public_send(function)
-        end
-
-        %i[== != =~ !~ > >= < <=].each do |op|
-          define_method(op) {|val| Comparison.new(self, op, val) }
+          to_arel_operand(operand, table).public_send(function)
         end
       end
 
@@ -89,12 +145,7 @@ module ActiveRecord
         end
 
         def to_arel(table)
-          arel_operand = case operand
-                         when Node then operand.to_arel(table)
-                         when Symbol then table[operand]
-                         else operand
-                         end
-          arel_operand.as(alias_name.to_s)
+          to_arel_operand(operand, table).as(alias_name.to_s)
         end
       end
 
@@ -107,16 +158,13 @@ module ActiveRecord
         end
 
         def to_arel(table)
-          arel_operand = case operand
-                         when Node then operand.to_arel(table)
-                         when Symbol then table[operand]
-                         else operand
-                         end
-          arel_operand.public_send(direction)
+          to_arel_operand(operand, table).public_send(direction)
         end
       end
 
       class Function < Node
+        include Predications
+
         attr_reader :name, :args
 
         def initialize(name, args)
@@ -127,22 +175,20 @@ module ActiveRecord
         def to_arel(table)
           arel_args = args.map do |arg|
             case arg
-            when Node then arg.to_arel(table)
-            when Symbol then table[arg]
+            when Node, Symbol then to_arel_operand(arg, table)
             else Arel::Nodes.build_quoted(arg)
             end
           end
           Arel::Nodes::NamedFunction.new(name, arel_args)
         end
-
-        %i[== != =~ !~ > >= < <=].each do |op|
-          define_method(op) {|val| Comparison.new(self, op, val) }
-        end
       end
 
+      # A plain SQL comparison. The value is passed through as it is, so a Range
+      # or an Array compares against a PostgreSQL range or array column, the way
+      # ActiveRecord's own force_equality? types do.
       class Comparison < Predicate
         OPERATOR_MAP = {
-          :== => :eq, :!= => :not_eq, :=~ => :matches, :!~ => :does_not_match,
+          :== => :eq, :!= => :not_eq,
           :> => :gt, :>= => :gteq, :< => :lt, :<= => :lteq
         }.freeze
 
@@ -155,26 +201,50 @@ module ActiveRecord
         end
 
         def to_arel(table)
-          arel_column = case column
-                        when Node then column.to_arel(table)
-                        else table[column]
-                        end
-          arel_value = case value
-                       when Node then value.to_arel(table)
-                       else value
-                       end
-          case
-          when operator == :== && Range === value
-            arel_column.between(value)
-          when operator == :!= && Range === value
-            arel_column.not_between(value)
-          when operator == :== && Array === value
-            arel_column.in(value)
-          when operator == :!= && Array === value
-            arel_column.not_in(value)
-          else
-            arel_column.public_send(OPERATOR_MAP.fetch(operator), arel_value)
+          arel_column = to_arel_operand(column, table)
+          arel_value = value.is_a?(Node) ? value.to_arel(table) : value
+          arel_column.public_send(OPERATOR_MAP.fetch(operator), arel_value)
+        end
+      end
+
+      # IN for a list of values, BETWEEN for a range.
+      class In < Predicate
+        attr_reader :operand, :values
+
+        def initialize(operand, values)
+          @operand = operand
+          @values = values
+        end
+
+        def to_arel(table)
+          arel_operand = to_arel_operand(operand, table)
+          case values
+          when Range then arel_operand.between(values)
+          else arel_operand.in(values)
           end
+        end
+      end
+
+      class Like < Predicate
+        ESCAPE = "\\".freeze
+
+        # Escapes % and _ so that they match literally. The pattern built from
+        # the result must be used with ESCAPE, since SQLite has no default
+        # escape character.
+        def self.escape(string)
+          ActiveRecord::Base.sanitize_sql_like(string, ESCAPE)
+        end
+
+        attr_reader :operand, :pattern, :escape
+
+        def initialize(operand, pattern, escape = nil)
+          @operand = operand
+          @pattern = pattern
+          @escape = escape
+        end
+
+        def to_arel(table)
+          to_arel_operand(operand, table).matches(pattern, escape)
         end
       end
 
