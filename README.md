@@ -1,17 +1,48 @@
-# ActiveRecord::Refinements
+# ActiveRecord::Refined
 
-ActiveRecord + Ruby 2.0 refinements
+Adding clean and powerful query syntax on ActiveRecord using refinements.
 
-## Warning (or why this gem might be totally useless for you)
+```ruby
+Author.
+  joins(:posts) { :posts[:author_id] == :authors[:id] }.
+  where { (:authors[:age] == (20..40)) & (:posts[:published] == true) }
+# SELECT "authors".* FROM "authors"
+#   INNER JOIN "posts" ON "posts"."author_id" = "authors"."id"
+#   WHERE "authors"."age" BETWEEN 20 AND 40 AND "posts"."published" = TRUE
+```
 
-This project was created for experimenting the initial implementation of Ruby 2.0 Refinements.
-And unfortunately, due to the Refinements' spec change, this library does not work under Ruby 2.0.0 stable.
+## History
+
+This gem was formerly known as **activerecord-refinements**, created by Akira Matsuda
+to experiment with the initial implementation of Ruby 2.0 Refinements. Because of the
+Refinements' spec change, that implementation stopped working on Ruby 2.0.0 stable, and
+the project was left dormant for a long time.
+
+It has now been renamed to **activerecord-refined** and reimplemented on top of
+`Proc#refined`, which will be introduced in Ruby 4.1. `Proc#refined` returns a new proc that
+is evaluated with the given refinements activated, so a block written by the caller can
+be re-interpreted under the query DSL's refinements:
+
+```ruby
+def evaluate_block(&block)
+  refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
+  BlockContext.new.instance_exec(&refined_block)
+end
+```
+
+This is exactly what the old implementation needed and could not do, so the query syntax
+works again without monkey-patching `Symbol` globally.
+
+## Requirements
+
+* Ruby 4.1 or later (for `Proc#refined`; not released yet, so a `ruby-master` build is needed for now)
+* ActiveRecord 7.0 or later
 
 ## Installation
 
 Add this line to your application's Gemfile:
 
-    gem 'activerecord-refinements'
+    gem 'activerecord-refined'
 
 And then execute:
 
@@ -19,11 +50,76 @@ And then execute:
 
 Or install it yourself as:
 
-    $ gem install activerecord-refinements
+    $ gem install activerecord-refined
 
 ## Usage
 
-Please read the spec.
+Just require the gem, and `where`, `select`, `joins`, `left_outer_joins`, `having`,
+`order` and `group` will accept a block.
+
+```ruby
+require 'activerecord-refined'
+```
+
+Inside the block, symbols denote columns of the receiver's table, and `:table[:column]`
+denotes a qualified column.
+
+### Conditions
+
+```ruby
+Author.where { :age >= 18 }
+Author.where { :name =~ 'A%' }              # LIKE
+Author.where { :name !~ '%test%' }          # NOT LIKE
+Author.where { :age == (20..40) }           # BETWEEN
+Author.where { :country == %w[JP US] }      # IN
+Author.where { :country != %w[JP US] }      # NOT IN
+Author.where { :country.null? }             # IS NULL
+```
+
+Combine predicates with `&`, `|` and `!`. Ruby's operator precedence makes the
+parentheses around each comparison necessary:
+
+```ruby
+Author.where { (:age >= 18) & ((:country == 'JP') | (:country == 'US')) }
+Author.where { !((:age == (0..17)) | :country.null?) }
+```
+
+### Joins
+
+The block is the `ON` clause:
+
+```ruby
+Author.
+  joins(:posts) { :posts[:author_id] == :authors[:id] }.
+  joins(:comments) { :comments[:post_id] == :posts[:id] }
+
+Author.left_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
+```
+
+### Aggregates, functions and aliases
+
+`count`, `sum`, `avg`, `min` and `max` are available as methods, as are the scalar
+functions `upper`, `lower`, `length`, `trim`, `coalesce`, `abs` and `round`. Use `.as`
+for a column alias, and `.asc` / `.desc` for the sort direction. Return an array to
+select or order by multiple expressions.
+
+```ruby
+Author.
+  joins(:posts) { :posts[:author_id] == :authors[:id] }.
+  where { :posts[:published] == true }.
+  group { :authors[:id] }.
+  having { count(:posts[:id]) > 1 }.
+  order { count(:posts[:id]).desc }.
+  select {
+    [
+      upper(:authors[:name]).as(:author),
+      count(:posts[:id]).as(:post_count),
+      avg(:posts[:likes]).as(:avg_likes),
+    ]
+  }
+```
+
+See `examples/` for complete, runnable scripts.
 
 ## Contributing
 

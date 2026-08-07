@@ -1,4 +1,4 @@
 source 'https://rubygems.org'
 
-# Specify your gem's dependencies in activerecord-refinements.gemspec
+# Specify your gem's dependencies in activerecord-refined.gemspec
 gemspec
