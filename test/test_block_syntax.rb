@@ -153,6 +153,28 @@ class TestBlockSyntax < Minitest::Test
       User.select { count(:id) }.to_sql)
   end
 
+  def test_select_count_star
+    assert_match(/SELECT COUNT\(\*\)/,
+      User.select { count(:*) }.to_sql)
+  end
+
+  def test_select_count_star_alias
+    assert_match(/SELECT COUNT\(\*\) AS cnt/,
+      User.select { count(:*).as(:cnt) }.to_sql)
+  end
+
+  def test_having_count_star
+    sql = Author.joins(:posts) { :posts[:author_id] == :authors[:id] }.
+      group { :authors[:id] }.
+      having { count(:*) > 1 }.to_sql
+    assert_match(/HAVING COUNT\(\*\) > 1/, sql)
+  end
+
+  def test_order_count_star
+    assert_match(/ORDER BY COUNT\(\*\) DESC/,
+      User.group(:name).order { count(:*).desc }.to_sql)
+  end
+
   def test_select_sum_function
     assert_match(/SELECT SUM\("users"."age"\)/,
       User.select { sum(:age) }.to_sql)

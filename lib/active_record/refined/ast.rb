@@ -69,6 +69,7 @@ module ActiveRecord
         def to_arel(table)
           arel_operand = case operand
                          when Node then operand.to_arel(table)
+                         when :* then Arel.star
                          else table[operand]
                          end
           arel_operand.public_send(function)

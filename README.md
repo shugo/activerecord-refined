@@ -103,6 +103,13 @@ functions `upper`, `lower`, `length`, `trim`, `coalesce`, `abs` and `round`. Use
 for a column alias, and `.asc` / `.desc` for the sort direction. Return an array to
 select or order by multiple expressions.
 
+Pass `:*` to `count` for `COUNT(*)`:
+
+```ruby
+Author.group { :country }.having { count(:*) > 1 }
+# SELECT "authors".* FROM "authors" GROUP BY "authors"."country" HAVING COUNT(*) > 1
+```
+
 ```ruby
 Author.
   joins(:posts) { :posts[:author_id] == :authors[:id] }.
