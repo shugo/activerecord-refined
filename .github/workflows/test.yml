@@ -13,7 +13,7 @@ jobs:
       # SQLite only here, so skip building the pg and mysql2 extensions.
       BUNDLE_WITHOUT: db
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
         with:
           # Proc#refined has not been released yet, so master is the only
