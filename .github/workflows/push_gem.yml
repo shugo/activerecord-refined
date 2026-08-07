@@ -1,0 +1,43 @@
+name: push gem
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  push:
+    if: github.repository == 'shugo/activerecord-refined'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: release
+      url: https://rubygems.org/gems/activerecord-refined
+
+    permissions:
+      # release-gem pushes the tag, and needs id-token to identify itself to
+      # RubyGems.org instead of an API key.
+      contents: write
+      id-token: write
+
+    env:
+      # Nothing here loads pg or mysql2, and building them needs client
+      # libraries the runner would have to install first.
+      BUNDLE_WITHOUT: db
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # release-gem sets up its own short-lived git credentials.
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          # Not `ruby`: the gemspec requires 4.1.0.dev for Proc#refined, so
+          # bundler refuses to resolve on a released Ruby.
+          ruby-version: head
+          bundler-cache: true
+
+      # Runs `rake release`, which builds the gem and pushes it. The tag it
+      # would create already exists here, so that step is skipped.
+      - uses: rubygems/release-gem@v1
