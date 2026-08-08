@@ -268,6 +268,25 @@ module ActiveRecord
         end
       end
 
+      # EXISTS (SELECT ...) for a relation.  Correlate the subquery with the
+      # outer table through qualified columns.  EXISTS only asks whether a row
+      # comes back, so unlike In there is no select list to fix up.
+      class Exists < Predicate
+        attr_reader :relation
+
+        def initialize(relation)
+          @relation = relation
+        end
+
+        def to_arel(_table)
+          subquery = relation
+          if subquery.eager_loading?
+            subquery = subquery.send(:apply_join_dependency)
+          end
+          subquery.arel.exists
+        end
+      end
+
       class Like < Predicate
         ESCAPE = "\\".freeze
 

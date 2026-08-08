@@ -254,6 +254,38 @@ class TestBlockSyntax < Minitest::Test
       Author.where { !:id.in?(Post.select(:author_id)) }.to_sql)
   end
 
+  # The subquery correlates with the outer table through qualified columns,
+  # and its own where block goes through the DSL too.
+  def test_exists
+    assert_sql(
+      /WHERE EXISTS \(SELECT "posts"\.\* FROM "posts" WHERE "posts"."author_id" = "authors"."id"\)/,
+      Author.where { exists?(Post.where { :posts[:author_id] == :authors[:id] }) }.to_sql)
+  end
+
+  def test_not_exists
+    assert_sql(/WHERE NOT \(EXISTS \(SELECT "posts"\.\* FROM "posts"\)\)/,
+      Author.where { !exists?(Post.all) }.to_sql)
+  end
+
+  def test_exists_combined
+    assert_sql(
+      /WHERE "authors"."name" = 'matz' AND EXISTS \(SELECT "posts"\.\* FROM "posts" WHERE "posts"."title" = 'pub'\)/,
+      Author.where { (:name == 'matz') & exists?(Post.where(title: 'pub')) }.to_sql)
+  end
+
+  def test_exists_execution
+    Author.delete_all
+    Post.delete_all
+    with_post = Author.create!(name: 'with_post')
+    Author.create!(name: 'without')
+    Post.create!(title: 'pub', author_id: with_post.id)
+    correlated = -> { Post.where { :posts[:author_id] == :authors[:id] } }
+    assert_equal(['with_post'],
+      Author.where { exists?(correlated.call) }.pluck(:name))
+    assert_equal(['without'],
+      Author.where { !exists?(correlated.call) }.pluck(:name))
+  end
+
   def test_in_subquery_execution
     Author.delete_all
     Post.delete_all

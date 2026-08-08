@@ -40,6 +40,10 @@ module ActiveRecord
       SCALAR_FUNCTIONS.each do |name|
         define_method(name) {|*args| AST::Function.new(name.to_s.upcase, args) }
       end
+
+      def exists?(relation)
+        AST::Exists.new(relation)
+      end
     end
 
     module QueryMethods

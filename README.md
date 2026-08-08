@@ -87,6 +87,18 @@ Author.where { :id.in?(Post.published.select(:author_id)) }
 # "authors"."id" IN (SELECT "posts"."author_id" FROM "posts" WHERE ...)
 ```
 
+`exists?` takes a relation and becomes `EXISTS (SELECT ...)`. Correlate the
+subquery with the outer table through qualified columns — its `where` block
+goes through the DSL like any other:
+
+```ruby
+Author.where { exists?(Post.where { :posts[:author_id] == :authors[:id] }) }
+# EXISTS (SELECT "posts".* FROM "posts" WHERE "posts"."author_id" = "authors"."id")
+
+Author.where { !exists?(Post.where { :posts[:author_id] == :authors[:id] }) }
+# NOT (EXISTS (...))
+```
+
 `like?` is case-sensitive `LIKE` on every adapter, including PostgreSQL, where
 Arel would otherwise reach for `ILIKE`.
 
