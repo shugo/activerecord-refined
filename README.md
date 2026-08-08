@@ -112,6 +112,14 @@ Author.where { :name.end_with?('son') }     # LIKE '%son'
 Author.where { :name.include?('test') }     # LIKE '%test%'
 ```
 
+Like their String namesakes, `start_with?` and `end_with?` take any number of
+literals; matching any one of them is enough:
+
+```ruby
+Author.where { :name.start_with?('A', 'B') }
+# (name LIKE 'A%' OR name LIKE 'B%')
+```
+
 `member?` tests containment in a PostgreSQL array column. The two flavors of
 "does it contain this?" split by name the way Ruby's own classes do: `include?`
 is String's substring match, `member?` is Enumerable's element test, which

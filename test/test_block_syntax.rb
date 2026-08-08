@@ -81,6 +81,35 @@ class TestBlockSyntax < Minitest::Test
       User.where { :name.include?('der') }.to_sql)
   end
 
+  # Like their String namesakes, start_with? and end_with? take any number
+  # of literals; matching any one of them is enough.
+  def test_start_with_multiple
+    assert_sql(
+      /WHERE \("users"."name" LIKE 'ma%' ESCAPE '\\' OR "users"."name" LIKE 'no%' ESCAPE '\\'\)/,
+      User.where { :name.start_with?('ma', 'no') }.to_sql)
+  end
+
+  def test_end_with_multiple
+    assert_sql(
+      /WHERE \("users"."name" LIKE '%z' ESCAPE '\\' OR "users"."name" LIKE '%love' ESCAPE '\\'\)/,
+      User.where { :name.end_with?('z', 'love') }.to_sql)
+  end
+
+  # The OR arrives grouped, so a following & applies to the whole list.
+  def test_start_with_multiple_combined
+    assert_sql(
+      /WHERE \("users"."name" LIKE 'ma%' ESCAPE '\\' OR "users"."name" LIKE 'no%' ESCAPE '\\'\) AND "users"."age" > 18/,
+      User.where { :name.start_with?('ma', 'no') & (:age > 18) }.to_sql)
+  end
+
+  def test_start_with_no_arguments
+    assert_raises(ArgumentError) { User.where { :name.start_with? } }
+  end
+
+  def test_end_with_no_arguments
+    assert_raises(ArgumentError) { User.where { :name.end_with? } }
+  end
+
   def test_start_with_escapes_wildcards
     assert_sql(/WHERE "users"."name" LIKE '100\\%\\_%' ESCAPE '\\'/,
       User.where { :name.start_with?('100%_') }.to_sql)

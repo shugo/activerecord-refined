@@ -62,12 +62,18 @@ module ActiveRecord
           Like.new(self, pattern)
         end
 
-        def start_with?(prefix)
-          Like.new(self, "#{Like.escape(prefix)}%", Like::ESCAPE)
+        def start_with?(*prefixes)
+          if prefixes.empty?
+            raise ArgumentError, "start_with? needs at least one prefix"
+          end
+          Like.any(self, prefixes.map {|prefix| "#{Like.escape(prefix)}%" })
         end
 
-        def end_with?(suffix)
-          Like.new(self, "%#{Like.escape(suffix)}", Like::ESCAPE)
+        def end_with?(*suffixes)
+          if suffixes.empty?
+            raise ArgumentError, "end_with? needs at least one suffix"
+          end
+          Like.any(self, suffixes.map {|suffix| "%#{Like.escape(suffix)}" })
         end
 
         def include?(substring)
@@ -295,6 +301,13 @@ module ActiveRecord
         # escape character.
         def self.escape(string)
           ActiveRecord::Base.sanitize_sql_like(string, ESCAPE)
+        end
+
+        # ORs one LIKE per pattern, for the shortcuts that accept several
+        # literals the way String#start_with? does.
+        def self.any(operand, patterns)
+          patterns.map {|pattern| new(operand, pattern, ESCAPE) }.
+            inject {|left, right| Or.new(left, right) }
         end
 
         attr_reader :operand, :pattern, :escape
