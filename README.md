@@ -321,7 +321,21 @@ Author.
   }
 ```
 
-See `examples/` for complete, runnable scripts.
+## Examples
+
+`examples/` holds runnable scripts, each printing the SQL it builds and, where
+the result is the point, the rows that come back. All but the last run against
+an in-memory SQLite database and need no setup.
+
+| | |
+| --- | --- |
+| `predicates.rb` | the `where` vocabulary: ranges, sets, NULL, text matching |
+| `subqueries.rb` | `in?` with a relation, `exists?`, scalar subqueries |
+| `expressions.rb` | arithmetic, aggregates, functions, `NULLS LAST` |
+| `complex_joins.rb` | compound `ON` clauses, outer joins, a self join |
+| `aggregations.rb` | `GROUP BY`, `HAVING` and aggregates across joins |
+| `ctes.rb` | `with` and `with_recursive` |
+| `postgresql.rb` | array columns, regular expressions, `ILIKE` (needs a server) |
 
 ## Performance
 

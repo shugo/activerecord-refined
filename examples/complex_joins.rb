@@ -8,7 +8,7 @@ ActiveRecord::Migration.verbose = false
 
 class Setup < ActiveRecord::Migration[8.1]
   def up
-    create_table(:authors) {|t| t.string :name; t.integer :age; t.string :country }
+    create_table(:authors) {|t| t.string :name; t.integer :age; t.string :country; t.integer :mentor_id }
     create_table(:posts)   {|t| t.string :title; t.integer :author_id; t.integer :likes; t.boolean :published }
     create_table(:comments){|t| t.string :body; t.integer :post_id; t.integer :score }
   end
@@ -66,4 +66,17 @@ query3 =
 
 puts "--- 3. LEFT OUTER JOIN with negation ---"
 puts query3.to_sql
+puts
+
+# 4. Self join.  `as` names the table within the query, and the block's
+#    qualified columns go by that name, which is what makes a table joinable
+#    to itself.
+query4 =
+  Author.
+    joins(:authors, as: :mentors) { :mentors[:id] == :authors[:mentor_id] }.
+    where { :mentors[:country] != :authors[:country] }.
+    select { [:authors[:name].as(:author), :mentors[:name].as(:mentor)] }
+
+puts "--- 4. Self join through an alias ---"
+puts query4.to_sql
 puts
