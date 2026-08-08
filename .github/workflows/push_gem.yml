@@ -41,3 +41,5 @@ jobs:
       # Runs `rake release`, which builds the gem and pushes it. The tag it
       # would create already exists here, so that step is skipped.
       - uses: rubygems/release-gem@v1
+        with:
+          attestations: false
