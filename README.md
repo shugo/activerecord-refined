@@ -176,8 +176,10 @@ Reservation.where { :period == (from...to) }   # daterange = '[from,to)'
 Article.where { :tags == %w[ruby rails] }      # text[] = '{ruby,rails}'
 ```
 
-For the same reason `== nil` raises `ArgumentError`: `= NULL` is never true in
-SQL, so a NULL test has to be spelled as one. Use `null?`:
+`!=` is SQL `!=` under the same rules, value passed through untouched.
+
+For the same reason `== nil` and `!= nil` raise `ArgumentError`: `= NULL` is
+never true in SQL, so a NULL test has to be spelled as one. Use `null?`:
 
 ```ruby
 Author.where { :country.null? }             # country IS NULL
@@ -281,7 +283,10 @@ benchmark measures the copy at the size of the original (568 bytes for the
 simple-equality block, 888 bytes for the compound one), and a thousand
 further calls from the same call site copy nothing. Steady state, an
 application holds one extra copy of each distinct query block's bytecode:
-a few hundred bytes per call site.
+a few hundred bytes per call site. "Per call site" assumes blocks compiled
+once, as normal code is — building query blocks with a string `eval` mints
+a fresh instruction sequence per pass, each earning a copy of its own, and
+the memo keeps both alive for the life of the process.
 
 ## Running the tests
 
