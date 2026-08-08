@@ -68,14 +68,17 @@ denotes a qualified column.
 
 ### Design policy
 
-The name and spelling of an expression decide the SQL it becomes; the value —
-or its type — never does. Whatever a method receives, it compiles to the one
-SQL shape it stands for, so the query can be read off the block without
-knowing what the values will be at runtime. That is why `like?` is `LIKE` on
-every adapter rather than following Arel into `ILIKE`, why substring `include?`
-and array-containment `member?` are two methods instead of one that inspects
-the column type, and why `== nil` raises instead of quietly turning into
-`IS NULL` — a different SQL shape deserves a different name, `null?`.
+The name of an expression decides what it means; a type — of the value, the
+column, or the adapter — only ever decides how that one meaning is spelled.
+`in?` means "belongs to this set" whether the set is a Range (`BETWEEN`), a
+list (`IN`) or a relation (`IN (SELECT ...)`), and `=~` matches a regexp
+whether the adapter spells that `REGEXP` or `~` — one meaning, several
+spellings. What a type may never change is the meaning itself: `like?` stays
+case-sensitive `LIKE` rather than following Arel into `ILIKE`, substring
+`include?` and element `member?` are two methods instead of one that inspects
+the column type, and `== nil` raises instead of quietly becoming `IS NULL`,
+because each of those is a different meaning, and a different meaning
+deserves a different name.
 
 ### Conditions
 
