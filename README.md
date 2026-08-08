@@ -66,15 +66,6 @@ require 'activerecord-refined'
 Inside the block, symbols denote columns of the receiver's table, and `:table[:column]`
 denotes a qualified column.
 
-### Design policy
-
-The name of an expression decides what it means; a type — of the value, the
-column, or the adapter — only decides how that one meaning is spelled. So
-`in?` is one name for "belongs to this set", whether the set arrives as a
-Range (`BETWEEN`), a list (`IN`) or a relation (`IN (SELECT ...)`), while
-substring `include?` and element `member?` stay two methods, because those
-are two meanings — and a different meaning deserves a different name.
-
 ### Conditions
 
 ```ruby
