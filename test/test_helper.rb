@@ -62,6 +62,10 @@ module SqlAssertions
     skip "#{ADAPTER} has no regexp operator" unless REGEXP_OPERATORS.key?(ADAPTER)
   end
 
+  def skip_without_array_columns
+    skip "#{ADAPTER} has no array columns" unless ADAPTER == 'postgresql'
+  end
+
   def regexp_operator
     Regexp.escape(REGEXP_OPERATORS.fetch(ADAPTER).first)
   end
@@ -105,7 +109,11 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
     drop_table(:users, if_exists: true)
     drop_table(:authors, if_exists: true)
     drop_table(:posts, if_exists: true)
-    create_table(:users) {|t| t.string :name; t.integer :age}
+    create_table(:users) do |t|
+      t.string :name
+      t.integer :age
+      t.string :tags, array: true if ADAPTER == 'postgresql'
+    end
     create_table(:authors) {|t| t.string :name}
     create_table(:posts) {|t| t.string :title; t.integer :author_id}
   end

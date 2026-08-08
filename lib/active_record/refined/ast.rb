@@ -64,6 +64,10 @@ module ActiveRecord
         def include?(substring)
           Like.new(self, "%#{Like.escape(substring)}%", Like::ESCAPE)
         end
+
+        def member?(element)
+          Member.new(self, element)
+        end
       end
 
       class Node
@@ -255,6 +259,43 @@ module ActiveRecord
           # Arel matches case-insensitively unless told otherwise, which turns
           # into ILIKE on PostgreSQL. like? means SQL LIKE on every adapter.
           to_arel_operand(operand, table).matches(pattern, escape, true)
+        end
+      end
+
+      # Containment in a PostgreSQL array column.  The two flavors of "does it
+      # contain this?" split by name the way Ruby's own classes do: include? is
+      # String's substring match (LIKE), member? is Enumerable's element test,
+      # which String does not have.  The elements are rendered as an array
+      # literal, which PostgreSQL coerces to the column's element type, so any
+      # expression works as the operand and no schema lookup is needed.
+      class Member < Predicate
+        attr_reader :operand, :elements
+
+        def initialize(operand, element)
+          @operand = operand
+          @elements = element.is_a?(::Array) ? element : [element]
+        end
+
+        def to_arel(table)
+          arel_operand = to_arel_operand(operand, table)
+          arel_operand.contains(Arel::Nodes.build_quoted(array_literal))
+        end
+
+        private
+
+        # PostgreSQL array input syntax: elements joined by commas inside
+        # braces, and an element is double-quoted whenever it is empty, spells
+        # NULL, or contains a character the parser treats specially.
+        def array_literal
+          encoded = elements.map do |value|
+            s = value.to_s
+            if s.empty? || s.casecmp?("null") || s.match?(/[\s{},"\\]/)
+              "\"#{s.gsub(/["\\]/) {|c| "\\#{c}" }}\""
+            else
+              s
+            end
+          end
+          "{#{encoded.join(',')}}"
         end
       end
 

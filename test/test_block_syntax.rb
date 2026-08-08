@@ -91,6 +91,56 @@ class TestBlockSyntax < Minitest::Test
       User.where { :name.include?('100%') }.to_sql)
   end
 
+  def test_member
+    assert_sql(/WHERE "users"."tags" @> '\{ruby\}'/,
+      User.where { :tags.member?('ruby') }.to_sql)
+  end
+
+  def test_member_qualified
+    assert_sql(/WHERE "users"."tags" @> '\{ruby\}'/,
+      User.where { :users[:tags].member?('ruby') }.to_sql)
+  end
+
+  def test_member_negated
+    assert_sql(/WHERE NOT \("users"."tags" @> '\{ruby\}'\)/,
+      User.where { !:tags.member?('ruby') }.to_sql)
+  end
+
+  def test_member_multiple_elements
+    assert_sql(/WHERE "users"."tags" @> '\{ruby,rails\}'/,
+      User.where { :tags.member?(%w[ruby rails]) }.to_sql)
+  end
+
+  # MySQL additionally escapes the double quotes inside its string literal,
+  # so the exact spelling is only asserted where the operator is real.
+  def test_member_quotes_special_elements
+    skip_without_array_columns
+    assert_sql(/WHERE "users"."tags" @> '\{"with,comma"\}'/,
+      User.where { :tags.member?('with,comma') }.to_sql)
+  end
+
+  # include? is a substring match even on an array column; only member?
+  # means containment.
+  def test_include_is_like_even_on_array_columns
+    skip_without_array_columns
+    assert_sql(/WHERE "users"."tags" LIKE '%ruby%' ESCAPE '\\'/,
+      User.where { :tags.include?('ruby') }.to_sql)
+  end
+
+  # Elements survive the trip through the array literal: % is an ordinary
+  # character there, a comma stays inside its element, and quotes and
+  # backslashes are escaped.
+  def test_member_matches_elements_literally
+    skip_without_array_columns
+    User.delete_all
+    User.create!(name: 'literal', tags: ['100%', 'with,comma', 'q"uote', 'back\\slash'])
+    User.create!(name: 'lookalike', tags: ['100200', 'with', 'comma'])
+    assert_equal(['literal'], User.where { :tags.member?('100%') }.pluck(:name))
+    assert_equal(['literal'], User.where { :tags.member?('with,comma') }.pluck(:name))
+    assert_equal(['literal'], User.where { :tags.member?('q"uote') }.pluck(:name))
+    assert_equal(['literal'], User.where { :tags.member?('back\\slash') }.pluck(:name))
+  end
+
   def test_regexp
     skip_without_regexp_support
     assert_sql(/WHERE "users"."name" #{regexp_operator} '\^ma'/,

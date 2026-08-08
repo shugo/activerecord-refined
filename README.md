@@ -91,6 +91,17 @@ Author.where { :name.end_with?('son') }     # LIKE '%son'
 Author.where { :name.include?('test') }     # LIKE '%test%'
 ```
 
+`member?` tests containment in a PostgreSQL array column. The two flavors of
+"does it contain this?" split by name the way Ruby's own classes do: `include?`
+is String's substring match, `member?` is Enumerable's element test, which
+String does not have. Pass an array to require every element:
+
+```ruby
+Article.where { :tags.member?('ruby') }         # "tags" @> '{ruby}'
+Article.where { :tags.member?(%w[ruby rails]) } # "tags" @> '{ruby,rails}'
+Article.where { :scores.member?(80) }           # "scores" @> '{80}'
+```
+
 `=~` and `!~` match a regular expression: `REGEXP` and `NOT REGEXP` on MySQL,
 `~` and `!~` on PostgreSQL. SQLite has no regexp operator of its own, so it
 raises there.
