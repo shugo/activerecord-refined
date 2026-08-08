@@ -357,11 +357,14 @@ database is created on first use.
 
 The `pg` and `mysql2` gems are in the Gemfile's `db` group, since building them
 needs the client libraries installed. Skip them if SQLite is all you need,
-which is what CI does:
+which is what CI's SQLite job does:
 
 ```sh
 bundle config set --local without db
 ```
+
+CI runs all three, one job per adapter, with PostgreSQL and MySQL as service
+containers.
 
 ## Releasing
 
