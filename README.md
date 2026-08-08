@@ -66,6 +66,17 @@ require 'activerecord-refined'
 Inside the block, symbols denote columns of the receiver's table, and `:table[:column]`
 denotes a qualified column.
 
+### Design policy
+
+The name and spelling of an expression decide the SQL it becomes; the value —
+or its type — never does. Whatever a method receives, it compiles to the one
+SQL shape it stands for, so the query can be read off the block without
+knowing what the values will be at runtime. That is why `like?` is `LIKE` on
+every adapter rather than following Arel into `ILIKE`, why substring `include?`
+and array-containment `member?` are two methods instead of one that inspects
+the column type, and why `== nil` raises instead of quietly turning into
+`IS NULL` — a different SQL shape deserves a different name, `null?`.
+
 ### Conditions
 
 ```ruby
