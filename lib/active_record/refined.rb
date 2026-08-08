@@ -100,19 +100,23 @@ module ActiveRecord
         end
       end
 
-      def joins(*args, &block)
+      # `as` names the table within the query, which is what makes a self
+      # join expressible: joins(:employees, as: :managers) { ... }.
+      def joins(*args, as: nil, &block)
         if block
-          super(build_join_node(args.first, Arel::Nodes::InnerJoin, &block))
+          super(build_join_node(args.first, Arel::Nodes::InnerJoin, as, &block))
         else
-          super
+          reject_join_alias(as)
+          super(*args, &block)
         end
       end
 
-      def left_outer_joins(*args, &block)
+      def left_outer_joins(*args, as: nil, &block)
         if block
-          joins(build_join_node(args.first, Arel::Nodes::OuterJoin, &block))
+          joins(build_join_node(args.first, Arel::Nodes::OuterJoin, as, &block))
         else
-          super
+          reject_join_alias(as)
+          super(*args, &block)
         end
       end
 
@@ -131,12 +135,16 @@ module ActiveRecord
         end
       end
 
-      def build_join_node(target_table, join_class, &block)
+      def reject_join_alias(alias_name)
+        return unless alias_name
+        raise ArgumentError, "as: needs a block to write the ON clause with"
+      end
+
+      def build_join_node(target_table, join_class, alias_name, &block)
         ast = evaluate_block(&block)
-        join_class.new(
-          Arel::Table.new(target_table),
-          Arel::Nodes::On.new(ast.to_arel(table))
-        )
+        arel_table = Arel::Table.new(target_table)
+        arel_table = arel_table.alias(alias_name) if alias_name
+        join_class.new(arel_table, Arel::Nodes::On.new(ast.to_arel(table)))
       end
     end
   end

@@ -87,6 +87,15 @@ Author.where { :id.in?(Post.published.select(:author_id)) }
 # "authors"."id" IN (SELECT "posts"."author_id" FROM "posts" WHERE ...)
 ```
 
+A relation on the right of a comparison is a scalar subquery. It has to select
+one value, so unlike `in?` there is no default select list and one is
+required:
+
+```ruby
+Author.where { :age >= Author.select { avg(:age) } }
+# "authors"."age" >= (SELECT AVG("authors"."age") FROM "authors")
+```
+
 `exists?` takes a relation and becomes `EXISTS (SELECT ...)`. Correlate the
 subquery with the outer table through qualified columns — its `where` block
 goes through the DSL like any other:
@@ -100,7 +109,26 @@ Author.where { !exists?(Post.where { :posts[:author_id] == :authors[:id] }) }
 ```
 
 `like?` is case-sensitive `LIKE` on every adapter, including PostgreSQL, where
-Arel would otherwise reach for `ILIKE`.
+Arel would otherwise reach for `ILIKE`. `ilike?` is the one that asks for
+`ILIKE`; off PostgreSQL it is plain `LIKE`, which those adapters already match
+case-insensitively under their default collations. `casecmp?` is
+case-insensitive equality, folded on both sides rather than left to the
+collation, so it means the same thing everywhere:
+
+```ruby
+Author.where { :name.ilike?('ma%') }        # ILIKE 'ma%' / LIKE 'ma%'
+Author.where { :name.casecmp?('Matz') }     # LOWER(name) = LOWER('Matz')
+```
+
+`not_distinct_from?` and `distinct_from?` compare with NULL treated as a
+value, rather than as the unknown that makes `=` and `<>` neither true nor
+false. PostgreSQL spells this `IS [NOT] DISTINCT FROM`, SQLite `IS` / `IS NOT`
+and MySQL `<=>`, and the rows that come back are the same on all three:
+
+```ruby
+Author.where { :country.not_distinct_from?(params[:country]) }  # matches NULL to nil
+Author.where { :country.distinct_from?('JP') }                  # keeps the NULL rows
+```
 
 `start_with?`, `end_with?` and `include?` are shortcuts for the usual `like?`
 patterns. Unlike `like?`, they treat their argument as a literal string, so `%`
@@ -193,6 +221,15 @@ Author.
   joins(:comments) { :comments[:post_id] == :posts[:id] }
 
 Author.left_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
+```
+
+`as` names the table within the query, which is what makes a self join
+expressible — the qualified columns in the block go by that name:
+
+```ruby
+Employee.joins(:employees, as: :managers) { :managers[:id] == :employees[:manager_id] }
+# SELECT "employees".* FROM "employees"
+#   INNER JOIN "employees" "managers" ON "managers"."id" = "employees"."manager_id"
 ```
 
 ### Aggregates, functions and aliases

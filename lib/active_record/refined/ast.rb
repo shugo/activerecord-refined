@@ -62,6 +62,30 @@ module ActiveRecord
           Like.new(self, pattern)
         end
 
+        def ilike?(pattern)
+          Like.new(self, pattern, nil, case_sensitive: false)
+        end
+
+        # Case-insensitive equality, folded on both sides rather than left to
+        # the collation, so it means the same thing on every adapter.
+        def casecmp?(value)
+          if value.nil?
+            raise ArgumentError, "casecmp? does not take nil; use null? instead"
+          end
+          Comparison.new(Function.new("LOWER", [self]), :==,
+                         Function.new("LOWER", [value]))
+        end
+
+        # Null-safe comparison: unlike = and <>, these treat NULL as a value,
+        # so not_distinct_from? is the one equality that may take nil.
+        def distinct_from?(value)
+          DistinctFrom.new(self, value, negated: true)
+        end
+
+        def not_distinct_from?(value)
+          DistinctFrom.new(self, value)
+        end
+
         def start_with?(*prefixes)
           if prefixes.empty?
             raise ArgumentError, "start_with? needs at least one prefix"
@@ -333,8 +357,26 @@ module ActiveRecord
 
         def to_arel(table)
           arel_column = to_arel_operand(column, table)
-          arel_value = value.is_a?(Node) ? value.to_arel(table) : value
+          arel_value =
+            case value
+            when Node then value.to_arel(table)
+            when ActiveRecord::Relation then scalar_subquery(value)
+            else value
+            end
           arel_column.public_send(OPERATOR_MAP.fetch(operator), arel_value)
+        end
+
+        private
+
+        # A relation compared against a column has to yield a single value, so
+        # unlike In there is no sensible default select list to fall back on.
+        def scalar_subquery(relation)
+          if relation.select_values.empty?
+            raise ArgumentError,
+              "#{operator} needs a subquery selecting one value; add a select"
+          end
+          relation = relation.send(:apply_join_dependency) if relation.eager_loading?
+          relation.arel
         end
       end
 
@@ -414,18 +456,42 @@ module ActiveRecord
             inject {|left, right| Or.new(left, right) }
         end
 
-        attr_reader :operand, :pattern, :escape
+        attr_reader :operand, :pattern, :escape, :case_sensitive
 
-        def initialize(operand, pattern, escape = nil)
+        def initialize(operand, pattern, escape = nil, case_sensitive: true)
           @operand = operand
           @pattern = pattern
           @escape = escape
+          @case_sensitive = case_sensitive
         end
 
         def to_arel(table)
-          # Arel matches case-insensitively unless told otherwise, which turns
-          # into ILIKE on PostgreSQL. like? means SQL LIKE on every adapter.
-          to_arel_operand(operand, table).matches(pattern, escape, true)
+          # Arel matches case-insensitively unless told otherwise, which is
+          # what picks ILIKE over LIKE on PostgreSQL.
+          to_arel_operand(operand, table).matches(pattern, escape, case_sensitive)
+        end
+      end
+
+      # IS [NOT] DISTINCT FROM, spelled IS / IS NOT on SQLite and <=> on
+      # MySQL.  NULL compares as a value here, which is what separates these
+      # from = and <>.
+      class DistinctFrom < Predicate
+        attr_reader :operand, :value, :negated
+
+        def initialize(operand, value, negated: false)
+          @operand = operand
+          @value = value
+          @negated = negated
+        end
+
+        def to_arel(table)
+          arel_operand = to_arel_operand(operand, table)
+          arel_value = value.is_a?(Node) ? value.to_arel(table) : value
+          if negated
+            arel_operand.is_distinct_from(arel_value)
+          else
+            arel_operand.is_not_distinct_from(arel_value)
+          end
         end
       end
 

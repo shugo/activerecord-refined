@@ -61,6 +61,36 @@ class TestBlockSyntax < Minitest::Test
       User.where { :users[:name].like?('tender%') }.to_sql)
   end
 
+  # ILIKE is PostgreSQL's; elsewhere Arel emits LIKE, which those adapters
+  # already match case-insensitively by default.
+  def test_ilike
+    expected = ADAPTER == 'postgresql' ? 'ILIKE' : 'LIKE'
+    assert_sql(/WHERE "users"."name" #{expected} 'ma%'/,
+      User.where { :name.ilike?('ma%') }.to_sql)
+  end
+
+  def test_casecmp
+    assert_sql(/WHERE LOWER\("users"."name"\) = LOWER\('Matz'\)/,
+      User.where { :name.casecmp?('Matz') }.to_sql)
+  end
+
+  def test_casecmp_qualified
+    assert_sql(/WHERE LOWER\("users"."name"\) = LOWER\('Matz'\)/,
+      User.where { :users[:name].casecmp?('Matz') }.to_sql)
+  end
+
+  def test_casecmp_nil_is_rejected
+    e = assert_raises(ArgumentError) { User.where { :name.casecmp?(nil) } }
+    assert_match(/null\?/, e.message)
+  end
+
+  def test_casecmp_execution
+    User.delete_all
+    User.create!(name: 'Matz')
+    User.create!(name: 'nobu')
+    assert_equal(['Matz'], User.where { :name.casecmp?('mAtZ') }.pluck(:name))
+  end
+
   def test_not_like
     assert_sql(/WHERE NOT \("users"."name" LIKE 'tender%'\)/,
       User.where { !:name.like?('tender%') }.to_sql)
@@ -308,6 +338,56 @@ class TestBlockSyntax < Minitest::Test
       User.where { !:age.in?([1, 2, 3]) }.to_sql)
   end
 
+  # Spelled IS [NOT] DISTINCT FROM on PostgreSQL, IS / IS NOT on SQLite and
+  # <=> on MySQL, so only the resulting rows are portable.
+  def test_not_distinct_from_execution
+    User.delete_all
+    User.create!(name: 'named')
+    User.create!(name: nil)
+    assert_equal([nil], User.where { :name.not_distinct_from?(nil) }.pluck(:name))
+    assert_equal(['named'], User.where { :name.distinct_from?(nil) }.pluck(:name))
+  end
+
+  def test_not_distinct_from_a_value_execution
+    User.delete_all
+    User.create!(name: 'matz')
+    User.create!(name: nil)
+    assert_equal(['matz'], User.where { :name.not_distinct_from?('matz') }.pluck(:name))
+    # Unlike !=, this keeps the NULL row.
+    assert_equal([nil], User.where { :name.distinct_from?('matz') }.pluck(:name))
+  end
+
+  def test_distinct_from_postgresql_syntax
+    skip "#{ADAPTER} spells it differently" unless ADAPTER == 'postgresql'
+    assert_sql(/WHERE "users"."name" IS NOT DISTINCT FROM 'x'/,
+      User.where { :name.not_distinct_from?('x') }.to_sql)
+    assert_sql(/WHERE "users"."name" IS DISTINCT FROM 'x'/,
+      User.where { :name.distinct_from?('x') }.to_sql)
+  end
+
+  def test_comparison_with_scalar_subquery
+    assert_sql(/WHERE "users"."age" >= \(SELECT AVG\("users"."age"\) FROM "users"\)/,
+      User.where { :age >= User.select { avg(:age) } }.to_sql)
+  end
+
+  def test_equality_with_scalar_subquery
+    assert_sql(/WHERE "users"."age" = \(SELECT MAX\("users"."age"\) FROM "users"\)/,
+      User.where { :age == User.select { max(:age) } }.to_sql)
+  end
+
+  # A scalar comparison has no sensible default select list, unlike in?.
+  def test_scalar_subquery_without_select_is_rejected
+    e = assert_raises(ArgumentError) { User.where { :age >= User.all } }
+    assert_match(/select/, e.message)
+  end
+
+  def test_scalar_subquery_execution
+    User.delete_all
+    User.create!(name: 'young', age: 20)
+    User.create!(name: 'old', age: 60)
+    assert_equal(['old'], User.where { :age >= User.select { avg(:age) } }.pluck(:name))
+  end
+
   def test_in_subquery
     assert_sql(
       /WHERE "authors"."id" IN \(SELECT "posts"."author_id" FROM "posts" WHERE "posts"."title" = 'pub'\)/,
@@ -414,6 +494,40 @@ class TestBlockSyntax < Minitest::Test
   def test_left_outer_joins_with_block
     sql = Author.left_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }.to_sql
     assert_sql(/LEFT OUTER JOIN "posts" ON "posts"."author_id" = "authors"."id"/, sql)
+  end
+
+  # The alias is what the block's qualified columns name, which is what makes
+  # a self join expressible at all.  Adapters differ on writing the AS
+  # keyword, so the assertions allow either.
+  def test_joins_with_alias
+    assert_sql(
+      /INNER JOIN "authors" (?:AS )?"mentors" ON "mentors"."id" = "authors"."id"/,
+      Author.joins(:authors, as: :mentors) { :mentors[:id] == :authors[:id] }.to_sql)
+  end
+
+  def test_left_outer_joins_with_alias
+    assert_sql(
+      /LEFT OUTER JOIN "authors" (?:AS )?"mentors" ON "mentors"."id" = "authors"."id"/,
+      Author.left_outer_joins(:authors, as: :mentors) { :mentors[:id] == :authors[:id] }.to_sql)
+  end
+
+  def test_joins_alias_needs_a_block
+    assert_raises(ArgumentError) { Author.joins(:posts, as: :p) }
+    assert_raises(ArgumentError) { Author.left_outer_joins(:posts, as: :p) }
+  end
+
+  def test_joins_without_alias_still_delegates
+    assert_sql(/INNER JOIN "posts" ON "posts"."author_id" = "authors"."id"/,
+      Author.joins(:posts).to_sql)
+  end
+
+  def test_self_join_execution
+    Author.delete_all
+    Author.create!(name: 'shared')
+    Author.create!(name: 'other')
+    assert_equal(%w[other shared],
+      Author.joins(:authors, as: :mentors) { :mentors[:name] == :authors[:name] }.
+        pluck(:name).sort)
   end
 
   def test_select_aggregate
