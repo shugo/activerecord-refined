@@ -198,15 +198,42 @@ Author.left_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
 ### Aggregates, functions and aliases
 
 `count`, `sum`, `avg`, `min` and `max` are available as methods, as are the scalar
-functions `upper`, `lower`, `length`, `trim`, `coalesce`, `abs` and `round`. Use `.as`
-for a column alias, and `.asc` / `.desc` for the sort direction. Return an array to
-select or order by multiple expressions.
+functions `upper`, `lower`, `length`, `trim`, `coalesce`, `abs` and `round`, with
+`fn` for anything else. Use `.as` for a column alias, and `.asc` / `.desc` for the
+sort direction. Return an array to select or order by multiple expressions.
 
-Pass `:*` to `count` for `COUNT(*)`:
+Pass `:*` to `count` for `COUNT(*)`, and `distinct: true` for
+`COUNT(DISTINCT ...)`:
 
 ```ruby
 Author.group { :country }.having { count(:*) > 1 }
 # SELECT "authors".* FROM "authors" GROUP BY "authors"."country" HAVING COUNT(*) > 1
+
+Post.select { count(:author_id, distinct: true) }   # COUNT(DISTINCT "author_id")
+```
+
+`fn` reaches functions without a method of their own. Its name is emitted as
+written, so a case-sensitive one can be spelled exactly:
+
+```ruby
+Post.select { fn(:date_trunc, 'day', :created_at).as(:day) }
+# SELECT date_trunc('day', "posts"."created_at") AS day
+```
+
+`+`, `-`, `*` and `/` build arithmetic. Ruby puts them above the comparison
+operators, so an expression groups the way it reads:
+
+```ruby
+Item.where { :price * :quantity > 1000 }
+Item.select { sum(:price * :quantity).as(:total) }
+```
+
+`.asc` and `.desc` take `.nulls_first` / `.nulls_last`. MySQL has no such
+syntax, but Arel emulates it there, so the resulting order is the same
+everywhere:
+
+```ruby
+Author.order { :country.asc.nulls_last }
 ```
 
 ```ruby

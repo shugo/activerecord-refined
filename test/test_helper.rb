@@ -66,6 +66,12 @@ module SqlAssertions
     skip "#{ADAPTER} has no array columns" unless ADAPTER == 'postgresql'
   end
 
+  # MySQL has no NULLS FIRST/LAST; Arel emulates it with a leading IS NULL
+  # ordering, so only the resulting order is portable, not the SQL.
+  def skip_without_nulls_ordering_syntax
+    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if ADAPTER == 'mysql2'
+  end
+
   def regexp_operator
     Regexp.escape(REGEXP_OPERATORS.fetch(ADAPTER).first)
   end

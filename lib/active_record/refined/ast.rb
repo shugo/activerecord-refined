@@ -103,6 +103,48 @@ module ActiveRecord
         def intersect?(elements)
           ArrayPredicate.new(self, :"&&", ArrayPredicate.elements(elements, "intersect?"))
         end
+
+        def +(other)
+          Arithmetic.new(self, :+, other)
+        end
+
+        def -(other)
+          Arithmetic.new(self, :-, other)
+        end
+
+        def *(other)
+          Arithmetic.new(self, :*, other)
+        end
+
+        def /(other)
+          Arithmetic.new(self, :/, other)
+        end
+      end
+
+      # Aggregate builders shared by symbols, qualified columns and
+      # expressions.  Imported into the Symbol refinement like Predications,
+      # so every method must be defined with def.
+      module Aggregations
+        # DISTINCT is Arel's only aggregate modifier, and only for count.
+        def count(distinct: false)
+          Aggregate.new(self, :count, distinct: distinct)
+        end
+
+        def sum
+          Aggregate.new(self, :sum)
+        end
+
+        def average
+          Aggregate.new(self, :average)
+        end
+
+        def maximum
+          Aggregate.new(self, :maximum)
+        end
+
+        def minimum
+          Aggregate.new(self, :minimum)
+        end
       end
 
       class Node
@@ -151,6 +193,7 @@ module ActiveRecord
 
       class Column < Node
         include Predications
+        include Aggregations
 
         attr_reader :table_name, :column_name
 
@@ -162,24 +205,53 @@ module ActiveRecord
         def to_arel(_table)
           Arel::Table.new(table_name)[column_name]
         end
+      end
 
-        %i[count sum average maximum minimum].each do |func|
-          define_method(func) { Aggregate.new(self, func) }
+      # Arithmetic on columns and expressions.  Ruby's precedence puts these
+      # above the comparison operators, so :price * :quantity > 100 groups the
+      # way it reads.
+      class Arithmetic < Node
+        include Predications
+        include Aggregations
+
+        attr_reader :left, :operator, :right
+
+        def initialize(left, operator, right)
+          @left = left
+          @operator = operator
+          @right = right
+        end
+
+        def to_arel(table)
+          to_arel_operand(left, table).
+            public_send(operator, to_arel_operand(right, table))
         end
       end
 
       class Aggregate < Node
         include Predications
 
-        attr_reader :operand, :function
+        attr_reader :operand, :function, :distinct
 
-        def initialize(operand, function)
+        def initialize(operand, function, distinct: false)
+          if distinct && function != :count
+            raise ArgumentError, "#{function} does not take distinct"
+          end
+          if distinct && operand == :*
+            raise ArgumentError, "count(:*) does not take distinct; name a column"
+          end
           @operand = operand
           @function = function
+          @distinct = distinct
         end
 
         def to_arel(table)
-          to_arel_operand(operand, table).public_send(function)
+          arel_operand = to_arel_operand(operand, table)
+          if function == :count
+            arel_operand.count(distinct)
+          else
+            arel_operand.public_send(function)
+          end
         end
       end
 
@@ -197,15 +269,27 @@ module ActiveRecord
       end
 
       class Ordering < Node
-        attr_reader :operand, :direction
+        attr_reader :operand, :direction, :nulls
 
-        def initialize(operand, direction)
+        def initialize(operand, direction, nulls = nil)
           @operand = operand
           @direction = direction
+          @nulls = nulls
+        end
+
+        # MySQL has no NULLS FIRST/LAST, but Arel emulates it there with a
+        # leading IS NULL ordering, so these are portable.
+        def nulls_first
+          Ordering.new(operand, direction, :nulls_first)
+        end
+
+        def nulls_last
+          Ordering.new(operand, direction, :nulls_last)
         end
 
         def to_arel(table)
-          to_arel_operand(operand, table).public_send(direction)
+          ordering = to_arel_operand(operand, table).public_send(direction)
+          nulls ? ordering.public_send(nulls) : ordering
         end
       end
 

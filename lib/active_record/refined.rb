@@ -3,10 +3,7 @@ module ActiveRecord
     module BlockSyntax
       refine Symbol do
         import_methods AST::Predications
-
-        %i[count sum average maximum minimum].each do |func|
-          define_method(func) { AST::Aggregate.new(self, func) }
-        end
+        import_methods AST::Aggregations
 
         def as(alias_name)
           AST::As.new(self, alias_name)
@@ -28,17 +25,27 @@ module ActiveRecord
 
     class BlockContext
       AGGREGATE_FUNCTIONS = {
-        count: :count, sum: :sum, avg: :average, min: :minimum, max: :maximum,
+        sum: :sum, avg: :average, min: :minimum, max: :maximum,
       }.freeze
 
       AGGREGATE_FUNCTIONS.each do |name, arel_func|
         define_method(name) {|column| AST::Aggregate.new(column, arel_func) }
       end
 
+      def count(column, distinct: false)
+        AST::Aggregate.new(column, :count, distinct: distinct)
+      end
+
       SCALAR_FUNCTIONS = %i[upper lower length trim coalesce abs round].freeze
 
       SCALAR_FUNCTIONS.each do |name|
         define_method(name) {|*args| AST::Function.new(name.to_s.upcase, args) }
+      end
+
+      # Escape hatch for functions without a method of their own.  The name is
+      # emitted as written, so a case-sensitive one can be spelled exactly.
+      def fn(name, *args)
+        AST::Function.new(name.to_s, args)
       end
 
       def exists?(relation)

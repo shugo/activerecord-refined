@@ -467,6 +467,33 @@ class TestBlockSyntax < Minitest::Test
       User.select { count(:*).as(:cnt) }.to_sql)
   end
 
+  def test_count_distinct
+    assert_sql(/SELECT COUNT\(DISTINCT "users"."name"\)/,
+      User.select { count(:name, distinct: true) }.to_sql)
+  end
+
+  def test_count_distinct_as_method
+    assert_sql(/SELECT COUNT\(DISTINCT "users"."name"\) AS n/,
+      User.select { :name.count(distinct: true).as(:n) }.to_sql)
+  end
+
+  def test_count_distinct_in_having
+    assert_sql(/HAVING COUNT\(DISTINCT "users"."name"\) > 1/,
+      User.group(:age).having { count(:name, distinct: true) > 1 }.to_sql)
+  end
+
+  # DISTINCT is Arel's only aggregate modifier, and COUNT(DISTINCT *) is not
+  # valid SQL.
+  def test_distinct_is_rejected_for_other_aggregates
+    assert_raises(ArgumentError) do
+      ActiveRecord::Refined::AST::Aggregate.new(:age, :sum, distinct: true)
+    end
+  end
+
+  def test_count_star_distinct_is_rejected
+    assert_raises(ArgumentError) { User.select { count(:*, distinct: true) } }
+  end
+
   def test_having_count_star
     sql = Author.joins(:posts) { :posts[:author_id] == :authors[:id] }.
       group { :authors[:id] }.
@@ -523,6 +550,56 @@ class TestBlockSyntax < Minitest::Test
   def test_length_function_in_where
     assert_sql(/WHERE LENGTH\("users"."name"\) > 3/,
       User.where { length(:name) > 3 }.to_sql)
+  end
+
+  # fn emits the name as written, so a case-sensitive one can be spelled
+  # exactly.
+  def test_fn
+    assert_sql(/SELECT date_trunc\('day', "users"."name"\)/,
+      User.select { fn(:date_trunc, 'day', :name) }.to_sql)
+  end
+
+  def test_fn_is_comparable
+    assert_sql(/WHERE char_length\("users"."name"\) > 3/,
+      User.where { fn(:char_length, :name) > 3 }.to_sql)
+  end
+
+  def test_fn_alias
+    assert_sql(/SELECT date_trunc\('day', "users"."name"\) AS d/,
+      User.select { fn(:date_trunc, 'day', :name).as(:d) }.to_sql)
+  end
+
+  def test_arithmetic_multiplication
+    assert_sql(/SELECT "users"."age" \* 2 AS dbl/,
+      User.select { (:age * 2).as(:dbl) }.to_sql)
+  end
+
+  # Ruby puts * above >, so the expression groups the way it reads.
+  def test_arithmetic_in_where_without_parentheses
+    assert_sql(/WHERE "users"."age" \* 2 > 100/,
+      User.where { :age * 2 > 100 }.to_sql)
+  end
+
+  def test_arithmetic_between_columns
+    assert_sql(/WHERE \("users"."age" \+ "users"."id"\) \/ 2 <= 30/,
+      User.where { (:age + :id) / 2 <= 30 }.to_sql)
+  end
+
+  def test_arithmetic_inside_aggregate
+    assert_sql(/SELECT SUM\("users"."age" \* 2\)/,
+      User.select { sum(:age * 2) }.to_sql)
+  end
+
+  def test_aggregate_on_arithmetic
+    assert_sql(/SELECT SUM\(\("users"."age" \+ 1\)\) AS s/,
+      User.select { (:age + 1).sum.as(:s) }.to_sql)
+  end
+
+  # Arel groups + and - but not * and /, which is how SQL precedence works
+  # out anyway.
+  def test_arithmetic_on_qualified_column
+    assert_sql(/SELECT \("users"."age" - 1\)/,
+      User.select { :users[:age] - 1 }.to_sql)
   end
 
   def test_coalesce_function_with_literal
@@ -613,6 +690,30 @@ class TestBlockSyntax < Minitest::Test
   def test_order_multiple
     assert_sql(/ORDER BY "users"."age" DESC, "users"."name" ASC/,
       User.order { [:age.desc, :name.asc] }.to_sql)
+  end
+
+  def test_order_nulls_first
+    skip_without_nulls_ordering_syntax
+    assert_sql(/ORDER BY "users"."age" ASC NULLS FIRST/,
+      User.order { :age.asc.nulls_first }.to_sql)
+  end
+
+  def test_order_nulls_last
+    skip_without_nulls_ordering_syntax
+    assert_sql(/ORDER BY "users"."age" DESC NULLS LAST, "users"."name" ASC/,
+      User.order { [:age.desc.nulls_last, :name.asc] }.to_sql)
+  end
+
+  # The order itself is portable even where the syntax is not.
+  def test_order_nulls_execution
+    User.delete_all
+    User.create!(name: 'null_age', age: nil)
+    User.create!(name: 'young', age: 20)
+    User.create!(name: 'old', age: 60)
+    assert_equal(%w[null_age young old],
+      User.order { :age.asc.nulls_first }.pluck(:name))
+    assert_equal(%w[young old null_age],
+      User.order { :age.asc.nulls_last }.pluck(:name))
   end
 
   def test_order_qualified_column
