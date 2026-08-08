@@ -242,20 +242,9 @@ and publishes it through RubyGems.org's trusted publishing, so no API key is
 stored anywhere.
 
 ```sh
-# bump Activerecord::Refined::VERSION and commit it, then
-git tag v0.4.0
-git push origin v0.4.0
+bump patch --tag # or bump {major,minor} etc.
+git push --follow-tags
 ```
-
-This needs a trusted publisher registered once at
-<https://rubygems.org/gems/activerecord-refined/trusted_publishers>:
-
-| Field | Value |
-| --- | --- |
-| Repository owner | `shugo` |
-| Repository name | `activerecord-refined` |
-| Workflow filename | `push_gem.yml` |
-| Environment | `release` |
 
 ## Contributing
 
