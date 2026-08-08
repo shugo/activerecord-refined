@@ -81,6 +81,39 @@ VARIANTS.each do |group, variants|
 end
 
 puts
+puts "=== Proc#refined ISeq copy (memory) ==="
+require "objspace"
+
+# Proc#refined runs the block under the refinements by deep-copying its
+# instruction sequence, nested blocks included.  The copy is made lazily on
+# the refined proc's first call and memoized per source iseq and refinement
+# list for the life of the VM, so it is paid once per block call site, not
+# per query.
+iseq_count = -> {
+  counts = ObjectSpace.count_imemo_objects
+  counts[:imemo_iseq] || counts[:iseq]
+}
+context = ActiveRecord::Refined::BlockContext.new
+syntax = ActiveRecord::Refined::BlockSyntax
+
+{
+  "simple equality" => proc { :name == "matz" },
+  "compound AND/OR" => proc { (:age >= 18) & ((:name == "matz") | (:name == "nobu")) },
+}.each do |label, blk|
+  refined = blk.refined(syntax)
+  context.instance_exec(&refined) # the copy is made here, on the first call
+  original = ObjectSpace.memsize_of(RubyVM::InstructionSequence.of(blk))
+  copy = ObjectSpace.memsize_of(RubyVM::InstructionSequence.of(refined))
+  puts "#{label}: original iseq #{original} B, refined copy #{copy} B"
+end
+
+make_proc = -> { proc { :age > 20 } }
+context.instance_exec(&make_proc.call.refined(syntax))
+before = iseq_count.call
+1000.times { context.instance_exec(&make_proc.call.refined(syntax)) }
+puts "1000 more calls from the same call site copied #{iseq_count.call - before} iseqs"
+
+puts
 puts "=== where the block path spends its time ==="
 block = proc { :name == "matz" }
 refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)

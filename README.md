@@ -251,6 +251,17 @@ re-interpretation of the block is not where the time goes. Against a
 database round trip of tens to hundreds of microseconds, none of these
 differences are visible in an application.
 
+One memory cost sits outside the per-query numbers above: to run a block
+under the refinements, `Proc#refined` deep-copies its instruction sequence,
+nested blocks included. The copy is made lazily on the refined proc's first
+call and memoized per block and refinement list for the life of the process,
+so it is paid once per `where { ... }` call site, not per query — the
+benchmark measures the copy at the size of the original (568 bytes for the
+simple-equality block, 888 bytes for the compound one), and a thousand
+further calls from the same call site copy nothing. Steady state, an
+application holds one extra copy of each distinct query block's bytecode:
+a few hundred bytes per call site.
+
 ## Running the tests
 
 The tests only build SQL, but they need a live connection to do it. SQLite is
