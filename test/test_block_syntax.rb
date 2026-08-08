@@ -236,6 +236,38 @@ class TestBlockSyntax < Minitest::Test
       User.where { !:age.in?([1, 2, 3]) }.to_sql)
   end
 
+  def test_in_subquery
+    assert_sql(
+      /WHERE "authors"."id" IN \(SELECT "posts"."author_id" FROM "posts" WHERE "posts"."title" = 'pub'\)/,
+      Author.where { :id.in?(Post.where(title: 'pub').select(:author_id)) }.to_sql)
+  end
+
+  # A relation without an explicit select list selects its primary key, the
+  # same way ActiveRecord's own where(id: relation) does.
+  def test_in_subquery_selects_primary_key_by_default
+    assert_sql(/WHERE "authors"."id" IN \(SELECT "posts"."id" FROM "posts"\)/,
+      Author.where { :id.in?(Post.all) }.to_sql)
+  end
+
+  def test_not_in_subquery
+    assert_sql(/WHERE NOT \("authors"."id" IN \(SELECT "posts"."author_id" FROM "posts"\)\)/,
+      Author.where { !:id.in?(Post.select(:author_id)) }.to_sql)
+  end
+
+  def test_in_subquery_execution
+    Author.delete_all
+    Post.delete_all
+    published = Author.create!(name: 'published')
+    drafting = Author.create!(name: 'drafting')
+    Post.create!(title: 'pub', author_id: published.id)
+    Post.create!(title: 'draft', author_id: drafting.id)
+    subquery = -> { Post.where(title: 'pub').select(:author_id) }
+    assert_equal(['published'],
+      Author.where { :id.in?(subquery.call) }.pluck(:name))
+    assert_equal(['drafting'],
+      Author.where { !:id.in?(subquery.call) }.pluck(:name))
+  end
+
   # == passes a Range or an Array through as a value rather than expanding it,
   # so that it compares against a PostgreSQL range or array column. The SQL
   # literal depends on the column type, so assert on the Arel node instead.

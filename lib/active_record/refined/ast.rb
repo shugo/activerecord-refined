@@ -228,7 +228,8 @@ module ActiveRecord
         end
       end
 
-      # IN for a list of values, BETWEEN for a range.
+      # IN for a list of values, BETWEEN for a range, IN (SELECT ...) for a
+      # relation.
       class In < Predicate
         attr_reader :operand, :values
 
@@ -241,8 +242,29 @@ module ActiveRecord
           arel_operand = to_arel_operand(operand, table)
           case values
           when Range then arel_operand.between(values)
+          when ActiveRecord::Relation then arel_operand.in(subquery(values))
           else arel_operand.in(values)
           end
+        end
+
+        private
+
+        # The same treatment ActiveRecord's own RelationHandler gives a
+        # relation used as a value: without an explicit select list the
+        # subquery selects the model's primary key.
+        def subquery(relation)
+          if relation.eager_loading?
+            relation = relation.send(:apply_join_dependency)
+          end
+          if relation.select_values.empty?
+            model = relation.model
+            if model.composite_primary_key?
+              raise ArgumentError,
+                "Cannot map composite primary key #{model.primary_key} to IN"
+            end
+            relation = relation.select(relation.table[model.primary_key])
+          end
+          relation.arel
         end
       end
 

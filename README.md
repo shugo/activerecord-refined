@@ -78,6 +78,15 @@ Author.where { :country.in?(%w[JP US]) }    # IN
 Author.where { :country.null? }             # IS NULL
 ```
 
+`in?` also takes a relation as a subquery. Without an explicit select list the
+subquery selects the relation's primary key, the same way ActiveRecord's own
+`where(id: relation)` does:
+
+```ruby
+Author.where { :id.in?(Post.published.select(:author_id)) }
+# "authors"."id" IN (SELECT "posts"."author_id" FROM "posts" WHERE ...)
+```
+
 `like?` is case-sensitive `LIKE` on every adapter, including PostgreSQL, where
 Arel would otherwise reach for `ILIKE`.
 
