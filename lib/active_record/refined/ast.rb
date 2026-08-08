@@ -80,8 +80,28 @@ module ActiveRecord
           Like.new(self, "%#{Like.escape(substring)}%", Like::ESCAPE)
         end
 
+        # The array comparisons carry the meaning of their Ruby namesakes.
+        # member? is Enumerable's element test, so an Array argument is
+        # rejected rather than quietly meaning something Array#member? does
+        # not; whole-array comparisons go by the Set and Array names.
         def member?(element)
-          Member.new(self, element)
+          if element.is_a?(::Array) || element.is_a?(::Set)
+            raise ArgumentError,
+              "member? takes a single element; use superset? to require every element"
+          end
+          ArrayPredicate.new(self, :"@>", [element])
+        end
+
+        def superset?(elements)
+          ArrayPredicate.new(self, :"@>", ArrayPredicate.elements(elements, "superset?"))
+        end
+
+        def subset?(elements)
+          ArrayPredicate.new(self, :"<@", ArrayPredicate.elements(elements, "subset?"))
+        end
+
+        def intersect?(elements)
+          ArrayPredicate.new(self, :"&&", ArrayPredicate.elements(elements, "intersect?"))
         end
       end
 
@@ -325,23 +345,41 @@ module ActiveRecord
         end
       end
 
-      # Containment in a PostgreSQL array column.  The two flavors of "does it
-      # contain this?" split by name the way Ruby's own classes do: include? is
-      # String's substring match (LIKE), member? is Enumerable's element test,
-      # which String does not have.  The elements are rendered as an array
-      # literal, which PostgreSQL coerces to the column's element type, so any
-      # expression works as the operand and no schema lookup is needed.
-      class Member < Predicate
-        attr_reader :operand, :elements
+      # Comparisons against a PostgreSQL array column, named after the Ruby
+      # methods that mean the same thing: member? is Enumerable's element
+      # test, superset? and subset? are Set's whole-array containment, and
+      # intersect? is Array's "any element in common".  Each name maps to one
+      # operator; the elements are rendered as an array literal, which
+      # PostgreSQL coerces to the column's element type, so any expression
+      # works as the operand and no schema lookup is needed.
+      class ArrayPredicate < Predicate
+        # The whole-array comparisons take the collection kinds their
+        # namesakes compare against: an Array, or a Set for the Set methods.
+        def self.elements(arg, method_name)
+          case arg
+          when ::Array then arg
+          when ::Set then arg.to_a
+          else
+            raise ArgumentError, "#{method_name} takes an Array or Set of elements"
+          end
+        end
 
-        def initialize(operand, element)
+        attr_reader :operand, :operator, :elements
+
+        def initialize(operand, operator, elements)
           @operand = operand
-          @elements = element.is_a?(::Array) ? element : [element]
+          @operator = operator
+          @elements = elements
         end
 
         def to_arel(table)
           arel_operand = to_arel_operand(operand, table)
-          arel_operand.contains(Arel::Nodes.build_quoted(array_literal))
+          quoted = Arel::Nodes.build_quoted(array_literal)
+          case operator
+          when :"@>" then Arel::Nodes::Contains.new(arel_operand, quoted)
+          when :"&&" then Arel::Nodes::Overlaps.new(arel_operand, quoted)
+          else Arel::Nodes::InfixOperation.new(operator, arel_operand, quoted)
+          end
         end
 
         private

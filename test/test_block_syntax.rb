@@ -135,9 +135,52 @@ class TestBlockSyntax < Minitest::Test
       User.where { !:tags.member?('ruby') }.to_sql)
   end
 
-  def test_member_multiple_elements
+  # Ruby's [1, 2].member?([1]) is false: member? tests one element, and an
+  # Array argument would have to mean something the namesake does not.
+  def test_member_array_is_rejected
+    e = assert_raises(ArgumentError) { User.where { :tags.member?(%w[ruby rails]) } }
+    assert_match(/superset\?/, e.message)
+  end
+
+  def test_superset
     assert_sql(/WHERE "users"."tags" @> '\{ruby,rails\}'/,
-      User.where { :tags.member?(%w[ruby rails]) }.to_sql)
+      User.where { :tags.superset?(%w[ruby rails]) }.to_sql)
+  end
+
+  def test_superset_takes_a_set
+    assert_sql(/WHERE "users"."tags" @> '\{ruby,rails\}'/,
+      User.where { :tags.superset?(Set['ruby', 'rails']) }.to_sql)
+  end
+
+  def test_superset_rejects_a_scalar
+    assert_raises(ArgumentError) { User.where { :tags.superset?('ruby') } }
+  end
+
+  def test_subset
+    assert_sql(/WHERE "users"."tags" <@ '\{ruby,rails,go\}'/,
+      User.where { :tags.subset?(%w[ruby rails go]) }.to_sql)
+  end
+
+  def test_intersect
+    assert_sql(/WHERE "users"."tags" && '\{ruby,go\}'/,
+      User.where { :tags.intersect?(%w[ruby go]) }.to_sql)
+  end
+
+  def test_intersect_negated
+    assert_sql(/WHERE NOT \("users"."tags" && '\{ruby,go\}'\)/,
+      User.where { !:tags.intersect?(%w[ruby go]) }.to_sql)
+  end
+
+  def test_array_comparisons_execution
+    skip_without_array_columns
+    User.delete_all
+    User.create!(name: 'both', tags: %w[ruby rails])
+    User.create!(name: 'one', tags: %w[ruby go])
+    User.create!(name: 'neither', tags: %w[python])
+    assert_equal(['both'], User.where { :tags.superset?(%w[ruby rails]) }.pluck(:name))
+    assert_equal(['neither'], User.where { :tags.subset?(%w[python js]) }.pluck(:name))
+    assert_equal(%w[both one],
+      User.where { :tags.intersect?(%w[ruby js]) }.pluck(:name).sort)
   end
 
   # MySQL additionally escapes the double quotes inside its string literal,

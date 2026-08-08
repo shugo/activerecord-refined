@@ -134,16 +134,23 @@ Author.where { :name.start_with?('A', 'B') }
 # (name LIKE 'A%' OR name LIKE 'B%')
 ```
 
-`member?` tests containment in a PostgreSQL array column. The two flavors of
-"does it contain this?" split by name the way Ruby's own classes do: `include?`
-is String's substring match, `member?` is Enumerable's element test, which
-String does not have. Pass an array to require every element:
+`member?`, `superset?`, `subset?` and `intersect?` compare against a
+PostgreSQL array column, each carrying the meaning of its Ruby namesake:
+`member?` is Enumerable's element test (which String does not have — that is
+what separates it from `include?`), `superset?` and `subset?` are Set's
+whole-array containment, and `intersect?` is Array's "any element in common":
 
 ```ruby
-Article.where { :tags.member?('ruby') }         # "tags" @> '{ruby}'
-Article.where { :tags.member?(%w[ruby rails]) } # "tags" @> '{ruby,rails}'
-Article.where { :scores.member?(80) }           # "scores" @> '{80}'
+Article.where { :tags.member?('ruby') }            # tags @> '{ruby}'
+Article.where { :scores.member?(80) }              # scores @> '{80}'
+Article.where { :tags.superset?(%w[ruby rails]) }  # tags @> '{ruby,rails}'
+Article.where { :tags.subset?(%w[ruby rails go]) } # tags <@ '{ruby,rails,go}'
+Article.where { :tags.intersect?(%w[ruby go]) }    # tags && '{ruby,go}'
 ```
+
+Like its namesake, `member?` takes one element — `[1, 2].member?([1])` is
+false in Ruby, so an Array argument raises rather than quietly meaning
+something `Array#member?` does not. Requiring every element is `superset?`.
 
 `=~` and `!~` match a regular expression: `REGEXP` and `NOT REGEXP` on MySQL,
 `~` and `!~` on PostgreSQL. SQLite has no regexp operator of its own, so it
