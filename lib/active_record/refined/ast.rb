@@ -5,11 +5,20 @@ module ActiveRecord
       # expressions. Imported into the Symbol refinement with
       # Refinement#import_methods, so every method must be defined with def.
       module Predications
+        # == and != mean SQL = and <>, and = NULL is never true there, so nil
+        # is rejected rather than silently rewritten to IS NULL.  null? builds
+        # its node directly and stays clear of this check.
         def ==(other)
+          if other.nil?
+            raise ArgumentError, "== does not take nil; use null? instead"
+          end
           Comparison.new(self, :==, other)
         end
 
         def !=(other)
+          if other.nil?
+            raise ArgumentError, "!= does not take nil; use !null? instead"
+          end
           Comparison.new(self, :!=, other)
         end
 

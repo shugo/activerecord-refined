@@ -126,6 +126,14 @@ Reservation.where { :period == (from...to) }   # daterange = '[from,to)'
 Article.where { :tags == %w[ruby rails] }      # text[] = '{ruby,rails}'
 ```
 
+For the same reason `== nil` raises `ArgumentError`: `= NULL` is never true in
+SQL, so a NULL test has to be spelled as one. Use `null?`:
+
+```ruby
+Author.where { :country.null? }             # country IS NULL
+Author.where { !:country.null? }            # NOT (country IS NULL)
+```
+
 Combine predicates with `&`, `|` and `!`. Ruby's operator precedence makes the
 parentheses around each comparison necessary, though the `?` methods above need
 none:

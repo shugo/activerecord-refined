@@ -211,6 +211,16 @@ class TestBlockSyntax < Minitest::Test
       User.where { :users[:name].null? }.to_sql)
   end
 
+  def test_equal_nil_is_rejected
+    e = assert_raises(ArgumentError) { User.where { :name == nil } }
+    assert_match(/null\?/, e.message)
+  end
+
+  def test_not_equal_nil_is_rejected
+    e = assert_raises(ArgumentError) { User.where { :name != nil } }
+    assert_match(/null\?/, e.message)
+  end
+
   def test_in
     assert_sql(/WHERE "users"."age" IN \(1, 2, 3\)/,
       User.where { :age.in?([1, 2, 3]) }.to_sql)
