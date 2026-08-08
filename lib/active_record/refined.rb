@@ -100,6 +100,22 @@ module ActiveRecord
         end
       end
 
+      # A symbol names a table, which ActiveRecord's own from only takes as a
+      # string.  With `as` it is selected under another name, which is how a
+      # CTE stands in for the model's own table:
+      # with_recursive(tree: [...]).from(:tree, as: :nodes)
+      def from(value, subquery_name = nil, as: nil)
+        unless value.is_a?(Symbol)
+          if as
+            raise ArgumentError, "as: needs the table named as a symbol"
+          end
+          return super(value, subquery_name)
+        end
+        arel_table = Arel::Table.new(value)
+        arel_table = arel_table.alias(as) if as
+        super(arel_table, subquery_name)
+      end
+
       # `as` names the table within the query, which is what makes a self
       # join expressible: joins(:employees, as: :managers) { ... }.
       def joins(*args, as: nil, &block)

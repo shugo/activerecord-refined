@@ -232,6 +232,38 @@ Employee.joins(:employees, as: :managers) { :managers[:id] == :employees[:manage
 #   INNER JOIN "employees" "managers" ON "managers"."id" = "employees"."manager_id"
 ```
 
+### Common table expressions
+
+ActiveRecord's `with` and `with_recursive` need nothing from this gem: a CTE
+is joined by name like any other table, so its `ON` clause is a block, where
+Rails' own documentation reaches for a string join.
+
+`from` takes the CTE's name as a symbol, with `as` to select it under the
+model's own table name so the model's columns resolve:
+
+```ruby
+Node.with_recursive(
+  tree: [
+    Node.where { :id == root.id },
+    Node.joins(:tree) { :nodes[:parent_id] == :tree[:id] },
+  ]
+).from(:tree, as: :nodes)
+# WITH RECURSIVE "tree" AS (
+#   SELECT "nodes".* FROM "nodes" WHERE "nodes"."id" = 1
+#   UNION ALL
+#   SELECT "nodes".* FROM "nodes" INNER JOIN "tree" ON "nodes"."parent_id" = "tree"."id"
+# ) SELECT "nodes".* FROM "tree" AS "nodes"
+```
+
+A non-recursive CTE joins the same way:
+
+```ruby
+Node.with(roots: Node.where { :parent_id.null? }).
+  joins(:roots) { :roots[:id] == :nodes[:parent_id] }
+```
+
+`examples/ctes.rb` walks a category tree with these.
+
 ### Aggregates, functions and aliases
 
 `count`, `sum`, `avg`, `min` and `max` are available as methods, as are the scalar

@@ -530,6 +530,50 @@ class TestBlockSyntax < Minitest::Test
         pluck(:name).sort)
   end
 
+  # ActiveRecord's from only takes a table name as a string.
+  def test_from_symbol
+    assert_sql(/FROM "tree"/, Node.from(:tree).to_sql)
+  end
+
+  def test_from_symbol_with_alias
+    assert_sql(/FROM "tree" (?:AS )?"nodes"/, Node.from(:tree, as: :nodes).to_sql)
+  end
+
+  def test_from_string_still_delegates
+    assert_sql(/FROM subq/, Node.from('subq').to_sql)
+  end
+
+  def test_from_alias_needs_a_symbol
+    assert_raises(ArgumentError) { Node.from('tree', as: :nodes) }
+  end
+
+  # A CTE is joined by name like any other table, so the recursive member's
+  # ON clause is a block rather than the string join Rails' own docs use.
+  def test_recursive_cte
+    Node.delete_all
+    root = Node.create!(name: 'root')
+    child = Node.create!(name: 'child', parent_id: root.id)
+    Node.create!(name: 'grandchild', parent_id: child.id)
+    Node.create!(name: 'unrelated', parent_id: nil)
+    descendants = Node.with_recursive(
+      tree: [
+        Node.where { :id == root.id },
+        Node.joins(:tree) { :nodes[:parent_id] == :tree[:id] },
+      ]
+    ).from(:tree, as: :nodes)
+    assert_equal(%w[child grandchild root], descendants.pluck(:name).sort)
+  end
+
+  def test_cte_joined_by_name
+    Node.delete_all
+    root = Node.create!(name: 'root')
+    Node.create!(name: 'child', parent_id: root.id)
+    Node.create!(name: 'orphan', parent_id: nil)
+    q = Node.with(roots: Node.where { :parent_id.null? }).
+      joins(:roots) { :roots[:id] == :nodes[:parent_id] }
+    assert_equal(['child'], q.pluck(:name))
+  end
+
   def test_select_aggregate
     assert_sql(/SELECT SUM\("users"."age"\)/,
       User.select { :age.sum }.to_sql)

@@ -110,11 +110,16 @@ class Post < ActiveRecord::Base
   belongs_to :author
 end
 
+# Self-referencing, for the recursive CTE tests.
+class Node < ActiveRecord::Base
+end
+
 class CreateAllTables < ActiveRecord::Migration[8.1]
   def up
     drop_table(:users, if_exists: true)
     drop_table(:authors, if_exists: true)
     drop_table(:posts, if_exists: true)
+    drop_table(:nodes, if_exists: true)
     create_table(:users) do |t|
       t.string :name
       t.integer :age
@@ -122,6 +127,7 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
     end
     create_table(:authors) {|t| t.string :name}
     create_table(:posts) {|t| t.string :title; t.integer :author_id}
+    create_table(:nodes) {|t| t.string :name; t.integer :parent_id}
   end
 end
 ActiveRecord::Migration.verbose = false
