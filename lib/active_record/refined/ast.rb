@@ -1,6 +1,20 @@
 module ActiveRecord
   module Refined
     module AST
+      # Column aliases and function names are written into the SQL as given,
+      # where a value would have been quoted, so anything that is not a plain
+      # name is refused.  Quoting them instead would need the model's adapter,
+      # which does not reach this far, and quoting with the wrong one would be
+      # a bug of its own -- MySQL does not read "x" as an identifier.
+      NAME = /[[:alpha:]_][[:alnum:]_$]*/
+      ALIAS_NAME = /\A#{NAME}\z/
+      FUNCTION_NAME = /\A#{NAME}(\.#{NAME})?\z/
+
+      def self.check_name(name, pattern, what)
+        return name if pattern.match?(name.to_s)
+        raise ArgumentError, "#{name.inspect} is not a plain #{what}"
+      end
+
       # Predicate builders shared by symbols, qualified columns and
       # expressions. Imported into the Symbol refinement with
       # Refinement#import_methods, so every method must be defined with def.
@@ -292,7 +306,7 @@ module ActiveRecord
 
         def initialize(operand, alias_name)
           @operand = operand
-          @alias_name = alias_name
+          @alias_name = AST.check_name(alias_name, ALIAS_NAME, "column alias")
         end
 
         def to_arel(table)

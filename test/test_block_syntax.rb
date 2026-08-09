@@ -727,6 +727,51 @@ class TestBlockSyntax < Minitest::Test
       User.select { fn(:date_trunc, 'day', :name).as(:d) }.to_sql)
   end
 
+  # Aliases and function names are written into the SQL where a value would
+  # have been quoted, so a name that is not plain is refused rather than
+  # given the chance to close the identifier and carry on.
+  INJECTION = %q{a" AS x, (SELECT 1) AS "y}
+
+  def test_alias_rejects_an_injected_name
+    assert_raises(ArgumentError) { User.select { :name.as(INJECTION.to_sym) } }
+    assert_raises(ArgumentError) { User.select { count(:*).as(INJECTION.to_sym) } }
+    assert_raises(ArgumentError) { User.select { :name.as(:'a; DROP TABLE users') } }
+  end
+
+  def test_fn_rejects_an_injected_name
+    assert_raises(ArgumentError) { User.select { fn(INJECTION.to_sym, :name) } }
+  end
+
+  def test_plain_names_are_still_accepted
+    assert_sql(/AS post_count/, User.select { :name.as(:post_count) }.to_sql)
+    assert_sql(/AS 名前/, User.select { :name.as(:名前) }.to_sql)
+    assert_sql(/SELECT myFunc\(/, User.select { fn(:myFunc, :name) }.to_sql)
+    assert_sql(/SELECT pg_catalog.upper\(/,
+      User.select { fn(:'pg_catalog.upper', :name) }.to_sql)
+  end
+
+  # Values go through the adapter's quoting, which each spells its own way,
+  # so what is asserted is that the payload stays a value: it matches no row
+  # rather than opening the condition up.
+  def test_values_are_quoted
+    User.delete_all
+    User.create!(name: 'matz')
+    User.create!(name: 'nobu')
+    payload = "x' OR 1=1 --"
+    assert_empty(User.where { :name == payload }.pluck(:name))
+    assert_empty(User.where { :name.like?(payload) }.pluck(:name))
+    assert_empty(User.where { :name.in?([payload]) }.pluck(:name))
+    assert_empty(User.where { :name.include?(payload) }.pluck(:name))
+  end
+
+  # Likewise for column names: the payload becomes one identifier, so the
+  # database rejects it as an unknown column instead of running it.
+  def test_column_names_are_quoted
+    assert_raises(ActiveRecord::StatementInvalid) do
+      User.where { :users[INJECTION.to_sym] == 1 }.to_a
+    end
+  end
+
   def test_scalar_functions_shared_by_every_adapter
     assert_sql(/SELECT CONCAT\(UPPER\("users"."name"\), 'x'\)/,
       User.select { concat(upper(:name), 'x') }.to_sql)

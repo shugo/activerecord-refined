@@ -87,9 +87,12 @@ module ActiveRecord
       end
 
       # Escape hatch for functions without a method of their own.  The name is
-      # emitted as written, so a case-sensitive one can be spelled exactly.
+      # emitted as written, so a case-sensitive one can be spelled exactly,
+      # and for that reason it has to be a plain name, optionally qualified by
+      # a schema; anything else is refused rather than written into the SQL.
       def fn(name, *args)
-        AST::Function.new(name.to_s, args)
+        AST::Function.new(
+          AST.check_name(name, AST::FUNCTION_NAME, "function name").to_s, args)
       end
 
       def exists?(relation)

@@ -308,6 +308,12 @@ Author.group { :country }.having { count(:*) > 1 }
 Post.select { count(:author_id, distinct: true) }   # COUNT(DISTINCT "author_id")
 ```
 
+Values are quoted by the adapter wherever they appear, as they are in
+ActiveRecord. Column aliases and `fn`'s function name are not — they are
+written into the SQL as given — so those two have to be plain names,
+optionally qualified by a schema in `fn`'s case. Anything else raises
+`ArgumentError` rather than reaching the query.
+
 `fn` reaches functions without a method of their own. Its name is emitted as
 written, so a case-sensitive one can be spelled exactly:
 
