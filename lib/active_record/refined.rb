@@ -25,6 +25,12 @@ module ActiveRecord
     end
 
     class BlockContext
+      # The model is only consulted to learn which adapter the query is being
+      # built for, which is what decides how a scalar function is spelled.
+      def initialize(model)
+        @model = model
+      end
+
       AGGREGATE_FUNCTIONS = {
         sum: :sum, avg: :average, min: :minimum, max: :maximum,
       }.freeze
@@ -37,10 +43,47 @@ module ActiveRecord
         AST::Aggregate.new(column, :count, distinct: distinct)
       end
 
-      SCALAR_FUNCTIONS = %i[upper lower length trim coalesce abs round].freeze
+      # Scalar functions, defined as real methods so that a typo is a
+      # NoMethodError and a name Kernel also answers to (format, hash, test)
+      # cannot quietly mean something else.
+      #
+      # The value lists the adapters that differ: a string is what the
+      # function is called there, nil says the adapter has no equivalent.  An
+      # adapter that is not listed spells it like the method.  The families
+      # are what the entries key on, so trilogy reads the mysql column.
+      #
+      # Availability was checked by calling each one; the SQLite figures
+      # assume the math functions its build usually enables.
+      SCALAR_FUNCTIONS = {
+        abs: {}, ceil: {}, coalesce: {}, concat: {}, exp: {}, floor: {},
+        length: {}, ln: {}, log: {}, lower: {}, ltrim: {}, mod: {},
+        nullif: {}, power: {}, replace: {}, round: {}, rtrim: {}, sqrt: {},
+        substr: {}, trim: {}, upper: {},
+        char_length: {sqlite: 'LENGTH'},
+        greatest: {sqlite: 'MAX'},
+        least: {sqlite: 'MIN'},
+        now: {sqlite: nil},
+        date_trunc: {sqlite: nil, mysql: nil},
+        # Named for Kernel#rand, which it also takes back: a block calling
+        # rand would otherwise get Ruby's and never reach the database.
+        rand: {sqlite: 'RANDOM', postgresql: 'RANDOM'},
+        # Two different functions share this name: printf formatting here, and
+        # on MySQL the one that puts separators in a number, which reads a
+        # printf template as the number zero rather than complaining.  The
+        # name keeps the one meaning; fn(:format, ...) reaches MySQL's.
+        format: {mysql: nil},
+      }.freeze
 
-      SCALAR_FUNCTIONS.each do |name|
-        define_method(name) {|*args| AST::Function.new(name.to_s.upcase, args) }
+      ADAPTER_FAMILIES = {
+        'sqlite3' => :sqlite,
+        'postgresql' => :postgresql,
+        'postgis' => :postgresql,
+        'mysql2' => :mysql,
+        'trilogy' => :mysql,
+      }.freeze
+
+      SCALAR_FUNCTIONS.each_key do |name|
+        define_method(name) {|*args| AST::Function.new(function_name(name), args) }
       end
 
       # Escape hatch for functions without a method of their own.  The name is
@@ -51,6 +94,23 @@ module ActiveRecord
 
       def exists?(relation)
         AST::Exists.new(relation)
+      end
+
+      private
+
+      def function_name(name)
+        spellings = SCALAR_FUNCTIONS.fetch(name)
+        return name.to_s.upcase unless spellings.key?(adapter_family)
+        spellings.fetch(adapter_family) ||
+          raise(NotImplementedError,
+                "#{name} has no equivalent on #{@model.connection_db_config.adapter}")
+      end
+
+      # An adapter nobody has classified keeps the standard spellings, and is
+      # left to say for itself what it cannot do.
+      def adapter_family
+        @adapter_family ||=
+          ADAPTER_FAMILIES[@model.connection_db_config.adapter] || :unknown
       end
     end
 
@@ -141,7 +201,7 @@ module ActiveRecord
 
       def evaluate_block(&block)
         refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
-        BlockContext.new.instance_exec(&refined_block)
+        BlockContext.new(klass).instance_exec(&refined_block)
       end
 
       def to_arel_field(node)

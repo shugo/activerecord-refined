@@ -267,10 +267,36 @@ Node.with(roots: Node.where { :parent_id.null? }).
 
 ### Aggregates, functions and aliases
 
-`count`, `sum`, `avg`, `min` and `max` are available as methods, as are the scalar
-functions `upper`, `lower`, `length`, `trim`, `coalesce`, `abs` and `round`, with
-`fn` for anything else. Use `.as` for a column alias, and `.asc` / `.desc` for the
-sort direction. Return an array to select or order by multiple expressions.
+`count`, `sum`, `avg`, `min` and `max` are available as methods, as are the
+scalar functions below, with `fn` for anything else. Use `.as` for a column
+alias, and `.asc` / `.desc` for the sort direction. Return an array to select
+or order by multiple expressions.
+
+The scalar functions are real methods rather than anything caught dynamically,
+so a misspelling is a `NoMethodError` where you wrote it, and a name Ruby also
+answers to — `rand` — means the SQL one inside a block:
+
+```
+abs  ceil  char_length  coalesce  concat  date_trunc  exp  floor  format
+greatest  least  length  ln  log  lower  ltrim  mod  now  nullif  power  rand
+replace  round  rtrim  sqrt  substr  trim  upper
+```
+
+Most are spelled the same everywhere. Where they are not, the method names one
+meaning and each adapter gets its own spelling: `char_length`, `greatest` and
+`least` become `LENGTH`, `MAX` and `MIN` on SQLite, and `rand` is `RAND` on
+MySQL and `RANDOM` elsewhere. Where an adapter has no equivalent — `date_trunc`
+outside PostgreSQL, `now` on SQLite — the block raises `NotImplementedError`
+rather than leaving the database to reject the SQL.
+
+`format` is printf formatting, and raises on MySQL, where a function of the
+same name does something else entirely: it puts separators in a number, and
+reads a printf template as the number zero rather than complaining. `fn` still
+reaches it, spelled as the different thing it is:
+
+```ruby
+Post.select { fn(:format, :amount, 2) }   # MySQL's, on purpose
+```
 
 Pass `:*` to `count` for `COUNT(*)`, and `distinct: true` for
 `COUNT(DISTINCT ...)`:

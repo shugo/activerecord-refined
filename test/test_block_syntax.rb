@@ -727,6 +727,85 @@ class TestBlockSyntax < Minitest::Test
       User.select { fn(:date_trunc, 'day', :name).as(:d) }.to_sql)
   end
 
+  def test_scalar_functions_shared_by_every_adapter
+    assert_sql(/SELECT CONCAT\(UPPER\("users"."name"\), 'x'\)/,
+      User.select { concat(upper(:name), 'x') }.to_sql)
+    assert_sql(/WHERE MOD\("users"."age", 7\) = 0/,
+      User.where { mod(:age, 7) == 0 }.to_sql)
+  end
+
+  # SQLite has no CHAR_LENGTH, GREATEST or LEAST, but LENGTH, MAX and MIN
+  # mean the same thing there.
+  def test_scalar_functions_spelled_differently_on_sqlite
+    expected = ADAPTER == 'sqlite3' ? %w[LENGTH MAX MIN] : %w[CHAR_LENGTH GREATEST LEAST]
+    assert_sql(/SELECT #{expected[0]}\("users"."name"\)/,
+      User.select { char_length(:name) }.to_sql)
+    assert_sql(/SELECT #{expected[1]}\("users"."age", 18\)/,
+      User.select { greatest(:age, 18) }.to_sql)
+    assert_sql(/SELECT #{expected[2]}\("users"."age", 99\)/,
+      User.select { least(:age, 99) }.to_sql)
+  end
+
+  def test_scalar_functions_run
+    User.delete_all
+    User.create!(name: 'matz', age: 60)
+    assert_equal(['MATZ-x'], User.select { concat(upper(:name), '-x').as(:v) }.map(&:v))
+    assert_equal([4], User.select { char_length(:name).as(:v) }.map(&:v))
+    assert_equal([60], User.select { greatest(:age, 18).as(:v) }.map(&:v))
+  end
+
+  # rand takes the name back from Kernel#rand, which would otherwise answer
+  # inside the block and never reach the database.
+  def test_rand
+    expected = ADAPTER == 'mysql2' ? 'RAND' : 'RANDOM'
+    assert_sql(/ORDER BY #{expected}\(\)/, User.order { rand }.to_sql)
+  end
+
+  # Where an adapter has no equivalent, the block raises instead of leaving
+  # the database to reject the SQL.
+  def test_unsupported_function_raises
+    if ADAPTER == 'postgresql'
+      assert_sql(/SELECT DATE_TRUNC\('day', "users"."name"\)/,
+        User.select { date_trunc('day', :name) }.to_sql)
+    else
+      e = assert_raises(NotImplementedError) { User.select { date_trunc('day', :name) } }
+      assert_match(/date_trunc/, e.message)
+    end
+  end
+
+  # MySQL's FORMAT is a different function that happens to share the name,
+  # and reads a printf template as the number zero rather than complaining,
+  # so the name carries the printf one and MySQL raises.
+  def test_format_is_printf_and_unsupported_on_mysql
+    if ADAPTER == 'mysql2'
+      assert_raises(NotImplementedError) { User.select { format('%s!', :name) } }
+    else
+      User.delete_all
+      User.create!(name: 'matz')
+      assert_equal(['matz!'], User.select { format('%s!', :name).as(:v) }.map(&:v))
+    end
+  end
+
+  # MySQL's own is still reachable, spelled as the different thing it is.
+  def test_mysql_format_through_fn
+    assert_sql(/SELECT format\(1234.5678, 2\)/,
+      User.select { fn(:format, 1234.5678, 2) }.to_sql)
+  end
+
+  def test_now_is_unsupported_on_sqlite
+    if ADAPTER == 'sqlite3'
+      assert_raises(NotImplementedError) { User.select { now } }
+    else
+      assert_sql(/SELECT NOW\(\)/, User.select { now }.to_sql)
+    end
+  end
+
+  # A name with no method of its own is still a NoMethodError, not a
+  # function call the database has to reject.
+  def test_unknown_function_is_a_no_method_error
+    assert_raises(NoMethodError) { User.select { uppr(:name) } }
+  end
+
   def test_arithmetic_multiplication
     assert_sql(/SELECT "users"."age" \* 2 AS dbl/,
       User.select { (:age * 2).as(:dbl) }.to_sql)
