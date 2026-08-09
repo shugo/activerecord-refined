@@ -127,7 +127,12 @@ module ActiveRecord
         def intersect?(elements)
           ArrayPredicate.new(self, :"&&", ArrayPredicate.elements(elements, "intersect?"))
         end
+      end
 
+      # Arithmetic builders shared by symbols, qualified columns and
+      # expressions.  Imported into the Symbol refinement like Predications,
+      # so every method must be defined with def.
+      module Arithmetics
         def +(other)
           Arithmetic.new(self, :+, other)
         end
@@ -217,6 +222,7 @@ module ActiveRecord
 
       class Column < Node
         include Predications
+        include Arithmetics
         include Aggregations
 
         attr_reader :table_name, :column_name
@@ -236,6 +242,7 @@ module ActiveRecord
       # way it reads.
       class Arithmetic < Node
         include Predications
+        include Arithmetics
         include Aggregations
 
         attr_reader :left, :operator, :right
@@ -254,6 +261,7 @@ module ActiveRecord
 
       class Aggregate < Node
         include Predications
+        include Arithmetics
 
         attr_reader :operand, :function, :distinct
 
@@ -319,6 +327,7 @@ module ActiveRecord
 
       class Function < Node
         include Predications
+        include Arithmetics
 
         attr_reader :name, :args
 

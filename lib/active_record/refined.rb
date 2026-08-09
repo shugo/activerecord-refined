@@ -3,6 +3,7 @@ module ActiveRecord
     module BlockSyntax
       refine Symbol do
         import_methods AST::Predications
+        import_methods AST::Arithmetics
         import_methods AST::Aggregations
 
         def as(alias_name)
