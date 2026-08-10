@@ -97,21 +97,25 @@ jobs:
           AWS_REQUEST_CHECKSUM_CALCULATION: when_required
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
         run: |
-          hash=$(sha256sum ruby.wasm | cut -c1-16)
-          key="ruby-$hash.wasm"
           gzip -9 -c ruby.wasm > /tmp/ruby.wasm.gz
 
+          # One key, overwritten each time, since only the newest build is of
+          # any use.  That rules out caching it as immutable: the URL no longer
+          # changes with the contents, so a long max-age would go on serving
+          # the previous binary.  Five minutes bounds how stale a visitor's
+          # copy can be just after a deploy, and revalidation costs a 304
+          # rather than 12 MB.
           aws s3api put-object \
             --endpoint-url "https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
             --bucket "${{ vars.R2_BUCKET }}" \
-            --key "$key" \
+            --key ruby-head.wasm \
             --body /tmp/ruby.wasm.gz \
             --content-type application/wasm \
             --content-encoding gzip \
-            --cache-control "public, max-age=31536000, immutable" \
+            --cache-control "public, max-age=300" \
             --no-cli-pager
 
-          echo "{\"rubyWasmUrl\":\"${{ vars.R2_PUBLIC_URL }}/$key\"}" > config.json
+          echo '{"rubyWasmUrl":"${{ vars.R2_PUBLIC_URL }}/ruby-head.wasm"}' > config.json
           echo "uploaded=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
