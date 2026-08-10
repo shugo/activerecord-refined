@@ -132,14 +132,17 @@ def show(relation, limit: 20)
   # columns shown are exactly the ones the SELECT asked for.  Going via the
   # model would add its other attributes back as nil.
   print_result ActiveRecord::Base.connection.select_all("#{statement} LIMIT #{limit.to_i}")
+  puts
 rescue ActiveRecord::StatementInvalid => e
   puts 'The database rejected this query:'
   puts "  #{e.message.lines.first.strip}"
+  puts
 end
 
 # Prints just the SQL, for examples where running the query is beside the point.
 def sql(relation)
   puts red(relation.to_sql)
+  puts
 end
 
 # The tables behind the examples, for the Data section of the sidebar.  Asked

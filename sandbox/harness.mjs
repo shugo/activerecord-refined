@@ -70,7 +70,7 @@ ${nonce}
   ensure
     $stdout = __prev
   end
-  __buf.string
+  __buf.string.sub(/\\n+\\z/, "\\n")
 end
 `).toString();
 }
