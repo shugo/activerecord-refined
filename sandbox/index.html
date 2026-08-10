@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>activerecord-refined サンドボックス</title>
+<title>activerecord-refined sandbox</title>
 <style>
   :root {
     --bg: #ffffff;
@@ -21,7 +21,7 @@
 
   body {
     margin: 0;
-    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     color: var(--fg);
     background: var(--bg);
     line-height: 1.6;
@@ -146,29 +146,29 @@
 <body>
 
 <header>
-  <h1>activerecord-refined サンドボックス</h1>
+  <h1>activerecord-refined sandbox</h1>
   <p>
-    Ruby 4.1 + ActiveRecord + SQLite がブラウザの中で動いています。
+    Ruby 4.1, ActiveRecord and SQLite, running inside your browser.
     <a href="https://github.com/shugo/activerecord-refined" target="_blank" rel="noopener">GitHub</a>
   </p>
 </header>
 
-<div id="status">Ruby を読み込んでいます… <strong id="status-detail"></strong></div>
+<div id="status">Loading Ruby… <strong id="status-detail"></strong></div>
 
 <div id="layout" hidden>
   <nav id="sidebar"></nav>
 
   <div id="main">
     <div class="bar">
-      <h2>コード</h2>
+      <h2>Code</h2>
       <div class="spacer"></div>
-      <span class="hint">Ctrl/Cmd + Enter で実行</span>
-      <button class="run" id="run">実行</button>
+      <span class="hint">Ctrl/Cmd + Enter to run</span>
+      <button class="run" id="run">Run</button>
     </div>
     <textarea id="editor" spellcheck="false"></textarea>
 
     <div class="bar">
-      <h2>出力</h2>
+      <h2>Output</h2>
       <div class="spacer"></div>
       <span class="hint" id="timing"></span>
     </div>
@@ -298,13 +298,13 @@ editorEl.addEventListener('keydown', (e) => {
 
 (async () => {
   try {
-    detailEl.textContent = '(ruby.wasm をダウンロード中。初回は数十 MB あります)';
+    detailEl.textContent = '(downloading ruby.wasm — tens of megabytes the first time)';
     const module = await WebAssembly.compileStreaming(fetch('./ruby.wasm'));
 
-    detailEl.textContent = '(Ruby を起動中)';
+    detailEl.textContent = '(starting Ruby)';
     ({ vm } = await DefaultRubyVM(module));
 
-    detailEl.textContent = '(ActiveRecord を読み込み、サンプルデータを作成中)';
+    detailEl.textContent = '(loading ActiveRecord and creating the sample data)';
     await installRubyFiles();
     vm.eval(await (await fetch('./boot.rb')).text());
 
@@ -314,7 +314,7 @@ editorEl.addEventListener('keydown', (e) => {
     editorEl.focus();
   } catch (e) {
     detailEl.textContent = '';
-    statusEl.innerHTML = '<strong>起動に失敗しました。</strong><br>';
+    statusEl.innerHTML = '<strong>Failed to start.</strong><br>';
     statusEl.append(String(e));
   }
 })();
