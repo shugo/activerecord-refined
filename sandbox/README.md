@@ -28,10 +28,16 @@ examples.js     the examples
 manifest.json   list of the Ruby files written into the VM at boot   (generated)
 rb/lib/**       their contents                                       (generated)
 vendor/         the @ruby/wasm-wasi browser bundle                   (generated)
-ruby.wasm       Ruby 4.1 + ActiveRecord + SQLite                     (generated, ~64 MB)
+ruby.wasm       Ruby 4.1 + ActiveRecord + SQLite                     (generated, ~40 MB)
 ```
 
-`ruby.wasm` is large, so serve it with gzip or brotli enabled.
+`ruby.wasm` is large, so serve it with gzip or brotli enabled — it compresses
+to about 12 MB.
+
+`bin/build-wasm` strips the binary at the end. rbwasm builds with `-g`
+throughout, and the DWARF that leaves behind is about 21 MB, a third of the
+file. Nobody is going to debug CRuby's C from the page, and this is the one
+file whose size is worth caring about.
 
 None of the generated files are committed. `bin/prepare-rb` assembles `rb/lib`
 from `../lib` (the gem itself), the sqlite3 gem and `stubs/`, which means

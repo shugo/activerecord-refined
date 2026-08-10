@@ -132,6 +132,19 @@ bundle exec ruby bin/rbwasm-build.rb build \
 # ships a broken binary out of a green build, which is exactly what happened
 # once.  Left as a check on the artifact rather than on the toolchain, so it
 # holds however the pass came to be skipped.
+# rbwasm builds with -g throughout, which leaves about 21 MB of DWARF in the
+# binary -- a third of it.  Nobody is going to debug CRuby's C from this page,
+# and it is the one file here big enough for its size to matter, so it goes.
+#
+# Stripping after wasi-vfs has packed means re-encoding a packed binary; the
+# filesystem rides in a data segment by then and survives, which the examples
+# check confirms.
+echo "==> Stripping debug info"
+"$WORK/toolchain/binaryen/bin/wasm-opt" \
+  --strip-debug --strip-dwarf --strip-producers \
+  -o "$ROOT/ruby.wasm.stripped" "$ROOT/ruby.wasm"
+mv "$ROOT/ruby.wasm.stripped" "$ROOT/ruby.wasm"
+
 echo "==> Checking that the asyncify pass ran"
 node --input-type=module -e '
 import { readFileSync } from "node:fs";
