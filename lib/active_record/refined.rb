@@ -253,9 +253,8 @@ module ActiveRecord
       end
 
       # A symbol names a table, which ActiveRecord's own from only takes as a
-      # string.  With `as` it is selected under another name, which is how a
-      # CTE stands in for the model's own table:
-      # with_recursive(tree: [...]).from(:tree, as: :nodes)
+      # string.  With `as` it is selected under another name; when that name
+      # is the model's own, from_cte says the same thing without repeating it.
       def from(value, subquery_name = nil, as: nil)
         unless value.is_a?(Symbol)
           if as
@@ -266,6 +265,18 @@ module ActiveRecord
         arel_table = Arel::Table.new(value)
         arel_table = arel_table.alias(as) if as
         super(arel_table, subquery_name)
+      end
+
+      # Selects a CTE in place of the model's own table.  The alias is not a
+      # choice -- ActiveRecord keeps qualifying columns with the table name,
+      # so the model's is the only name that works -- which is why it is
+      # taken from the model rather than asked for:
+      # with_recursive(tree: [...]).from_cte(:tree)
+      def from_cte(name)
+        unless name.is_a?(Symbol)
+          raise ArgumentError, "from_cte takes the CTE's name as a symbol"
+        end
+        from(name, as: klass.table_name)
       end
 
       # `as` names the table within the query, which is what makes a self

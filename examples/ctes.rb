@@ -31,8 +31,8 @@ Product.create!(name: 'apple', category_id: groceries.id, price: 2)
 
 # 1. Recursive CTE: every category below 'electronics', itself included.
 #    The recursive member joins the CTE by name, so its ON clause is a block
-#    rather than the string join Rails' own documentation reaches for.  `from`
-#    then selects the CTE under the model's table name.
+#    rather than the string join Rails' own documentation reaches for.
+#    `from_cte` then selects the CTE under the model's table name.
 #
 #    That alias is ActiveRecord's requirement rather than SQL's: by hand the
 #    last line would be `SELECT * FROM tree`.  ActiveRecord keeps qualifying
@@ -45,7 +45,7 @@ subtree =
       Category.where { :id == electronics.id },
       Category.joins(:tree) { :categories[:parent_id] == :tree[:id] },
     ]
-  ).from(:tree, as: :categories)
+  ).from_cte(:tree)
 
 puts '--- 1. Recursive CTE walking a category tree ---'
 puts subtree.to_sql
@@ -65,7 +65,7 @@ with_depth =
         select { [:categories[:id], :categories[:name], :categories[:parent_id],
                   (:tree[:depth] + 1).as(:depth)] },
     ]
-  ).from(:tree, as: :categories).order { [:depth, :id] }
+  ).from_cte(:tree).order { [:depth, :id] }
 
 puts '--- 2. Recursive CTE carrying a depth ---'
 puts with_depth.to_sql

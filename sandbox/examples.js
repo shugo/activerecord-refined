@@ -232,7 +232,7 @@ show Node.with_recursive(
     Node.where { :id == root.id },
     Node.joins(:tree) { :nodes[:parent_id] == :tree[:id] },
   ]
-).from(:tree, as: :nodes)`,
+).from_cte(:tree)`,
       },
       {
         title: 'Carrying the root and the depth down',
@@ -253,13 +253,13 @@ forest = Node.with_recursive(
       select { [:nodes[:id], :nodes[:name], :nodes[:parent_id],
                 :tree[:root_id], (:tree[:depth] + 1).as(:depth)] },
   ]
-).from(:tree, as: :nodes).order { [:depth, :id] }
+).from_cte(:tree).order { [:depth, :id] }
 
 show forest
 
-# The alias in from(:tree, as: :nodes) is what lets this where find its
-# column: without it the SQL would say nodes.root_id of a table the query
-# no longer has.
+# from_cte selects the CTE as nodes, which is what lets this where find its
+# column: without that alias the SQL would say nodes.root_id of a table the
+# query no longer has.
 root = Node.find_by(name: 'other root')
 show forest.where { :root_id == root.id }`,
       },

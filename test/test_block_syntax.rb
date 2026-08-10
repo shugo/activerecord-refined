@@ -547,6 +547,36 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Node.from('tree', as: :nodes) }
   end
 
+  def test_from_cte_takes_the_alias_from_the_model
+    assert_sql(/FROM "tree" (?:AS )?"nodes"/, Node.from_cte(:tree).to_sql)
+    assert_equal(Node.from(:tree, as: :nodes).to_sql, Node.from_cte(:tree).to_sql)
+  end
+
+  def test_from_cte_needs_a_symbol
+    assert_raises(ArgumentError) { Node.from_cte('tree') }
+  end
+
+  # The alias is what lets a where find its column, which is the whole reason
+  # from_cte exists; without it the SQL names a table the query does not have.
+  def test_from_cte_leaves_where_able_to_qualify
+    Node.delete_all
+    root = Node.create!(name: 'root')
+    Node.create!(name: 'child', parent_id: root.id)
+    other = Node.create!(name: 'other root')
+    Node.create!(name: 'other child', parent_id: other.id)
+    forest = Node.with_recursive(
+      tree: [
+        Node.where { :parent_id.null? }.
+          select { [:id, :name, :parent_id, :id.as(:root_id)] },
+        Node.joins(:tree) { :nodes[:parent_id] == :tree[:id] }.
+          select { [:nodes[:id], :nodes[:name], :nodes[:parent_id],
+                    :tree[:root_id]] },
+      ]
+    ).from_cte(:tree)
+    assert_equal(%w[child root],
+      forest.where { :root_id == root.id }.pluck(:name).sort)
+  end
+
   # A CTE is joined by name like any other table, so the recursive member's
   # ON clause is a block rather than the string join Rails' own docs use.
   def test_recursive_cte
