@@ -188,6 +188,19 @@
     background: var(--code-bg);
   }
 
+  /* Ruby colours its syntax errors; these are the codes it reaches for,
+     toned to sit on the output pane's background rather than a terminal's. */
+  #output .b { font-weight: 600; }
+  #output .u { text-decoration: underline; }
+  #output .red     { color: #ff8a80; }
+  #output .green   { color: #a5d6a7; }
+  #output .yellow  { color: #ffe082; }
+  #output .blue    { color: #90caf9; }
+  #output .magenta { color: #ce93d8; }
+  #output .cyan    { color: #80deea; }
+  #output .white   { color: #ffffff; }
+  #output .grey    { color: #9aa4b1; }
+
   #data-close {
     background: none;
     border: 0;
@@ -399,12 +412,44 @@ end
 `;
 }
 
+// Ruby colours its syntax errors, and those escape sequences would otherwise
+// be read as text.  Only the SGR codes it actually uses are understood; any
+// other sequence is dropped rather than shown.
+const SGR = {
+  1: 'b', 4: 'u',
+  31: 'red', 32: 'green', 33: 'yellow', 34: 'blue',
+  35: 'magenta', 36: 'cyan', 37: 'white',
+  90: 'grey', 91: 'red', 92: 'green', 93: 'yellow', 94: 'blue',
+  95: 'magenta', 96: 'cyan', 97: 'white',
+};
+
+function writeAnsi(el, text) {
+  el.replaceChildren();
+  let classes = [];
+
+  for (const piece of text.split(/(\[[0-9;]*m)/)) {
+    const codes = piece.match(/^\[([0-9;]*)m$/);
+    if (codes) {
+      for (const code of (codes[1] || '0').split(';')) {
+        if (code === '' || code === '0') classes = [];
+        else if (SGR[code]) classes = [...new Set([...classes, SGR[code]])];
+      }
+    } else if (piece && classes.length) {
+      const span = document.createElement('span');
+      span.className = classes.join(' ');
+      span.textContent = piece;
+      el.append(span);
+    } else if (piece) {
+      el.append(piece);
+    }
+  }
+}
+
 function evaluate(code) {
-  outputEl.textContent = '';
   try {
-    outputEl.textContent = vm.eval(runnerSource(code)).toString();
+    writeAnsi(outputEl, vm.eval(runnerSource(code)).toString());
   } catch (e) {
-    outputEl.textContent = String(e);
+    writeAnsi(outputEl, String(e));
   }
 }
 
