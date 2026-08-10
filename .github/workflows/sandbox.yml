@@ -18,7 +18,7 @@ jobs:
         working-directory: sandbox
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The host Ruby cannot be 4.1: ruby_wasm's native extension depends on
       # rb-sys, which does not build against Ruby 4.1's headers.  rbwasm is
@@ -29,9 +29,9 @@ jobs:
           bundler-cache: false
           working-directory: sandbox
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '24'
 
       # The Ruby checkout and the build tree have to be cached together.  make
       # decides by mtime, so restoring objects next to a freshly cloned Ruby
@@ -41,7 +41,7 @@ jobs:
       # Gemfile.lock covers it; RUBY_REV is pinned in bin/build-wasm, and the
       # staged extension comes from ext/ and the sqlite3 gem.
       - name: Restore the WASM build tree
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: sandbox/build
           key: wasm-${{ runner.os }}-${{ hashFiles('sandbox/Gemfile.lock', 'sandbox/bin/build-wasm', 'sandbox/ext/**') }}
@@ -62,7 +62,7 @@ jobs:
       - name: Check the examples
         run: node --stack-size=4000 check-examples.mjs
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sandbox
           path: |
@@ -87,14 +87,14 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: sandbox
           path: site
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
       - id: deploy
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

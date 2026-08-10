@@ -44,14 +44,27 @@ fi
 echo "==> Installing build gems"
 bundle install
 
-# A download interrupted partway leaves a short tarball behind, and rbwasm
-# skips fetching when the file is already there -- so the next run fails in tar
-# rather than retrying.  Left alone in CI that state gets cached and every
-# later run fails the same way.  A tarball with nothing unpacked beside it is
-# the signature.
-for tarball in "$WORK"/toolchain/*.tar.gz; do
-  [ -e "$tarball" ] || continue
-  [ -d "${tarball%.tar.gz}" ] || rm -f "$tarball"
+# An interrupted download leaves both a short tarball and a half-unpacked
+# directory behind, and rbwasm skips fetching when the tarball is there and
+# skips unpacking when the directory is there -- so the state repairs itself
+# never.  Worse, a missing wasm-opt is not fatal to the Ruby build: make prints
+# "wasm-opt: not found", carries on, and produces a ruby.wasm that skipped the
+# asyncify pass and only fails at runtime, on an unresolved "asyncify" import.
+# Cached in CI, that would ship a broken binary from a green build.
+#
+# So check for the tool rather than for the directory, and clear both halves.
+discard_toolchain() {
+  echo "==> Discarding incomplete toolchain: $1"
+  rm -rf "$WORK/toolchain/$1" "$WORK/toolchain/$1.tar.gz"
+}
+
+[ ! -d "$WORK/toolchain/binaryen" ] || [ -x "$WORK/toolchain/binaryen/bin/wasm-opt" ] ||
+  discard_toolchain binaryen
+
+for sdk in "$WORK"/toolchain/wasi-sdk-*/; do
+  [ -d "$sdk" ] || continue
+  sdk=${sdk%/}
+  [ -x "$sdk/bin/clang" ] || discard_toolchain "$(basename "$sdk")"
 done
 
 # --- SQLite for wasm32-wasi --------------------------------------------------
