@@ -74,7 +74,10 @@ Then, in the Cloudflare dashboard, connect a custom domain to the bucket
 (R2 → the bucket → Settings → Public access → Custom domain).
 
 `r2-cors.json` lists the origins allowed to fetch the binary. Adjust it if the
-page is served from somewhere other than `shugo.github.io`.
+page is served from somewhere other than `shugo.github.io`. It is in the shape
+wrangler wants — a `rules` array of `{allowed: {origins, methods, headers}}` —
+which is not the flat `AllowedOrigins` shape the dashboard shows for the same
+setting.
 
 Repository variables (Settings → Secrets and variables → Actions → Variables):
 
