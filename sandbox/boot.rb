@@ -115,17 +115,23 @@ child = Node.create!(name: 'child',  parent_id: root.id)
 Node.create!(name: 'grandchild', parent_id: child.id)
 Node.create!(name: 'sibling',    parent_id: root.id)
 
+# Set the SQL apart from the rows printed under it.  The page reads the escape
+# and colours the text; a terminal running check-examples does the same.
+def red(text)
+  "\e[31m#{text}\e[0m"
+end
+
 # `show` is what the examples call: it prints the SQL a relation builds and then
 # the rows it actually returns, so the two can be read side by side.
 def show(relation, limit: 20)
-  sql = relation.to_sql
-  puts sql
+  statement = relation.to_sql
+  puts red(statement)
   puts
 
   # Read the rows through the connection rather than through the model, so the
   # columns shown are exactly the ones the SELECT asked for.  Going via the
   # model would add its other attributes back as nil.
-  print_result ActiveRecord::Base.connection.select_all("#{sql} LIMIT #{limit.to_i}")
+  print_result ActiveRecord::Base.connection.select_all("#{statement} LIMIT #{limit.to_i}")
 rescue ActiveRecord::StatementInvalid => e
   puts 'The database rejected this query:'
   puts "  #{e.message.lines.first.strip}"
@@ -133,7 +139,7 @@ end
 
 # Prints just the SQL, for examples where running the query is beside the point.
 def sql(relation)
-  puts relation.to_sql
+  puts red(relation.to_sql)
 end
 
 # The tables behind the examples, for the Data section of the sidebar.  Asked
