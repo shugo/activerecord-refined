@@ -95,11 +95,19 @@ which means caching the objects apart from the sources they were built from
 rebuilds everything -- one directory is what makes the tree cacheable in one
 piece.
 
-**A download interrupted partway poisons the tree.** rbwasm skips fetching when
-the tarball is already there, so a short one left behind by a failed transfer
-makes every later run fail in `tar` rather than retry. `bin/build-wasm` drops
-tarballs that have nothing unpacked beside them; without that, CI would cache
-the broken state and fail identically from then on.
+**A download interrupted partway poisons the tree.** An interrupted transfer
+leaves a half-unpacked directory as well as a short tarball, and rbwasm skips
+fetching when the tarball is there and skips unpacking when the directory is
+there, so the state never repairs itself. `bin/build-wasm` checks for the tool
+inside — `wasm-opt`, `clang` — and clears both halves when it is missing.
+Checking that the directory exists is exactly the wrong signal.
+
+**A missing wasm-opt does not fail the build.** make prints `wasm-opt: not
+found`, carries on, and the asyncify pass is quietly skipped. What comes out
+looks like a normal ruby.wasm — it is roughly 52 MB instead of 62 MB and fails
+at instantiation, on an `asyncify` import nothing can supply. This shipped
+through a green CI run once. `bin/build-wasm` now rejects a binary that still
+imports `asyncify`, which catches it however the pass came to be skipped.
 
 **Use a clean clone of Ruby.** A tree you build in normally has a leftover
 `prism/.time`. That file marks the build directory as already created, and in
