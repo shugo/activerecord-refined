@@ -14,6 +14,10 @@ Author.
 #   WHERE "authors"."age" BETWEEN 20 AND 40 AND "posts"."published" = TRUE
 ```
 
+**[Try it in your browser](https://shugo.github.io/activerecord-refined/)** —
+Ruby 4.1, ActiveRecord and SQLite run in the page, so the examples build real
+SQL and return real rows without a `ruby-master` build of your own.
+
 ## History
 
 This gem was formerly known as **activerecord-refinements**, created by Akira Matsuda
@@ -40,6 +44,10 @@ works again without monkey-patching `Symbol` globally.
 
 * Ruby 4.1 or later (for `Proc#refined`; not released yet, so a `ruby-master` build is needed for now)
 * ActiveRecord 7.0 or later
+
+The [sandbox](https://shugo.github.io/activerecord-refined/) is there to skip
+that build: it carries its own Ruby 4.1. `sandbox/` in this repository is what
+it is made of.
 
 ## Installation
 
