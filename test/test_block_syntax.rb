@@ -2,11 +2,11 @@ require_relative 'test_helper'
 
 class TestBlockSyntax < Minitest::Test
   def test_equal
-    assert_sql(/WHERE "users"."name" = 'matz'/, User.where { :name == 'matz' }.to_sql)
+    assert_sql(/WHERE "users"."name" = 'alice'/, User.where { :name == 'alice' }.to_sql)
   end
 
   def test_not_equal
-    assert_sql(/WHERE "users"."name" != 'nobu'/, User.where { :name != 'nobu' }.to_sql)
+    assert_sql(/WHERE "users"."name" != 'bob'/, User.where { :name != 'bob' }.to_sql)
   end
 
   def test_greater_than
@@ -34,23 +34,23 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_and
-    assert_sql(/WHERE "users"."name" = 'matz' AND "users"."age" > 18/,
-      User.where { (:name == 'matz') & (:age > 18) }.to_sql)
+    assert_sql(/WHERE "users"."name" = 'alice' AND "users"."age" > 18/,
+      User.where { (:name == 'alice') & (:age > 18) }.to_sql)
   end
 
   def test_or
-    assert_sql(/WHERE \(?\"users\".\"name\" = 'matz' OR \"users\".\"name\" = 'nobu'\)?/,
-      User.where { (:name == 'matz') | (:name == 'nobu') }.to_sql)
+    assert_sql(/WHERE \(?\"users\".\"name\" = 'alice' OR \"users\".\"name\" = 'bob'\)?/,
+      User.where { (:name == 'alice') | (:name == 'bob') }.to_sql)
   end
 
   def test_not
-    assert_sql(/WHERE NOT \(?\"users\".\"name\" = 'matz'\)?/,
-      User.where { !(:name == 'matz') }.to_sql)
+    assert_sql(/WHERE NOT \(?\"users\".\"name\" = 'alice'\)?/,
+      User.where { !(:name == 'alice') }.to_sql)
   end
 
   def test_complex_combination
-    sql = User.where { ((:name == 'matz') & (:age > 18)) | !(:name == 'nobu') }.to_sql
-    assert_sql(/"users"."name" = 'matz'/, sql)
+    sql = User.where { ((:name == 'alice') & (:age > 18)) | !(:name == 'bob') }.to_sql
+    assert_sql(/"users"."name" = 'alice'/, sql)
     assert_sql(/"users"."age" > 18/, sql)
     assert_sql(/NOT/, sql)
     assert_sql(/OR/, sql)
@@ -70,13 +70,13 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_casecmp
-    assert_sql(/WHERE LOWER\("users"."name"\) = LOWER\('Matz'\)/,
-      User.where { :name.casecmp?('Matz') }.to_sql)
+    assert_sql(/WHERE LOWER\("users"."name"\) = LOWER\('Alice'\)/,
+      User.where { :name.casecmp?('Alice') }.to_sql)
   end
 
   def test_casecmp_qualified
-    assert_sql(/WHERE LOWER\("users"."name"\) = LOWER\('Matz'\)/,
-      User.where { :users[:name].casecmp?('Matz') }.to_sql)
+    assert_sql(/WHERE LOWER\("users"."name"\) = LOWER\('Alice'\)/,
+      User.where { :users[:name].casecmp?('Alice') }.to_sql)
   end
 
   def test_casecmp_nil_is_rejected
@@ -86,9 +86,9 @@ class TestBlockSyntax < Minitest::Test
 
   def test_casecmp_execution
     User.delete_all
-    User.create!(name: 'Matz')
-    User.create!(name: 'nobu')
-    assert_equal(['Matz'], User.where { :name.casecmp?('mAtZ') }.pluck(:name))
+    User.create!(name: 'Alice')
+    User.create!(name: 'bob')
+    assert_equal(['Alice'], User.where { :name.casecmp?('aLiCe') }.pluck(:name))
   end
 
   def test_not_like
@@ -115,8 +115,8 @@ class TestBlockSyntax < Minitest::Test
   # of literals; matching any one of them is enough.
   def test_start_with_multiple
     assert_sql(
-      /WHERE \("users"."name" LIKE 'ma%' ESCAPE '\\' OR "users"."name" LIKE 'no%' ESCAPE '\\'\)/,
-      User.where { :name.start_with?('ma', 'no') }.to_sql)
+      /WHERE \("users"."name" LIKE 'al%' ESCAPE '\\' OR "users"."name" LIKE 'bo%' ESCAPE '\\'\)/,
+      User.where { :name.start_with?('al', 'bo') }.to_sql)
   end
 
   def test_end_with_multiple
@@ -128,8 +128,8 @@ class TestBlockSyntax < Minitest::Test
   # The OR arrives grouped, so a following & applies to the whole list.
   def test_start_with_multiple_combined
     assert_sql(
-      /WHERE \("users"."name" LIKE 'ma%' ESCAPE '\\' OR "users"."name" LIKE 'no%' ESCAPE '\\'\) AND "users"."age" > 18/,
-      User.where { :name.start_with?('ma', 'no') & (:age > 18) }.to_sql)
+      /WHERE \("users"."name" LIKE 'al%' ESCAPE '\\' OR "users"."name" LIKE 'bo%' ESCAPE '\\'\) AND "users"."age" > 18/,
+      User.where { :name.start_with?('al', 'bo') & (:age > 18) }.to_sql)
   end
 
   def test_start_with_no_arguments
@@ -350,11 +350,11 @@ class TestBlockSyntax < Minitest::Test
 
   def test_not_distinct_from_a_value_execution
     User.delete_all
-    User.create!(name: 'matz')
+    User.create!(name: 'alice')
     User.create!(name: nil)
-    assert_equal(['matz'], User.where { :name.not_distinct_from?('matz') }.pluck(:name))
+    assert_equal(['alice'], User.where { :name.not_distinct_from?('alice') }.pluck(:name))
     # Unlike !=, this keeps the NULL row.
-    assert_equal([nil], User.where { :name.distinct_from?('matz') }.pluck(:name))
+    assert_equal([nil], User.where { :name.distinct_from?('alice') }.pluck(:name))
   end
 
   def test_distinct_from_postgresql_syntax
@@ -421,8 +421,8 @@ class TestBlockSyntax < Minitest::Test
 
   def test_exists_combined
     assert_sql(
-      /WHERE "authors"."name" = 'matz' AND EXISTS \(SELECT "posts"\.\* FROM "posts" WHERE "posts"."title" = 'pub'\)/,
-      Author.where { (:name == 'matz') & exists?(Post.where(title: 'pub')) }.to_sql)
+      /WHERE "authors"."name" = 'alice' AND EXISTS \(SELECT "posts"\.\* FROM "posts" WHERE "posts"."title" = 'pub'\)/,
+      Author.where { (:name == 'alice') & exists?(Post.where(title: 'pub')) }.to_sql)
   end
 
   def test_exists_execution
@@ -477,8 +477,8 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_qualified_column
-    assert_sql(/WHERE "users"."name" = 'matz'/,
-      User.where { :users[:name] == 'matz' }.to_sql)
+    assert_sql(/WHERE "users"."name" = 'alice'/,
+      User.where { :users[:name] == 'alice' }.to_sql)
   end
 
   def test_column_to_column_comparison
@@ -755,8 +755,8 @@ class TestBlockSyntax < Minitest::Test
   # rather than opening the condition up.
   def test_values_are_quoted
     User.delete_all
-    User.create!(name: 'matz')
-    User.create!(name: 'nobu')
+    User.create!(name: 'alice')
+    User.create!(name: 'bob')
     payload = "x' OR 1=1 --"
     assert_empty(User.where { :name == payload }.pluck(:name))
     assert_empty(User.where { :name.like?(payload) }.pluck(:name))
@@ -793,9 +793,9 @@ class TestBlockSyntax < Minitest::Test
 
   def test_scalar_functions_run
     User.delete_all
-    User.create!(name: 'matz', age: 60)
-    assert_equal(['MATZ-x'], User.select { concat(upper(:name), '-x').as(:v) }.map(&:v))
-    assert_equal([4], User.select { char_length(:name).as(:v) }.map(&:v))
+    User.create!(name: 'alice', age: 60)
+    assert_equal(['ALICE-x'], User.select { concat(upper(:name), '-x').as(:v) }.map(&:v))
+    assert_equal([5], User.select { char_length(:name).as(:v) }.map(&:v))
     assert_equal([60], User.select { greatest(:age, 18).as(:v) }.map(&:v))
   end
 
@@ -826,8 +826,8 @@ class TestBlockSyntax < Minitest::Test
       assert_raises(NotImplementedError) { User.select { format('%s!', :name) } }
     else
       User.delete_all
-      User.create!(name: 'matz')
-      assert_equal(['matz!'], User.select { format('%s!', :name).as(:v) }.map(&:v))
+      User.create!(name: 'alice')
+      assert_equal(['alice!'], User.select { format('%s!', :name).as(:v) }.map(&:v))
     end
   end
 
@@ -863,7 +863,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_current_timestamp_runs
     User.delete_all
-    User.create!(name: 'matz')
+    User.create!(name: 'alice')
     refute_nil(User.select { current_timestamp.as(:v) }.sole.v)
   end
 
@@ -879,7 +879,7 @@ class TestBlockSyntax < Minitest::Test
       assert_sql(/SELECT CURRENT_TIME\(0\) FROM/,
         User.select { current_time(0) }.to_sql)
       User.delete_all
-      User.create!(name: 'matz')
+      User.create!(name: 'alice')
       refute_nil(User.select { current_timestamp(0).as(:v) }.sole.v)
     end
   end
@@ -918,7 +918,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_math_functions_run
     User.delete_all
-    User.create!(name: 'matz', age: 60)
+    User.create!(name: 'alice', age: 60)
     assert_equal(1, User.select { sign(:age).as(:v) }.sole.v.to_i)
     assert_equal(60,
       User.select { round(degrees(radians(:age))).as(:v) }.sole.v.to_i)
@@ -965,7 +965,7 @@ class TestBlockSyntax < Minitest::Test
   def test_extract_runs
     skip "#{ADAPTER} has no extract" if ADAPTER == 'sqlite3'
     User.delete_all
-    User.create!(name: 'matz')
+    User.create!(name: 'alice')
     assert_equal(2026,
       User.select { extract(:year, cast('2026-01-05', :date)).as(:v) }.sole.v.to_i)
   end
@@ -977,7 +977,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_cast_runs
     User.delete_all
-    User.create!(name: 'matz')
+    User.create!(name: 'alice')
     assert_equal(12.5,
       User.select { cast('12.5', 'decimal(10,2)').as(:v) }.sole.v.to_f)
   end

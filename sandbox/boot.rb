@@ -83,17 +83,17 @@ class Employee < ActiveRecord::Base; end
 class Item < ActiveRecord::Base; end
 class Node < ActiveRecord::Base; end
 
-matz  = Author.create!(name: 'Matz',   country: 'JP', age: 60)
-ko1   = Author.create!(name: 'Koichi', country: 'JP', age: 47)
-nobu  = Author.create!(name: 'Nobu',   country: nil,  age: 55)
-aaron = Author.create!(name: 'Aaron',  country: 'US', age: 46)
-Author.create!(name: 'Ann', country: nil, age: 17)
+alice = Author.create!(name: 'Alice', country: 'JP', age: 60)
+bob   = Author.create!(name: 'Bob',   country: 'JP', age: 47)
+carol = Author.create!(name: 'Carol', country: nil,  age: 55)
+dave  = Author.create!(name: 'Dave',  country: 'US', age: 46)
+Author.create!(name: 'Erin', country: nil, age: 17)
 
-p1 = Post.create!(author: matz,  title: 'Ruby 4.1 is coming',   published: true,  likes: 120)
-p2 = Post.create!(author: matz,  title: 'Refinements revisited', published: true,  likes: 80)
-p3 = Post.create!(author: ko1,   title: 'YJIT internals',        published: false, likes: 30)
-p4 = Post.create!(author: aaron, title: 'A test post',           published: true,  likes: 5)
-Post.create!(author: nobu, title: 'Patch review notes', published: true, likes: 42)
+p1 = Post.create!(author: alice, title: 'Ruby 4.1 is coming',    published: true,  likes: 120)
+p2 = Post.create!(author: alice, title: 'Refinements revisited', published: true,  likes: 80)
+p3 = Post.create!(author: bob,   title: 'YJIT internals',        published: false, likes: 30)
+p4 = Post.create!(author: dave,  title: 'A test post',           published: true,  likes: 5)
+Post.create!(author: carol, title: 'Patch review notes', published: true, likes: 42)
 
 Comment.create!(post: p1, body: 'Nice')
 Comment.create!(post: p1, body: 'Looking forward to it')
