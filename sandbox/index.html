@@ -328,8 +328,10 @@ const dataTitleEl = document.getElementById('data-title');
 const dataCountEl = document.getElementById('data-count');
 const dataTableEl = document.getElementById('data-table');
 const dataCloseEl = document.getElementById('data-close');
+const dataScrollEl = document.getElementById('data-scroll');
 
 let vm;
+let openTableName = null;
 
 // These are a few KB each and change with every deployment, while GitHub
 // Pages serves them with max-age=600.  A hard reload does not help: it
@@ -407,7 +409,11 @@ function evaluate(code) {
 }
 
 function run() {
-  if (vm) evaluate(editorEl.value);
+  if (!vm) return;
+  evaluate(editorEl.value);
+  // What just ran may well have changed the table on display -- creating a row
+  // is one of the things you come here to try.
+  if (openTableName) openTable(openTableName);
 }
 
 // Each pane keeps its own selection: opening a table does not mean you have
@@ -423,6 +429,10 @@ function select(button) {
 // against can be read together.  The rows are read when the button is pressed;
 // pressing it again is the refresh.
 function openTable(name) {
+  // Reopening the same table is a refresh, so hold the scroll position rather
+  // than throwing the reader back to the first row.
+  const scrollTop = name === openTableName ? dataScrollEl.scrollTop : 0;
+
   const json = vm.eval(`
     begin
       data_json(${JSON.stringify(name)})
@@ -466,11 +476,14 @@ function openTable(name) {
     dataCountEl.textContent = `${rows.length} row(s)`;
   }
 
+  openTableName = name;
   dataPaneEl.hidden = false;
+  dataScrollEl.scrollTop = scrollTop;
 }
 
 function closeTable() {
   dataPaneEl.hidden = true;
+  openTableName = null;
   for (const b of dataNavEl.querySelectorAll('button')) b.removeAttribute('aria-current');
 }
 
