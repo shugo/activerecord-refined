@@ -47,11 +47,6 @@
   /* Same clash as #data-pane below: display here outranks [hidden], so the
      layout would show through while Ruby is still starting. */
   #layout[hidden] { display: none; }
-  @media (max-width: 800px) {
-    #layout { grid-template-columns: 1fr; height: auto; }
-    #sidebar { height: 260px; }
-    #data-nav { max-height: 50%; }
-  }
 
   /* Two panes that scroll apart: the examples are a long list to read
      through, the tables a short one to keep reaching for.  Letting the
@@ -233,6 +228,41 @@
     font-size: .9rem;
   }
   #status strong { color: var(--fg); }
+
+  /* Narrow enough that two columns of anything are unreadable, so the whole
+     page becomes one column that scrolls.  The nesting is dissolved with
+     display: contents and the pieces ordered by hand, which is what lets the
+     table list and the table it opens sit at the foot of the page together --
+     out of the way until wanted, rather than above the editor. */
+  @media (max-width: 800px) {
+    #layout {
+      grid-template-columns: 1fr;
+      height: auto;
+      gap: .5rem;
+      padding: 1rem 1.25rem 1.25rem;
+    }
+    #sidebar, #main, #output-split { display: contents; }
+
+    #examples-nav { order: 1; max-height: 220px; padding: 0 0 .5rem; }
+    #code-bar     { order: 2; }
+    #editor       { order: 3; height: 28vh; }
+    #output-bar   { order: 4; }
+    #output       { order: 5; height: 34vh; }
+    #data-nav     { order: 6; max-height: 220px; padding: .5rem 0; }
+    #data-bar     { order: 7; }
+    #data-scroll  { order: 8; max-height: 50vh; }
+
+    /* The two-column placement above is for the wide layout only. */
+    #output-bar, #output, #data-bar, #data-scroll {
+      grid-column: auto;
+      grid-row: auto;
+    }
+
+    #sidebar h2 { margin-left: 0; margin-right: 0; }
+    #sidebar button { padding-left: 0; padding-right: 0; }
+    #examples-nav { border: 0; border-bottom: 1px solid var(--border); }
+    #data-nav { border: 0; border-top: 1px solid var(--border); }
+  }
 </style>
 </head>
 <body>
@@ -254,7 +284,7 @@
   </nav>
 
   <div id="main">
-    <div class="bar">
+    <div class="bar" id="code-bar">
       <h2>Code</h2>
       <div class="spacer"></div>
       <span class="hint">Ctrl/Cmd + Enter to run</span>
