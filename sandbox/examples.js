@@ -234,6 +234,35 @@ show Node.with_recursive(
   ]
 ).from(:tree, as: :nodes)`,
       },
+      {
+        title: 'Carrying the root and the depth down',
+        code: `# The anchor takes every root and the recursive member carries what it
+# started with down to each child, so one walk covers the whole forest and
+# every row knows which tree it came from and how far down it sits.  Which
+# tree you want is an ordinary where, asked afterwards -- the CTE is not
+# rebuilt for each root, which is what makes it worth naming.
+#
+# 0 is a value rather than SQL: at the top of a select list a bare string
+# would be SQL, so numbers say .as directly and anything else says
+# value(...).as.
+forest = Node.with_recursive(
+  tree: [
+    Node.where { :parent_id.null? }.
+      select { [:id, :name, :parent_id, :id.as(:root_id), 0.as(:depth)] },
+    Node.joins(:tree) { :nodes[:parent_id] == :tree[:id] }.
+      select { [:nodes[:id], :nodes[:name], :nodes[:parent_id],
+                :tree[:root_id], (:tree[:depth] + 1).as(:depth)] },
+  ]
+).from(:tree, as: :nodes).order { [:depth, :id] }
+
+show forest
+
+# The alias in from(:tree, as: :nodes) is what lets this where find its
+# column: without it the SQL would say nodes.root_id of a table the query
+# no longer has.
+root = Node.find_by(name: 'other root')
+show forest.where { :root_id == root.id }`,
+      },
     ],
   },
 

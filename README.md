@@ -373,6 +373,29 @@ written into the SQL as given — so those two have to be plain names,
 optionally qualified by a schema in `fn`'s case. Anything else raises
 `ArgumentError` rather than reaching the query.
 
+One place asks for a value to be said out loud: the top of a select list.
+Everywhere else a bare literal is already a value — `where { :age > 18 }`,
+`concat(:name, '-x')` — but ActiveRecord reads a string in `select` as SQL,
+so `value` is how you ask for the other meaning. It carries the predications
+and arithmetic with it, so a literal can be compared and combined like
+anything else. Numbers have a shorthand, since nothing else could be meant by
+one:
+
+```ruby
+Node.select { [:id, value(0).as(:depth)] }
+# SELECT "nodes"."id", 0 AS depth FROM "nodes"
+
+Node.select { [:id, 0.as(:depth)] }         # the same thing
+
+Post.select { [:title, value('draft').as(:state)] }
+# SELECT "posts"."title", 'draft' AS state FROM "posts"
+```
+
+The shorthand is `Integer` and `Float` only. `String` keeps its two meanings —
+SQL in a select list, a value everywhere else — and refining it would make the
+same literal mean one thing or the other depending on whether it had been sent
+a message.
+
 `fn` reaches functions without a method of their own. Its name is emitted as
 written, so a case-sensitive one can be spelled exactly:
 

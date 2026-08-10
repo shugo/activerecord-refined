@@ -1179,4 +1179,71 @@ class TestBlockSyntax < Minitest::Test
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)
   end
+
+  def test_value_in_a_select_list
+    assert_sql(/SELECT "users"."name", 0 AS depth/,
+      User.select { [:name, value(0).as(:depth)] }.to_sql)
+  end
+
+  # Each adapter escapes the apostrophe its own way, so what is asserted is
+  # that the string stays a value rather than reaching the SQL as written.
+  def test_value_is_quoted
+    User.delete_all
+    User.create!(name: 'alice')
+    payload = "it's a value"
+    assert_sql(/SELECT 'draft' AS state/,
+      User.select { value('draft').as(:state) }.to_sql)
+    assert_equal([payload],
+      User.select { value(payload).as(:note) }.map(&:note))
+  end
+
+  def test_a_bare_string_is_still_sql
+    assert_sql(/SELECT "users"."name", 1 \+ 1 AS two/,
+      User.select { [:name, '1 + 1 AS two'] }.to_sql)
+  end
+
+  def test_value_takes_the_predications
+    assert_sql(/WHERE 1 = "users"."age"/, User.where { value(1) == :users[:age] }.to_sql)
+    assert_sql(/WHERE 1 IS NULL/, User.where { value(1).null? }.to_sql)
+  end
+
+  def test_value_takes_the_arithmetics
+    assert_sql(/SELECT \(1 \+ "users"."age"\) AS next_year/,
+      User.select { (value(1) + :age).as(:next_year) }.to_sql)
+  end
+
+  def test_value_as_a_function_argument
+    assert_sql(/SELECT COALESCE\("users"."age", 0\)/,
+      User.select { coalesce(:age, value(0)) }.to_sql)
+  end
+
+  def test_integer_shorthand_for_value
+    assert_sql(/SELECT "users"."name", 0 AS depth/,
+      User.select { [:name, 0.as(:depth)] }.to_sql)
+  end
+
+  def test_float_shorthand_for_value
+    assert_sql(/SELECT 1\.5 AS rate/, User.select { 1.5.as(:rate) }.to_sql)
+  end
+
+  def test_numeric_shorthand_has_no_orderings
+    assert_raises(NoMethodError) { User.order { 1.asc } }
+    assert_raises(NoMethodError) { User.order { 1.desc } }
+  end
+
+  def test_value_alias_rejects_an_injected_name
+    assert_raises(ArgumentError) { User.select { value(0).as(INJECTION.to_sym) } }
+    assert_raises(ArgumentError) { User.select { 0.as(INJECTION.to_sym) } }
+  end
+
+  def test_a_value_selected_reaches_the_row
+    User.delete_all
+    User.create!(name: 'alice', age: 60)
+    assert_equal([['alice', 0]],
+      User.select { [:name, 0.as(:depth)] }.map {|u| [u.name, u.depth] })
+  end
+
+  def test_numeric_shorthand_is_confined_to_the_block
+    assert_raises(NoMethodError) { 0.as(:depth) }
+  end
 end

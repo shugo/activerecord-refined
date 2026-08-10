@@ -22,6 +22,18 @@ module ActiveRecord
           AST::Column.new(self, column_name)
         end
       end
+
+      # Shorthand for `value(0).as(:depth)` and the like.  Numbers only: a
+      # string in a select list already means SQL rather than a string, so
+      # giving String this would make the same literal mean two things
+      # depending on whether it had been sent a message.
+      [Integer, Float].each do |klass|
+        refine klass do
+          def as(alias_name)
+            AST::As.new(AST::Value.new(self), alias_name)
+          end
+        end
+      end
     end
 
     class BlockContext
@@ -162,6 +174,17 @@ module ActiveRecord
 
       def exists?(relation)
         AST::Exists.new(relation)
+      end
+
+      # A literal where an expression is expected, quoted like any other value:
+      #
+      #   select { [:id, value(0).as(:depth)] }
+      #
+      # Needed because the top of a select list is ActiveRecord's, and a bare
+      # string there is SQL rather than a string.  Numbers have a shorthand --
+      # `0.as(:depth)` -- since nothing else could be meant by one.
+      def value(literal)
+        AST::Value.new(literal)
       end
 
       private

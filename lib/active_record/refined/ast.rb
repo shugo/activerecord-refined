@@ -246,6 +246,29 @@ module ActiveRecord
         end
       end
 
+      # A literal standing where an expression would: `select { value(0).as(:depth) }`.
+      #
+      # Values reach the SQL quoted wherever they appear as an operand, but the
+      # top of a select list is ActiveRecord's, and a bare string there is SQL
+      # rather than a string.  Saying `value` is how you ask for the other
+      # meaning, and it carries the predications with it, so a literal can be
+      # compared and combined like anything else.
+      class Value < Node
+        include Predications
+        include Arithmetics
+        include Aggregations
+
+        attr_reader :value
+
+        def initialize(value)
+          @value = value
+        end
+
+        def to_arel(_table)
+          Arel::Nodes.build_quoted(value)
+        end
+      end
+
       class Column < Node
         include Predications
         include Arithmetics
