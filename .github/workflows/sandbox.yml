@@ -40,6 +40,13 @@ jobs:
       # The build directory is keyed on the gems that have C extensions, so
       # Gemfile.lock covers it; RUBY_REV is pinned in bin/build-wasm, and the
       # staged extension comes from ext/ and the sqlite3 gem.
+      #
+      # restore-keys is what keeps this worth caching -- a key change would
+      # otherwise mean a cold 16-minute build rather than two minutes -- but it
+      # also means a bad tree outlives the key that produced it, since the
+      # prefix still matches.  Editing a file in the key does not clear it;
+      # deleting the cache does.  bin/build-wasm rejects a ruby.wasm built from
+      # such a tree, so it fails the run rather than shipping.
       - name: Restore the WASM build tree
         uses: actions/cache@v6
         with:
