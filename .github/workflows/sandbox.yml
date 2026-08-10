@@ -129,7 +129,7 @@ jobs:
             sandbox/config.json
             ${{ steps.r2.outputs.uploaded != 'true' && 'sandbox/ruby.wasm' || '' }}
             sandbox/rb
-            sandbox/vendor/browser.umd.js
+            sandbox/assets
           if-no-files-found: ignore
           retention-days: 7
 

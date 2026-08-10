@@ -11,6 +11,7 @@
 /manifest.json
 /config.json
 /vendor
+/assets
 
 /build
 /rubies

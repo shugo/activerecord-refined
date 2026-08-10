@@ -27,7 +27,7 @@ boot.rb         schema and seed data for the in-memory SQLite database, the show
 examples.js     the examples
 manifest.json   list of the Ruby files written into the VM at boot   (generated)
 rb/lib/**       their contents                                       (generated)
-vendor/         the @ruby/wasm-wasi browser bundle                   (generated)
+assets/         the browser bundles: ruby.wasm's loader, and CodeMirror (generated)
 ruby.wasm       Ruby 4.1 + ActiveRecord + SQLite                     (generated, ~40 MB)
 ```
 

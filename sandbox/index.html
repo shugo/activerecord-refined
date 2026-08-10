@@ -130,7 +130,7 @@
   button.run:disabled { background: #b9c0c9; cursor: default; }
   .hint { color: var(--muted); font-size: .78rem; }
 
-  textarea, pre {
+  pre {
     font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.55;
@@ -139,14 +139,16 @@
     min-height: 0;
   }
 
-  textarea {
-    width: 100%;
-    padding: .7rem .8rem;
-    border: 1px solid var(--border);
-    resize: none;
-    tab-size: 2;
+  /* CodeMirror brings its own scrolling and its own theme; this only has to
+     give it a box to fill and the monospace face the rest of the page uses. */
+  #editor {
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 6px;
+    font-family: var(--font-mono);
   }
-  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #editor .cm-editor { height: 100%; }
+  #editor .cm-editor.cm-focused { outline: 2px solid var(--accent); outline-offset: -1px; }
 
   pre {
     background: var(--code-bg);
@@ -303,7 +305,7 @@
       <span class="hint">Ctrl/Cmd + Enter to run</span>
       <button class="run" id="run">Run</button>
     </div>
-    <textarea id="editor" spellcheck="false"></textarea>
+    <div id="editor"></div>
 
     <div id="output-split">
       <div class="bar" id="output-bar"><h2>Output</h2></div>
@@ -321,9 +323,10 @@
   </div>
 </div>
 
-<script src="./vendor/browser.umd.js"></script>
+<script src="./assets/browser.umd.js"></script>
 <script type="module">
 import { examples } from './examples.js';
+import { createEditor } from './assets/editor.js';
 
 const { DefaultRubyVM } = globalThis['ruby-wasm-wasi'];
 
@@ -333,7 +336,8 @@ const layoutEl = document.getElementById('layout');
 const sidebarEl = document.getElementById('sidebar');
 const examplesNavEl = document.getElementById('examples-nav');
 const dataNavEl = document.getElementById('data-nav');
-const editorEl = document.getElementById('editor');
+const editorParentEl = document.getElementById('editor');
+let editorEl;
 const outputEl = document.getElementById('output');
 const runEl = document.getElementById('run');
 const dataPaneEl = document.getElementById('data-pane');
@@ -577,12 +581,6 @@ function buildSidebar(tables) {
 
 runEl.addEventListener('click', run);
 dataCloseEl.addEventListener('click', closeTable);
-editorEl.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-    e.preventDefault();
-    run();
-  }
-});
 
 // ruby.wasm is 40 MB, over the 25 MiB a Cloudflare Pages asset may be and
 // most of the bandwidth this page uses, so deployments serve it from R2
@@ -616,6 +614,10 @@ async function rubyWasmUrl() {
 
     statusEl.hidden = true;
     layoutEl.hidden = false;
+
+    // After the layout is shown, so CodeMirror measures a box that has a size.
+    editorEl = createEditor({ parent: editorParentEl, onRun: run });
+
     buildSidebar(tables).click();
     editorEl.focus();
   } catch (e) {

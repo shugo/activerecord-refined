@@ -42,5 +42,13 @@ if [ ! -f "$BUNDLE" ]; then
   echo "$BUNDLE not found; run 'npm ci' first" >&2
   exit 1
 fi
-mkdir -p vendor
-cp "$BUNDLE" vendor/
+mkdir -p assets
+cp "$BUNDLE" assets/
+
+# CodeMirror is a dozen ESM packages with bare specifiers between them, so it
+# has to be bundled before a page can load it.
+npx esbuild src/editor.js \
+  --bundle --format=esm --minify \
+  --outfile=assets/editor.js \
+  --log-level=warning
+echo "$(du -h assets/editor.js | cut -f1) assets/editor.js"
