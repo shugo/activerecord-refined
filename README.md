@@ -277,17 +277,31 @@ so a misspelling is a `NoMethodError` where you wrote it, and a name Ruby also
 answers to — `rand` — means the SQL one inside a block:
 
 ```
-abs  ceil  char_length  coalesce  concat  date_trunc  exp  floor  format
-greatest  least  length  ln  log  lower  ltrim  mod  now  nullif  power  rand
-replace  round  rtrim  sqrt  substr  trim  upper
+abs  ceil  char_length  coalesce  concat  current_date  current_time
+current_timestamp  date_trunc  exp  floor  format  greatest  least  length
+ln  localtime  localtimestamp  log  lower  ltrim  mod  now  nullif  power
+rand  replace  round  rtrim  sqrt  substr  trim  upper
 ```
 
 Most are spelled the same everywhere. Where they are not, the method names one
 meaning and each adapter gets its own spelling: `char_length`, `greatest` and
 `least` become `LENGTH`, `MAX` and `MIN` on SQLite, and `rand` is `RAND` on
 MySQL and `RANDOM` elsewhere. Where an adapter has no equivalent — `date_trunc`
-outside PostgreSQL, `now` on SQLite — the block raises `NotImplementedError`
-rather than leaving the database to reject the SQL.
+outside PostgreSQL, `now` and the `local*` pair on SQLite — the block raises
+`NotImplementedError` rather than leaving the database to reject the SQL.
+
+`current_date`, `current_time`, `current_timestamp`, `localtime` and
+`localtimestamp` come out without parentheses, as the grammar has them —
+written as calls, PostgreSQL and SQLite would reject them. What does go into
+parentheses is an optional precision — `current_timestamp(3)` — which
+`current_date` never takes and SQLite never accepts. `current_timestamp` is
+the portable spelling of what `now` means, and reaches SQLite where `now`
+does not:
+
+```ruby
+Post.where { :published_at <= current_timestamp }
+# SELECT "posts".* FROM "posts" WHERE "posts"."published_at" <= CURRENT_TIMESTAMP
+```
 
 `format` is printf formatting, and raises on MySQL, where a function of the
 same name does something else entirely: it puts separators in a number, and

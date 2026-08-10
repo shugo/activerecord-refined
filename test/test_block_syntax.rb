@@ -845,6 +845,68 @@ class TestBlockSyntax < Minitest::Test
     end
   end
 
+  # CURRENT_TIMESTAMP and its relatives are grammar rather than calls, so
+  # they come out without the parentheses PostgreSQL and SQLite reject.
+  def test_datetime_value_functions_are_emitted_bare
+    assert_sql(/SELECT CURRENT_TIMESTAMP FROM/,
+      User.select { current_timestamp }.to_sql)
+    assert_sql(/SELECT CURRENT_DATE FROM/, User.select { current_date }.to_sql)
+    assert_sql(/SELECT CURRENT_TIME FROM/, User.select { current_time }.to_sql)
+  end
+
+  def test_datetime_value_function_in_comparison_and_alias
+    assert_sql(/WHERE "users"."name" < CURRENT_TIMESTAMP/,
+      User.where { :name < current_timestamp }.to_sql)
+    assert_sql(/SELECT CURRENT_TIMESTAMP AS ts FROM/,
+      User.select { current_timestamp.as(:ts) }.to_sql)
+  end
+
+  def test_current_timestamp_runs
+    User.delete_all
+    User.create!(name: 'matz')
+    refute_nil(User.select { current_timestamp.as(:v) }.sole.v)
+  end
+
+  # The one thing that does go into the parentheses is a precision, which
+  # current_date never takes and SQLite never accepts.
+  def test_datetime_value_function_with_precision
+    if ADAPTER == 'sqlite3'
+      e = assert_raises(NotImplementedError) { User.select { current_timestamp(3) } }
+      assert_match(/precision/, e.message)
+    else
+      assert_sql(/SELECT CURRENT_TIMESTAMP\(3\) FROM/,
+        User.select { current_timestamp(3) }.to_sql)
+      assert_sql(/SELECT CURRENT_TIME\(0\) FROM/,
+        User.select { current_time(0) }.to_sql)
+      User.delete_all
+      User.create!(name: 'matz')
+      refute_nil(User.select { current_timestamp(0).as(:v) }.sole.v)
+    end
+  end
+
+  def test_current_date_takes_no_precision
+    assert_raises(ArgumentError) { User.select { current_date(0) } }
+  end
+
+  # The precision is written into the SQL as given, so only an Integer is
+  # accepted there.
+  def test_precision_must_be_an_integer
+    assert_raises(ArgumentError) do
+      User.select { current_timestamp(:'3); DROP TABLE users --') }
+    end
+  end
+
+  def test_localtime_is_unsupported_on_sqlite
+    if ADAPTER == 'sqlite3'
+      assert_raises(NotImplementedError) { User.select { localtime } }
+      assert_raises(NotImplementedError) { User.select { localtimestamp } }
+    else
+      assert_sql(/SELECT LOCALTIME FROM/, User.select { localtime }.to_sql)
+      assert_sql(/SELECT LOCALTIMESTAMP FROM/,
+        User.select { localtimestamp }.to_sql)
+    end
+  end
+
   # A name with no method of its own is still a NoMethodError, not a
   # function call the database has to reject.
   def test_unknown_function_is_a_no_method_error

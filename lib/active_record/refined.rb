@@ -83,7 +83,44 @@ module ActiveRecord
       }.freeze
 
       SCALAR_FUNCTIONS.each_key do |name|
-        define_method(name) {|*args| AST::Function.new(function_name(name), args) }
+        define_method(name) do |*args|
+          AST::Function.new(function_name(name, SCALAR_FUNCTIONS), args)
+        end
+      end
+
+      # The datetime value functions, as the SQL grammar calls them.  These
+      # the grammar has bare -- PostgreSQL and SQLite reject them written with
+      # parentheses -- and the one thing that does go into parentheses is an
+      # optional precision, current_timestamp(3), which current_date never
+      # takes and SQLite never accepts.  The table reads like
+      # SCALAR_FUNCTIONS; current_timestamp is the portable spelling of what
+      # now means, reaching SQLite where now does not.
+      DATETIME_VALUE_FUNCTIONS = {
+        current_date: {},
+        current_time: {},
+        current_timestamp: {},
+        localtime: {sqlite: nil},
+        localtimestamp: {sqlite: nil},
+      }.freeze
+
+      def current_date
+        AST::DatetimeValueFunction.new(
+          function_name(:current_date, DATETIME_VALUE_FUNCTIONS))
+      end
+
+      (DATETIME_VALUE_FUNCTIONS.keys - [:current_date]).each do |name|
+        define_method(name) do |precision = nil|
+          # Built first so that a precision of the wrong type is an
+          # ArgumentError on every adapter, before SQLite gets to say it takes
+          # none at all.
+          node = AST::DatetimeValueFunction.new(
+            function_name(name, DATETIME_VALUE_FUNCTIONS), precision)
+          if precision && adapter_family == :sqlite
+            raise NotImplementedError,
+              "#{name} takes no precision on #{@model.connection_db_config.adapter}"
+          end
+          node
+        end
       end
 
       # Escape hatch for functions without a method of their own.  The name is
@@ -101,8 +138,8 @@ module ActiveRecord
 
       private
 
-      def function_name(name)
-        spellings = SCALAR_FUNCTIONS.fetch(name)
+      def function_name(name, functions)
+        spellings = functions.fetch(name)
         return name.to_s.upcase unless spellings.key?(adapter_family)
         spellings.fetch(adapter_family) ||
           raise(NotImplementedError,

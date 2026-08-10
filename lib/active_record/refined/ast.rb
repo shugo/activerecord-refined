@@ -361,6 +361,33 @@ module ActiveRecord
         end
       end
 
+      # CURRENT_TIMESTAMP and its relatives, what the SQL grammar calls a
+      # datetime value function.  The grammar has them bare, and PostgreSQL
+      # and SQLite reject them written as calls, so unlike Function the name
+      # is emitted without parentheses.  A precision is the one thing that
+      # does go into parentheses, and it is written into the SQL as given, so
+      # only an Integer is accepted.
+      class DatetimeValueFunction < Node
+        include Predications
+        include Arithmetics
+
+        attr_reader :name, :precision
+
+        def initialize(name, precision = nil)
+          unless precision.nil? || precision.is_a?(Integer)
+            raise ArgumentError,
+              "#{precision.inspect} is not an Integer precision"
+          end
+          @name = name
+          @precision = precision
+        end
+
+        def to_arel(_table)
+          Arel::Nodes::SqlLiteral.new(
+            precision ? "#{name}(#{precision})" : name)
+        end
+      end
+
       # A plain SQL comparison. The value is passed through as it is, so a Range
       # or an Array compares against a PostgreSQL range or array column, the way
       # ActiveRecord's own force_equality? types do.
