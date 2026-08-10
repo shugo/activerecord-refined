@@ -147,12 +147,25 @@ end
 # Every row of one table as it stands now -- after whatever the examples, or
 # you, have done to it.
 def data(table, limit: 50)
-  name = tables.find { |t| t == table.to_s } or
-    raise ArgumentError, "no such table: #{table} (#{tables.join(', ')})"
-
-  puts "#{name}"
+  name = table_named(table)
+  puts name
   puts
   print_result ActiveRecord::Base.connection.select_all("SELECT * FROM #{name} LIMIT #{limit.to_i}")
+end
+
+# The same rows as `data`, handed to the page as JSON so it can lay them out
+# as a real table.  nil survives the trip as null, which matters here more than
+# most places: telling NULL from an empty string is half of what the DSL is
+# about.
+def data_json(table, limit: 200)
+  require 'json'
+  result = ActiveRecord::Base.connection.select_all("SELECT * FROM #{table_named(table)} LIMIT #{limit.to_i}")
+  JSON.generate(table: table_named(table), columns: result.columns, rows: result.rows)
+end
+
+def table_named(table)
+  tables.find { |t| t == table.to_s } or
+    raise ArgumentError, "no such table: #{table} (#{tables.join(', ')})"
 end
 
 def print_result(result)
