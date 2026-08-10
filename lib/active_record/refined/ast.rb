@@ -9,6 +9,9 @@ module ActiveRecord
       NAME = /[[:alpha:]_][[:alnum:]_$]*/
       ALIAS_NAME = /\A#{NAME}\z/
       FUNCTION_NAME = /\A#{NAME}(\.#{NAME})?\z/
+      # A SQL type as cast writes it: words, at most parenthesized with
+      # lengths -- double precision, decimal(10,2).
+      TYPE_NAME = /\A[[:alpha:]_][[:alnum:]_ ]*(\(\d+(, ?\d+)?\))?\z/
 
       def self.check_name(name, pattern, what)
         return name if pattern.match?(name.to_s)
@@ -218,6 +221,15 @@ module ActiveRecord
           else operand
           end
         end
+
+        # Resolves a function argument: a column or an expression as above,
+        # anything else a value to be quoted.
+        def to_arel_argument(arg, table)
+          case arg
+          when Node, Symbol then to_arel_operand(arg, table)
+          else Arel::Nodes.build_quoted(arg)
+          end
+        end
       end
 
       class Predicate < Node
@@ -351,13 +363,50 @@ module ActiveRecord
         end
 
         def to_arel(table)
-          arel_args = args.map do |arg|
-            case arg
-            when Node, Symbol then to_arel_operand(arg, table)
-            else Arel::Nodes.build_quoted(arg)
-            end
-          end
+          arel_args = args.map {|arg| to_arel_argument(arg, table) }
           Arel::Nodes::NamedFunction.new(name, arel_args)
+        end
+      end
+
+      # EXTRACT(field FROM expr).  The field is grammar rather than a value --
+      # a keyword the adapter reads bare -- so it has to be a plain name,
+      # which Arel upcases on the way out.
+      class Extract < Node
+        include Predications
+        include Arithmetics
+
+        attr_reader :field, :operand
+
+        def initialize(field, operand)
+          @field = AST.check_name(field, ALIAS_NAME, "extract field")
+          @operand = operand
+        end
+
+        def to_arel(table)
+          Arel::Nodes::Extract.new(to_arel_argument(operand, table), field.to_s)
+        end
+      end
+
+      # CAST(expr AS type).  The type is grammar too, written into the SQL as
+      # given -- it is the adapter's own name for the type, and whether it
+      # exists is the database's to say -- so it has to look like one:
+      # a plain name, at most parenthesized with lengths.
+      class Cast < Node
+        include Predications
+        include Arithmetics
+
+        attr_reader :operand, :sql_type
+
+        def initialize(operand, sql_type)
+          @operand = operand
+          @sql_type = AST.check_name(sql_type, TYPE_NAME, "SQL type")
+        end
+
+        def to_arel(table)
+          Arel::Nodes::NamedFunction.new(
+            "CAST",
+            [Arel::Nodes::As.new(to_arel_argument(operand, table),
+                                 Arel::Nodes::SqlLiteral.new(sql_type.to_s))])
         end
       end
 

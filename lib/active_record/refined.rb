@@ -55,13 +55,20 @@ module ActiveRecord
       # Availability was checked by calling each one; the SQLite figures
       # assume the math functions its build usually enables.
       SCALAR_FUNCTIONS = {
-        abs: {}, ceil: {}, coalesce: {}, concat: {}, exp: {}, floor: {},
-        length: {}, ln: {}, log: {}, lower: {}, ltrim: {}, mod: {},
-        nullif: {}, power: {}, replace: {}, round: {}, rtrim: {}, sqrt: {},
-        substr: {}, trim: {}, upper: {},
+        abs: {}, acos: {}, asin: {}, atan: {}, atan2: {}, ceil: {},
+        coalesce: {}, concat: {}, cos: {}, degrees: {}, exp: {}, floor: {},
+        length: {}, ln: {}, log: {}, log10: {}, lower: {}, ltrim: {},
+        mod: {}, nullif: {}, pi: {}, power: {}, radians: {}, replace: {},
+        round: {}, rtrim: {}, sign: {}, sin: {}, sqrt: {}, substr: {},
+        tan: {}, trim: {}, upper: {},
         char_length: {sqlite: 'LENGTH'},
         greatest: {sqlite: 'MAX'},
         least: {sqlite: 'MIN'},
+        # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
+        log2: {postgresql: nil},
+        # MySQL's TRUNCATE insists on the second argument, where the others
+        # default it to zero; SQLite's trunc takes only the one.
+        trunc: {mysql: 'TRUNCATE'},
         now: {sqlite: nil},
         date_trunc: {sqlite: nil, mysql: nil},
         # Named for Kernel#rand, which it also takes back: a block calling
@@ -121,6 +128,27 @@ module ActiveRecord
           end
           node
         end
+      end
+
+      # EXTRACT(field FROM expr).  The field is a keyword, not a value, so it
+      # has to be a plain name; the node checks it.  SQLite spells all of
+      # this as strftime formats, which no renaming carries, so it raises
+      # there -- after the node is built, so that a bad field is an
+      # ArgumentError on every adapter.
+      def extract(field, expr)
+        node = AST::Extract.new(field, expr)
+        if adapter_family == :sqlite
+          raise NotImplementedError,
+            "extract has no equivalent on #{@model.connection_db_config.adapter}"
+        end
+        node
+      end
+
+      # CAST(expr AS type).  The type is the adapter's own name for it,
+      # checked for shape by the node; whether it exists is the database's to
+      # say.
+      def cast(expr, type)
+        AST::Cast.new(expr, type)
       end
 
       # Escape hatch for functions without a method of their own.  The name is

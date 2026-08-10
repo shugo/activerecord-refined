@@ -907,6 +907,95 @@ class TestBlockSyntax < Minitest::Test
     end
   end
 
+  def test_math_functions
+    assert_sql(/SELECT SIGN\("users"."age"\)/, User.select { sign(:age) }.to_sql)
+    assert_sql(/SELECT ATAN2\("users"."age", 2\)/,
+      User.select { atan2(:age, 2) }.to_sql)
+    assert_sql(/SELECT PI\(\)/, User.select { pi }.to_sql)
+    assert_sql(/SELECT DEGREES\(RADIANS\("users"."age"\)\)/,
+      User.select { degrees(radians(:age)) }.to_sql)
+  end
+
+  def test_math_functions_run
+    User.delete_all
+    User.create!(name: 'matz', age: 60)
+    assert_equal(1, User.select { sign(:age).as(:v) }.sole.v.to_i)
+    assert_equal(60,
+      User.select { round(degrees(radians(:age))).as(:v) }.sole.v.to_i)
+  end
+
+  # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
+  def test_log2_is_unsupported_on_postgresql
+    if ADAPTER == 'postgresql'
+      assert_raises(NotImplementedError) { User.select { log2(:age) } }
+    else
+      assert_sql(/SELECT LOG2\("users"."age"\)/, User.select { log2(:age) }.to_sql)
+    end
+  end
+
+  # MySQL spells trunc TRUNCATE, and insists on the second argument the
+  # others default to zero.
+  def test_trunc
+    expected = ADAPTER == 'mysql2' ? 'TRUNCATE' : 'TRUNC'
+    assert_sql(/SELECT #{expected}\("users"."age", 0\)/,
+      User.select { trunc(:age, 0) }.to_sql)
+  end
+
+  # EXTRACT(field FROM expr): the field is a keyword rather than a value.
+  # SQLite spells all of this as strftime formats, which no renaming
+  # carries.
+  def test_extract
+    if ADAPTER == 'sqlite3'
+      e = assert_raises(NotImplementedError) { User.select { extract(:year, :name) } }
+      assert_match(/extract/, e.message)
+    else
+      assert_sql(/SELECT EXTRACT\(YEAR FROM "users"."name"\)/,
+        User.select { extract(:year, :name) }.to_sql)
+      assert_sql(/WHERE EXTRACT\(YEAR FROM "users"."name"\) = 2026/,
+        User.where { extract(:year, :name) == 2026 }.to_sql)
+    end
+  end
+
+  # A bad field is an ArgumentError on every adapter, before SQLite gets to
+  # say it has no extract at all.
+  def test_extract_rejects_an_injected_field
+    assert_raises(ArgumentError) { User.select { extract(INJECTION.to_sym, :name) } }
+  end
+
+  def test_extract_runs
+    skip "#{ADAPTER} has no extract" if ADAPTER == 'sqlite3'
+    User.delete_all
+    User.create!(name: 'matz')
+    assert_equal(2026,
+      User.select { extract(:year, cast('2026-01-05', :date)).as(:v) }.sole.v.to_i)
+  end
+
+  def test_cast
+    assert_sql(/SELECT CAST\("users"."age" AS text\)/,
+      User.select { cast(:age, :text) }.to_sql)
+  end
+
+  def test_cast_runs
+    User.delete_all
+    User.create!(name: 'matz')
+    assert_equal(12.5,
+      User.select { cast('12.5', 'decimal(10,2)').as(:v) }.sole.v.to_f)
+  end
+
+  # The type is written into the SQL as given, so it has to look like one:
+  # a plain name, at most parenthesized with lengths.  The adapters' own
+  # spellings with a space in them pass too.
+  def test_cast_type_names
+    assert_sql(/AS double precision\)/,
+      User.select { cast(:age, 'double precision') }.to_sql)
+    assert_sql(/AS decimal\(10,2\)\)/,
+      User.select { cast(:age, 'decimal(10,2)') }.to_sql)
+    assert_raises(ArgumentError) { User.select { cast(:age, INJECTION.to_sym) } }
+    assert_raises(ArgumentError) do
+      User.select { cast(:age, 'integer); DROP TABLE users --') }
+    end
+  end
+
   # A name with no method of its own is still a NoMethodError, not a
   # function call the database has to reject.
   def test_unknown_function_is_a_no_method_error

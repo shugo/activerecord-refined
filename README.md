@@ -277,18 +277,23 @@ so a misspelling is a `NoMethodError` where you wrote it, and a name Ruby also
 answers to — `rand` — means the SQL one inside a block:
 
 ```
-abs  ceil  char_length  coalesce  concat  current_date  current_time
-current_timestamp  date_trunc  exp  floor  format  greatest  least  length
-ln  localtime  localtimestamp  log  lower  ltrim  mod  now  nullif  power
-rand  replace  round  rtrim  sqrt  substr  trim  upper
+abs  acos  asin  atan  atan2  cast  ceil  char_length  coalesce  concat
+cos  current_date  current_time  current_timestamp  date_trunc  degrees
+exp  extract  floor  format  greatest  least  length  ln  localtime
+localtimestamp  log  log10  log2  lower  ltrim  mod  now  nullif  pi
+power  radians  rand  replace  round  rtrim  sign  sin  sqrt  substr  tan
+trim  trunc  upper
 ```
 
 Most are spelled the same everywhere. Where they are not, the method names one
 meaning and each adapter gets its own spelling: `char_length`, `greatest` and
 `least` become `LENGTH`, `MAX` and `MIN` on SQLite, and `rand` is `RAND` on
-MySQL and `RANDOM` elsewhere. Where an adapter has no equivalent — `date_trunc`
-outside PostgreSQL, `now` and the `local*` pair on SQLite — the block raises
-`NotImplementedError` rather than leaving the database to reject the SQL.
+MySQL and `RANDOM` elsewhere, and `trunc` is `TRUNCATE` on MySQL, which
+insists on the second argument the others default to zero — SQLite's takes
+only the one. Where an adapter has no equivalent — `date_trunc` outside
+PostgreSQL, `now` and the `local*` pair on SQLite, `log2` on PostgreSQL,
+whose spelling is `log(2, x)` — the block raises `NotImplementedError`
+rather than leaving the database to reject the SQL.
 
 `current_date`, `current_time`, `current_timestamp`, `localtime` and
 `localtimestamp` come out without parentheses, as the grammar has them —
@@ -301,6 +306,23 @@ does not:
 ```ruby
 Post.where { :published_at <= current_timestamp }
 # SELECT "posts".* FROM "posts" WHERE "posts"."published_at" <= CURRENT_TIMESTAMP
+```
+
+`extract` and `cast` are grammar as well: the field and the type go where no
+value could. The field has to be a plain name, and the type has to look like
+a type — a plain name, at most parenthesized with lengths, so the adapters'
+own spellings like `double precision` or `decimal(10,2)` pass; anything else
+raises `ArgumentError`. The type is the adapter's own name for the type, and
+whether it exists is the database's to say. SQLite spells everything
+`extract` does as `strftime` formats, which no renaming carries, so `extract`
+raises there:
+
+```ruby
+Post.where { extract(:year, :created_at) == 2026 }
+# SELECT "posts".* FROM "posts" WHERE EXTRACT(YEAR FROM "posts"."created_at") = 2026
+
+Post.select { cast(:price, 'decimal(10,2)').as(:price) }
+# SELECT CAST("posts"."price" AS decimal(10,2)) AS price
 ```
 
 `format` is printf formatting, and raises on MySQL, where a function of the
