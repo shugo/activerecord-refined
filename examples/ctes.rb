@@ -52,24 +52,30 @@ puts subtree.to_sql
 puts subtree.order { :name }.pluck(:name).inspect
 puts
 
-# 2. The same walk, counting how far down each category sits.  The anchor
-#    starts the count and the recursive member adds one.  0 is a value rather
+# 2. One walk over every tree, carrying down where each row started and how
+#    far it has come.  Which tree is wanted is then an ordinary `where`, asked
+#    afterwards, so the CTE is not rebuilt for each root.  0 is a value rather
 #    than SQL: at the top of a select list a bare string would be SQL, so
 #    numbers say `.as` directly and anything else says `value(...).as`.
-with_depth =
+forest =
   Category.with_recursive(
     tree: [
-      Category.where { :id == electronics.id }.
-        select { [:id, :name, :parent_id, 0.as(:depth)] },
+      Category.where { :parent_id.null? }.
+        select { [:id, :name, :parent_id, :id.as(:root_id), 0.as(:depth)] },
       Category.joins(:tree) { :categories[:parent_id] == :tree[:id] }.
         select { [:categories[:id], :categories[:name], :categories[:parent_id],
-                  (:tree[:depth] + 1).as(:depth)] },
+                  :tree[:root_id], (:tree[:depth] + 1).as(:depth)] },
     ]
   ).from_cte(:tree).order { [:depth, :id] }
 
-puts '--- 2. Recursive CTE carrying a depth ---'
-puts with_depth.to_sql
-puts with_depth.map {|c| [c.name, c.depth] }.inspect
+puts '--- 2. Recursive CTE carrying the root and the depth down ---'
+puts forest.to_sql
+puts forest.map {|c| [c.name, c.root_id, c.depth] }.inspect
+
+# The alias from_cte puts on the CTE is what lets this `where` qualify
+# root_id; without it the column would be looked for in a table the query no
+# longer has.
+puts forest.where { :root_id == electronics.id }.map {|c| [c.name, c.depth] }.inspect
 puts
 
 # 3. The same CTE as a subquery: products anywhere under 'electronics'.
