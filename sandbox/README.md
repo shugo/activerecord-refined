@@ -86,12 +86,21 @@ Repository variables (Settings → Secrets and variables → Actions → Variabl
 | `R2_BUCKET` | `activerecord-refined-sandbox` |
 | `R2_PUBLIC_URL` | `https://wasm.example.net` |
 
-Secrets, on the same page:
+Secrets, on the same page. Create the token under R2 → **Manage R2 API
+tokens** → **Create API token**, with **Object Read & Write** permission
+scoped to this bucket alone; it hands back an access key id and a secret,
+shown once:
 
 | Name | Where it comes from |
 |------|--------------------|
 | `CLOUDFLARE_ACCOUNT_ID` | R2 overview in the dashboard |
-| `CLOUDFLARE_API_TOKEN` | An API token with **Object Read & Write** on that bucket |
+| `R2_ACCESS_KEY_ID` | The token's Access Key ID |
+| `R2_SECRET_ACCESS_KEY` | The token's Secret Access Key |
+
+The upload goes through R2's S3-compatible API for the sake of that scoping.
+Object Read & Write exists only on the S3 API — wrangler talks to Cloudflare's
+REST API, which answers 403 to such a token and wants Admin Read & Write
+instead, and that one can create and delete every bucket in the account.
 
 ### What the workflow does
 

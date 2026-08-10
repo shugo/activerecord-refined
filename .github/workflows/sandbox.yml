@@ -80,23 +80,36 @@ jobs:
       #
       # Without the secrets configured the upload is skipped and ruby.wasm
       # rides along in the Pages artifact as before, which keeps forks working.
+      # Uploaded over R2's S3-compatible API rather than with wrangler, so that
+      # the token can be an Object Read & Write one scoped to this bucket.
+      # Those permissions exist only on the S3 API: wrangler goes through
+      # Cloudflare's REST API, which answers 403 to them and wants Admin Read &
+      # Write -- a token that can create and delete every bucket in the
+      # account, which is not what a public repository's CI should hold.
       - name: Upload ruby.wasm to R2
         id: r2
         if: github.ref == 'refs/heads/master' && vars.R2_PUBLIC_URL != ''
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 sends no checksum headers back, which newer AWS CLIs insist on.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
         run: |
           hash=$(sha256sum ruby.wasm | cut -c1-16)
           key="ruby-$hash.wasm"
           gzip -9 -c ruby.wasm > /tmp/ruby.wasm.gz
 
-          npx --yes wrangler r2 object put "${{ vars.R2_BUCKET }}/$key" \
-            --file /tmp/ruby.wasm.gz \
+          aws s3api put-object \
+            --endpoint-url "https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
+            --bucket "${{ vars.R2_BUCKET }}" \
+            --key "$key" \
+            --body /tmp/ruby.wasm.gz \
             --content-type application/wasm \
             --content-encoding gzip \
             --cache-control "public, max-age=31536000, immutable" \
-            --remote
+            --no-cli-pager
 
           echo "{\"rubyWasmUrl\":\"${{ vars.R2_PUBLIC_URL }}/$key\"}" > config.json
           echo "uploaded=true" >> "$GITHUB_OUTPUT"
