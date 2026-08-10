@@ -44,6 +44,9 @@
     grid-template-columns: 260px 1fr;
     height: calc(100vh - 57px);
   }
+  /* Same clash as #data-pane below: display here outranks [hidden], so the
+     layout would show through while Ruby is still starting. */
+  #layout[hidden] { display: none; }
   @media (max-width: 800px) {
     #layout { grid-template-columns: 1fr; height: auto; }
     #sidebar { height: 260px; }
@@ -105,7 +108,7 @@
 
   #main {
     display: grid;
-    grid-template-rows: auto 1fr auto 1fr;
+    grid-template-rows: auto 1fr 1fr;
     min-height: 0;
     padding: 1rem 1.25rem 1.25rem;
     gap: .5rem;
@@ -158,6 +161,72 @@
     white-space: pre;
   }
 
+  /* The output pane splits in two when a table is opened beside it, so a query
+     and the table it ran against can be read at once.  Each column carries its
+     own heading inside the same two-row grid, so the two boxes below start at
+     the same line however tall either heading is. */
+  #output-split {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    gap: .5rem;
+    min-height: 0;
+  }
+  #output-split:has(#data-pane:not([hidden])) {
+    grid-template-columns: 1fr 1fr;
+  }
+  #output-split > *, #data-pane > * { min-width: 0; min-height: 0; }
+
+  #output-bar   { grid-column: 1; grid-row: 1; }
+  #output       { grid-column: 1; grid-row: 2; }
+  #data-bar     { grid-column: 2; grid-row: 1; }
+  #data-scroll  { grid-column: 2; grid-row: 2; }
+
+  /* contents so the heading and the table below it are placed by the grid
+     above rather than by this element, which is only here to be toggled. */
+  #data-pane { display: contents; }
+  #data-pane[hidden] { display: none; }
+
+  #data-scroll {
+    overflow: auto;
+    border-radius: 6px;
+    background: var(--code-bg);
+  }
+
+  #data-close {
+    background: none;
+    border: 0;
+    color: var(--muted);
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 .2rem;
+    cursor: pointer;
+  }
+  #data-close:hover { color: var(--fg); }
+
+  #data-table {
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--code-fg);
+    width: 100%;
+  }
+  #data-table th, #data-table td {
+    text-align: left;
+    padding: .25rem .6rem;
+    white-space: nowrap;
+    border-bottom: 1px solid #2c333d;
+  }
+  #data-table th {
+    position: sticky;
+    top: 0;
+    background: #2a303a;
+    font-weight: 600;
+  }
+  #data-table tr:last-child td { border-bottom: 0; }
+  #data-table td.null { color: #7f8a99; font-style: italic; }
+  #data-table td.number { text-align: right; }
+
   #status {
     padding: 2rem 1.25rem;
     color: var(--muted);
@@ -193,12 +262,19 @@
     </div>
     <textarea id="editor" spellcheck="false"></textarea>
 
-    <div class="bar">
-      <h2>Output</h2>
-      <div class="spacer"></div>
-      <span class="hint" id="timing"></span>
+    <div id="output-split">
+      <div class="bar" id="output-bar"><h2>Output</h2></div>
+      <pre id="output"></pre>
+      <section id="data-pane" hidden>
+        <div class="bar" id="data-bar">
+          <h2 id="data-title"></h2>
+          <div class="spacer"></div>
+          <span class="hint" id="data-count"></span>
+          <button id="data-close" title="Close" aria-label="Close">&times;</button>
+        </div>
+        <div id="data-scroll"><table id="data-table"></table></div>
+      </section>
     </div>
-    <pre id="output"></pre>
   </div>
 </div>
 
@@ -217,7 +293,11 @@ const dataNavEl = document.getElementById('data-nav');
 const editorEl = document.getElementById('editor');
 const outputEl = document.getElementById('output');
 const runEl = document.getElementById('run');
-const timingEl = document.getElementById('timing');
+const dataPaneEl = document.getElementById('data-pane');
+const dataTitleEl = document.getElementById('data-title');
+const dataCountEl = document.getElementById('data-count');
+const dataTableEl = document.getElementById('data-table');
+const dataCloseEl = document.getElementById('data-close');
 
 let vm;
 
@@ -288,23 +368,80 @@ end
 }
 
 function evaluate(code) {
-  const started = performance.now();
   outputEl.textContent = '';
   try {
     outputEl.textContent = vm.eval(runnerSource(code)).toString();
   } catch (e) {
     outputEl.textContent = String(e);
   }
-  timingEl.textContent = `${Math.round(performance.now() - started)} ms`;
 }
 
 function run() {
   if (vm) evaluate(editorEl.value);
 }
 
+// Each pane keeps its own selection: opening a table does not mean you have
+// stopped reading the example whose output is still on the left.
 function select(button) {
-  for (const b of sidebarEl.querySelectorAll('button')) b.removeAttribute('aria-current');
+  for (const b of button.parentElement.querySelectorAll('button')) {
+    b.removeAttribute('aria-current');
+  }
   button.setAttribute('aria-current', 'true');
+}
+
+// Shown beside the output rather than in it, so a query and the table it ran
+// against can be read together.  The rows are read when the button is pressed;
+// pressing it again is the refresh.
+function openTable(name) {
+  const json = vm.eval(`
+    begin
+      data_json(${JSON.stringify(name)})
+    rescue => e
+      require 'json'
+      JSON.generate(error: "#{e.class}: #{e.message}")
+    end
+  `).toString();
+
+  const { columns, rows, error } = JSON.parse(json);
+  dataTitleEl.textContent = name;
+  dataTableEl.replaceChildren();
+
+  if (error) {
+    dataCountEl.textContent = '';
+    dataTableEl.insertRow().insertCell().textContent = error;
+  } else {
+    const head = dataTableEl.createTHead().insertRow();
+    for (const column of columns) {
+      const th = document.createElement('th');
+      th.textContent = column;
+      head.append(th);
+    }
+
+    const body = dataTableEl.createTBody();
+    for (const row of rows) {
+      const tr = body.insertRow();
+      for (const value of row) {
+        const td = tr.insertCell();
+        if (value === null) {
+          // Worth seeing as itself: telling NULL from an empty string is half
+          // of what the DSL is about.
+          td.textContent = 'NULL';
+          td.className = 'null';
+        } else {
+          td.textContent = String(value);
+          if (typeof value === 'number') td.className = 'number';
+        }
+      }
+    }
+    dataCountEl.textContent = `${rows.length} row(s)`;
+  }
+
+  dataPaneEl.hidden = false;
+}
+
+function closeTable() {
+  dataPaneEl.hidden = true;
+  for (const b of dataNavEl.querySelectorAll('button')) b.removeAttribute('aria-current');
 }
 
 function addGroup(pane, title) {
@@ -344,13 +481,14 @@ function buildSidebar(tables) {
   // examples -- or you -- have done to the table since.
   addGroup(dataNavEl, 'Data');
   for (const table of tables) {
-    addButton(dataNavEl, table, () => evaluate(`data(${JSON.stringify(table)})`));
+    addButton(dataNavEl, table, () => openTable(table));
   }
 
   return firstButton;
 }
 
 runEl.addEventListener('click', run);
+dataCloseEl.addEventListener('click', closeTable);
 editorEl.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault();
