@@ -110,10 +110,16 @@ Item.create!(name: 'Keyboard', price: 120, quantity: 3)
 Item.create!(name: 'Monitor',  price: 400, quantity: 2)
 Item.create!(name: 'Cable',    price: 10,  quantity: 25)
 
+# Two trees rather than one: walking the first has to leave the second behind,
+# which is the whole point of the recursive example and invisible if every row
+# in the table is a descendant of the same root.
 root  = Node.create!(name: 'root',   parent_id: nil)
 child = Node.create!(name: 'child',  parent_id: root.id)
 Node.create!(name: 'grandchild', parent_id: child.id)
 Node.create!(name: 'sibling',    parent_id: root.id)
+
+other = Node.create!(name: 'other root',  parent_id: nil)
+Node.create!(name: 'other child', parent_id: other.id)
 
 # Set the SQL apart from the rows printed under it.  The page reads the escape
 # and colours the text; a terminal running check-examples does the same.
