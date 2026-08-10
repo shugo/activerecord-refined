@@ -1,0 +1,26 @@
+source "https://rubygems.org"
+
+gem "ruby_wasm"
+
+gem "activerecord"
+gem "js"
+
+# sqlite3 is here for its sources, not to be packaged.  rbwasm builds gem
+# extensions outside Ruby's build tree, where mkmf cannot link a conftest, so
+# the gem's extconf aborts on its own `find_library` check.  bin/build-wasm
+# stages the extension into Ruby's own ext tree instead -- taking the C sources
+# and the bundled SQLite amalgamation from this gem -- and bin/prepare-rb takes
+# its Ruby files.  bin/rbwasm-build.rb keeps it out of the packaged set.
+#
+# force_ruby_platform because the precompiled platform gems carry no ports/
+# directory, which is where the SQLite amalgamation lives.
+gem "sqlite3", force_ruby_platform: true
+
+# json stays unpinned: it is excluded from packaging in rbwasm-build.rb so that
+# Ruby 4.1's built-in json serves both the Ruby and the C side.
+
+# ActiveSupport declares minitest as a runtime dependency.  minitest 6 depends
+# on the prism gem, and linking its static library next to Ruby 4.1's built-in
+# prism gives "duplicate symbol: pm_buffer_*" at wasm-ld time.  5.x has neither
+# the prism dependency nor a C extension.
+gem "minitest", "~> 5.25"

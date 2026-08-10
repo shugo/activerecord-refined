@@ -1,0 +1,12 @@
+{
+  "name": "activerecord-refined-sandbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node devserver.mjs",
+    "check": "node --stack-size=4000 check-examples.mjs"
+  },
+  "dependencies": {
+    "@ruby/wasm-wasi": "2.10.1"
+  }
+}

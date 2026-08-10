@@ -1,0 +1,15 @@
+# The repository root ignores these for the gem's sake.  The sandbox is an
+# application, so both are pinned here.
+!/.ruby-version
+!/Gemfile.lock
+
+# Built by bin/build-wasm (~64 MB).
+/ruby.wasm
+
+# Assembled by bin/prepare-rb.
+/rb
+/manifest.json
+/vendor
+
+/.build
+/node_modules
