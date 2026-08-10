@@ -193,6 +193,14 @@ const timingEl = document.getElementById('timing');
 
 let vm;
 
+// These are a few KB each and change with every deployment, while GitHub
+// Pages serves them with max-age=600.  A hard reload does not help: it
+// bypasses the cache for the document and its subresources, not for what a
+// script fetches afterwards.  Revalidating instead costs a 304 when nothing
+// has changed.  ruby.wasm is deliberately left out of this -- it is 40 MB,
+// and its own cache-control is what governs it.
+const FRESH = { cache: 'no-cache' };
+
 // Nothing under rb/lib is packed into ruby.wasm.  The sources are handed to
 // Ruby, which writes them into the in-memory filesystem and puts that on
 // $LOAD_PATH.  activerecord-refined cannot be packed (the rbwasm output is
@@ -200,9 +208,9 @@ let vm;
 // on the build host from resolving it), and this way the gem can be swapped
 // without rebuilding the 64 MB binary.
 async function installRubyFiles() {
-  const manifest = await (await fetch('./manifest.json')).json();
+  const manifest = await (await fetch('./manifest.json', FRESH)).json();
   const sources = await Promise.all(
-    manifest.map(async (rel) => [rel, await (await fetch(`./rb/lib/${rel}`)).text()])
+    manifest.map(async (rel) => [rel, await (await fetch(`./rb/lib/${rel}`, FRESH)).text()])
   );
 
   const entries = sources
@@ -302,7 +310,7 @@ editorEl.addEventListener('keydown', (e) => {
 // served locally -- it sits next to this page.
 async function rubyWasmUrl() {
   try {
-    const config = await (await fetch('./config.json')).json();
+    const config = await (await fetch('./config.json', FRESH)).json();
     if (config.rubyWasmUrl) return config.rubyWasmUrl;
   } catch {
     // No config.json, or nothing useful in it.
@@ -320,7 +328,7 @@ async function rubyWasmUrl() {
 
     detailEl.textContent = '(loading ActiveRecord and creating the sample data)';
     await installRubyFiles();
-    vm.eval(await (await fetch('./boot.rb')).text());
+    vm.eval(await (await fetch('./boot.rb', FRESH)).text());
 
     statusEl.hidden = true;
     layoutEl.hidden = false;
