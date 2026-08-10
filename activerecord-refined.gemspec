@@ -12,7 +12,9 @@ Gem::Specification.new do |gem|
   gem.summary       = 'ActiveRecord + Ruby 4.1 Proc#refined'
   gem.homepage      = 'https://github.com/shugo/activerecord-refined'
 
-  gem.files         = `git ls-files`.split($/)
+  # sandbox/ is a site, not part of the library: its Gemfile.lock and
+  # package-lock.json have no business in anyone's bundle.
+  gem.files         = `git ls-files`.split($/).grep_v(%r{^sandbox/})
   gem.executables   = gem.files.grep(%r{^bin/}).map{ |f| File.basename(f) }
   gem.test_files    = gem.files.grep(%r{^(test|spec|features)/})
   gem.require_paths = ["lib"]
