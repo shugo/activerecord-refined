@@ -43,7 +43,7 @@ jobs:
       - name: Restore the WASM build tree
         uses: actions/cache@v4
         with:
-          path: sandbox/.build
+          path: sandbox/build
           key: wasm-${{ runner.os }}-${{ hashFiles('sandbox/Gemfile.lock', 'sandbox/bin/build-wasm', 'sandbox/ext/**') }}
           restore-keys: wasm-${{ runner.os }}-
 
