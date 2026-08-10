@@ -125,4 +125,23 @@ bundle exec ruby bin/rbwasm-build.rb build \
   --ruby-version "$WORK/ruby-src" \
   -o "$ROOT/ruby.wasm"
 
+# Ruby's build does not treat a missing wasm-opt as an error: make prints
+# "wasm-opt: not found", carries on, and the asyncify pass is quietly skipped.
+# What comes out looks like a normal build -- it is simply unusable, failing at
+# instantiation on an import the runtime cannot supply.  Cached in CI, that
+# ships a broken binary out of a green build, which is exactly what happened
+# once.  Left as a check on the artifact rather than on the toolchain, so it
+# holds however the pass came to be skipped.
+echo "==> Checking that the asyncify pass ran"
+node --input-type=module -e '
+import { readFileSync } from "node:fs";
+const path = process.argv[1];
+const imports = WebAssembly.Module.imports(new WebAssembly.Module(readFileSync(path)));
+if (imports.some((i) => i.module === "asyncify")) {
+  console.error(`${path} still imports the asyncify module.`);
+  console.error("wasm-opt did not run over it -- check for \"wasm-opt: not found\" above.");
+  process.exit(1);
+}
+' "$ROOT/ruby.wasm"
+
 ls -la "$ROOT/ruby.wasm"
