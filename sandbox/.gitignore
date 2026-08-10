@@ -11,5 +11,5 @@
 /manifest.json
 /vendor
 
-/.build
+/build
 /node_modules

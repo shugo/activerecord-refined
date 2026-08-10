@@ -8,7 +8,7 @@
 # does not build against Ruby 4.1's headers.  That is fine -- rbwasm is only a
 # build tool, and the Ruby it produces is the one that matters.
 #
-# The wasi-sdk is downloaded by rbwasm on first run.
+# The wasi-sdk is downloaded on first run.
 #
 # Several steps here exist only to work around problems that took a while to
 # pin down; see README.md for the reasoning behind each.
@@ -16,7 +16,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WORK="${WORK_DIR:-$ROOT/.build}"
+
+# build/ is where rbwasm puts its own tree, so the Ruby checkout and the SQLite
+# artifacts go there too: one directory holds everything, which is what makes
+# it cacheable in one piece.  make decides by mtime, so caching the objects
+# without the sources they were built from would rebuild everything.
+WORK="${WORK_DIR:-$ROOT/build}"
 
 # Pin the revision.  Tracking master would rebuild Ruby from scratch on every
 # CI run, since the build cache is keyed on the source.
@@ -39,6 +44,16 @@ fi
 echo "==> Installing build gems"
 bundle install
 
+# A download interrupted partway leaves a short tarball behind, and rbwasm
+# skips fetching when the file is already there -- so the next run fails in tar
+# rather than retrying.  Left alone in CI that state gets cached and every
+# later run fails the same way.  A tarball with nothing unpacked beside it is
+# the signature.
+for tarball in "$WORK"/toolchain/*.tar.gz; do
+  [ -e "$tarball" ] || continue
+  [ -d "${tarball%.tar.gz}" ] || rm -f "$tarball"
+done
+
 # --- SQLite for wasm32-wasi --------------------------------------------------
 # SQLite has handled __wasi__ itself since 3.41, so the amalgamation needs no
 # patching.  It ships inside the sqlite3 gem, so it is taken from there rather
@@ -52,11 +67,13 @@ if [ ! -f "$WORK/sqlite-wasi/lib/libsqlite3.a" ]; then
   mkdir -p "$WORK/sqlite-src"
   tar -xzf "$TARBALL" -C "$WORK/sqlite-src" --strip-components=1
 
-  SDK="${WASI_SDK_PATH:-$WORK/toolchain/wasi-sdk-24.0}"
-  if [ ! -x "$SDK/bin/clang" ]; then
-    echo "wasi-sdk not found at $SDK." >&2
-    echo "Run this script once to let rbwasm download it, or set WASI_SDK_PATH." >&2
-    exit 1
+  # rbwasm fetches the wasi-sdk itself, but only once it reaches the Ruby
+  # build -- which is after this step.  Fetch it up front, through rbwasm's
+  # own downloader so that the version and the location stay in step.
+  if [ -n "${WASI_SDK_PATH:-}" ]; then
+    SDK="$WASI_SDK_PATH"
+  else
+    SDK=$(bundle exec ruby bin/install-wasi-sdk.rb "$WORK")
   fi
 
   "$SDK/bin/clang" -O2 -c "$WORK/sqlite-src/sqlite3.c" -o "$WORK/sqlite-src/sqlite3.o" \

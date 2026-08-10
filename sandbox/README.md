@@ -79,10 +79,27 @@ It turned out to be an advantage: **editing the gem only calls for re-running
 
 ## Traps hit while getting this to build
 
-`bin/build-wasm` needs nothing but a Rust toolchain (rbwasm downloads the
-wasi-sdk on first run). What follows is recorded with the reasoning because it
-is all needed to reproduce the build. Most of it is one shape of problem:
-layering a gem on top of something Ruby already ships breaks.
+`bin/build-wasm` needs nothing but a Rust toolchain; the wasi-sdk is downloaded
+on first run. What follows is recorded with the reasoning because it is all
+needed to reproduce the build. Most of it is one shape of problem: layering a
+gem on top of something Ruby already ships breaks.
+
+**The wasi-sdk has to be fetched before rbwasm runs.** SQLite is compiled for
+wasm32-wasi before Ruby is built, but rbwasm only fetches the wasi-sdk once it
+reaches the Ruby build. `bin/install-wasi-sdk.rb` pulls it in up front through
+rbwasm's own downloader, so the version and the location stay in step.
+
+**Everything goes under `build/`.** That is where rbwasm puts its own tree, so
+the Ruby checkout and the SQLite artifacts go there too. make decides by mtime,
+which means caching the objects apart from the sources they were built from
+rebuilds everything -- one directory is what makes the tree cacheable in one
+piece.
+
+**A download interrupted partway poisons the tree.** rbwasm skips fetching when
+the tarball is already there, so a short one left behind by a failed transfer
+makes every later run fail in `tar` rather than retry. `bin/build-wasm` drops
+tarballs that have nothing unpacked beside them; without that, CI would cache
+the broken state and fail identically from then on.
 
 **Use a clean clone of Ruby.** A tree you build in normally has a leftover
 `prism/.time`. That file marks the build directory as already created, and in
