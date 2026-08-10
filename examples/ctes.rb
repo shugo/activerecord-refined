@@ -35,11 +35,10 @@ Product.create!(name: 'apple', category_id: groceries.id, price: 2)
 #    then selects the CTE under the model's table name.
 #
 #    That alias is ActiveRecord's requirement rather than SQL's: by hand the
-#    last line would be `SELECT * FROM tree`, and nobody aliases a CTE back to
-#    the table it was built from.  ActiveRecord keeps qualifying columns with
-#    the model's table name, though, so without it `where` and `find_by` look
-#    for a table the query does not have.  `count`, `order` and `select` never
-#    qualify and would work either way, which is what makes it easy to miss.
+#    last line would be `SELECT * FROM tree`.  ActiveRecord keeps qualifying
+#    columns with the model's table name, so without it `where` and `find_by`
+#    look for a table the query does not have.  `count`, `order` and `select`
+#    never qualify and would work either way, which makes it easy to miss.
 subtree =
   Category.with_recursive(
     tree: [

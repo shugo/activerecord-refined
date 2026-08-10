@@ -264,11 +264,10 @@ Node.with_recursive(
 # ) SELECT "nodes".* FROM "tree" AS "nodes"
 ```
 
-That alias is there for ActiveRecord's sake, not SQL's. Written by hand the
-last line would be `SELECT * FROM tree`, unqualified and unaliased; nobody
-aliases a CTE back to the table it was built from. But ActiveRecord goes on
-qualifying columns with the model's table name, so without `as` that name is
-not in the query and anything qualifying a column fails:
+That alias is there for ActiveRecord's sake, not SQL's: written by hand the
+last line would be `SELECT * FROM tree`. ActiveRecord goes on qualifying
+columns with the model's table name, so without `as` that name is not in the
+query and anything qualifying a column fails:
 
 ```ruby
 Node.with_recursive(tree: [...]).from(:tree).where(name: 'root')
