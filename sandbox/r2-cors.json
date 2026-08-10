@@ -1,12 +1,16 @@
-[
-  {
-    "AllowedOrigins": [
-      "https://shugo.github.io",
-      "http://localhost:8000"
-    ],
-    "AllowedMethods": ["GET", "HEAD"],
-    "AllowedHeaders": ["range"],
-    "ExposeHeaders": ["content-length", "content-encoding"],
-    "MaxAgeSeconds": 86400
-  }
-]
+{
+  "rules": [
+    {
+      "allowed": {
+        "origins": [
+          "https://shugo.github.io",
+          "http://localhost:8000"
+        ],
+        "methods": ["GET", "HEAD"],
+        "headers": ["range"]
+      },
+      "exposeHeaders": ["content-length", "content-encoding"],
+      "maxAgeSeconds": 86400
+    }
+  ]
+}
