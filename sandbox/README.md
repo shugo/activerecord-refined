@@ -31,6 +31,13 @@ assets/         the browser bundles: ruby.wasm's loader, and CodeMirror (generat
 ruby.wasm       Ruby 4.1 + ActiveRecord + SQLite                     (generated, ~40 MB)
 ```
 
+Each example has its own URL, so one can be linked to:
+`https://shugo.github.io/activerecord-refined/#root-and-depth`. The fragment
+is the example's `slug` in `examples.js`, written out rather than made from
+the title: a link then survives the title being reworded, and stays short
+however long the title is. Adding an example means adding a slug, and
+`npm run check` says so if that slips.
+
 `ruby.wasm` is large, so serve it with gzip or brotli enabled — it compresses
 to about 12 MB.
 

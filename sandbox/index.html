@@ -555,14 +555,20 @@ function addButton(pane, label, onClick) {
 
 function buildSidebar(tables) {
   let firstButton = null;
+  const bySlug = new Map();
 
   for (const group of examples) {
     addGroup(examplesNavEl, group.group);
     for (const item of group.items) {
       const button = addButton(examplesNavEl, item.title, () => {
         editorEl.value = item.code;
+        // replaceState rather than assigning location.hash: the URL is worth
+        // having so it can be copied, but stepping through the examples is
+        // not what the back button is for.
+        history.replaceState(null, '', `#${item.slug}`);
         run();
       });
+      bySlug.set(item.slug, button);
       firstButton ??= button;
     }
   }
@@ -576,7 +582,7 @@ function buildSidebar(tables) {
     addButton(dataNavEl, table, () => openTable(table));
   }
 
-  return firstButton;
+  return { firstButton, bySlug };
 }
 
 runEl.addEventListener('click', run);
@@ -618,7 +624,20 @@ async function rubyWasmUrl() {
     // After the layout is shown, so CodeMirror measures a box that has a size.
     editorEl = createEditor({ parent: editorParentEl, onRun: run });
 
-    buildSidebar(tables).click();
+    const { firstButton, bySlug } = buildSidebar(tables);
+
+    // A hash naming no example -- an old link, or a typo -- opens the first
+    // one, which then corrects the URL.
+    const openHash = () => {
+      const button = bySlug.get(location.hash.slice(1)) ?? firstButton;
+      button.click();
+      // Following a link to an example halfway down, the list should show
+      // which one it is rather than sitting at the top.
+      button.scrollIntoView({ block: 'nearest' });
+    };
+    addEventListener('hashchange', openHash);
+    openHash();
+
     editorEl.focus();
   } catch (e) {
     detailEl.textContent = '';

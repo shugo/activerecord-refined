@@ -17,6 +17,24 @@ const complaint = (out) => {
 };
 
 let failures = 0;
+
+// A missing or repeated slug is not visible in the page: it puts #undefined in
+// the URL, or gives two examples the same link and opens whichever came last.
+const slugs = new Map();
+for (const group of examples) {
+  for (const item of group.items) {
+    if (!item.slug) {
+      console.log(`NO SLUG: ${group.group} / ${item.title}`);
+      failures++;
+    } else if (slugs.has(item.slug)) {
+      console.log(`SLUG '${item.slug}' IS ALSO ${slugs.get(item.slug)}`);
+      failures++;
+    } else {
+      slugs.set(item.slug, item.title);
+    }
+  }
+}
+
 for (const group of examples) {
   for (const item of group.items) {
     const out = run(vm, item.code);
