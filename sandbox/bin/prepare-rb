@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+# Assembles everything the page needs besides ruby.wasm itself:
+#
+#   rb/lib          the Ruby files written into the WASM filesystem at boot
+#   manifest.json   the list the page fetches to know what to write
+#   vendor/         the @ruby/wasm-wasi browser bundle
+#
+# None of it is committed.  The gem's own lib comes from the checkout one
+# directory up, sqlite3's Ruby files from the bundle, and the browser bundle
+# from node_modules.  Only stubs/ is maintained by hand.
+#
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+SQLITE3_GEM=$(bundle show sqlite3 2>/dev/null || true)
+if [ -z "$SQLITE3_GEM" ]; then
+  echo "sqlite3 gem not found; run 'bundle install' first" >&2
+  exit 1
+fi
+
+rm -rf rb
+mkdir -p rb/lib
+
+cp -r ../lib/. rb/lib/
+cp -r "$SQLITE3_GEM"/lib/. rb/lib/
+cp -r stubs/. rb/lib/
+
+# A .so from the host build of the gem would be copied along with the .rb files.
+find rb/lib -name '*.so' -delete
+
+ruby -rjson -e '
+  files = Dir.glob("rb/lib/**/*.rb").map { |p| p.delete_prefix("rb/lib/") }.sort
+  File.write("manifest.json", JSON.pretty_generate(files) + "\n")
+  puts "#{files.size} Ruby files"
+'
+
+BUNDLE=node_modules/@ruby/wasm-wasi/dist/browser.umd.js
+if [ ! -f "$BUNDLE" ]; then
+  echo "$BUNDLE not found; run 'npm ci' first" >&2
+  exit 1
+fi
+mkdir -p vendor
+cp "$BUNDLE" vendor/

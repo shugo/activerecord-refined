@@ -1,0 +1,100 @@
+name: sandbox
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sandbox
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The host Ruby cannot be 4.1: ruby_wasm's native extension depends on
+      # rb-sys, which does not build against Ruby 4.1's headers.  rbwasm is
+      # only a build tool -- the Ruby it produces is the one that matters.
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: false
+          working-directory: sandbox
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The Ruby checkout and the build tree have to be cached together.  make
+      # decides by mtime, so restoring objects next to a freshly cloned Ruby
+      # would rebuild everything.
+      #
+      # The build directory is keyed on the gems that have C extensions, so
+      # Gemfile.lock covers it; RUBY_REV is pinned in bin/build-wasm, and the
+      # staged extension comes from ext/ and the sqlite3 gem.
+      - name: Restore the WASM build tree
+        uses: actions/cache@v4
+        with:
+          path: sandbox/.build
+          key: wasm-${{ runner.os }}-${{ hashFiles('sandbox/Gemfile.lock', 'sandbox/bin/build-wasm', 'sandbox/ext/**') }}
+          restore-keys: wasm-${{ runner.os }}-
+
+      - run: bundle install --jobs 4
+      - run: npm ci
+
+      - name: Build ruby.wasm
+        run: ./bin/build-wasm
+
+      - name: Assemble the Ruby files served to the page
+        run: ./bin/prepare-rb
+
+      # Runs every example through the same WASI shim the page uses.  The
+      # larger stack is needed to compile ActiveRecord's relation.rb; see the
+      # note in sandbox/README.md.
+      - name: Check the examples
+        run: node --stack-size=4000 check-examples.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sandbox
+          path: |
+            sandbox/index.html
+            sandbox/boot.rb
+            sandbox/examples.js
+            sandbox/manifest.json
+            sandbox/ruby.wasm
+            sandbox/rb
+            sandbox/vendor/browser.umd.js
+          retention-days: 7
+
+  deploy:
+    if: github.ref == 'refs/heads/master'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: sandbox
+          path: site
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

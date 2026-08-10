@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sandbox browser check</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+
+<script src="./vendor/browser.umd.js"></script>
+<script type="module">
+// Boots the sandbox the same way index.html does and reports the outcome back
+// to the dev server, so a headless browser can be used to check whether the
+// JS stack there is deep enough for ActiveRecord to compile.
+const { DefaultRubyVM } = globalThis['ruby-wasm-wasi'];
+const out = document.getElementById('out');
+
+const report = (status, detail) => {
+  out.textContent = `${status}\n${detail}`;
+  navigator.sendBeacon('/__result', JSON.stringify({ status, detail, ua: navigator.userAgent }));
+};
+
+function rubyString(s) {
+  return "'" + s.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+}
+
+try {
+  const module = await WebAssembly.compileStreaming(fetch('./ruby.wasm'));
+  const { vm } = await DefaultRubyVM(module);
+
+  const manifest = await (await fetch('./manifest.json')).json();
+  const sources = await Promise.all(
+    manifest.map(async (rel) => [rel, await (await fetch(`./rb/lib/${rel}`)).text()])
+  );
+  vm.eval(`
+    require 'fileutils'
+    [
+      ${sources.map(([rel, src]) => `[${rubyString(rel)}, ${rubyString(src)}]`).join(',\n')}
+    ].each do |rel, src|
+      path = File.join('/rb/lib', rel)
+      FileUtils.mkdir_p File.dirname(path)
+      File.write path, src
+    end
+    $LOAD_PATH.unshift '/rb/lib'
+  `);
+
+  vm.eval(await (await fetch('./boot.rb')).text());
+
+  const result = vm.eval(`
+    rel = Author.where { :age >= 50 }
+    "#{RUBY_DESCRIPTION}\n#{rel.to_sql}\n#{rel.pluck(:name).inspect}"
+  `).toString();
+
+  report('OK', result);
+} catch (e) {
+  report('FAILED', String(e).split('\n').slice(0, 4).join('\n'));
+}
+</script>
+</body>
+</html>

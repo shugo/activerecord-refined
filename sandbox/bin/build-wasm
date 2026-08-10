@@ -1,0 +1,98 @@
+#!/bin/bash
+#
+# Builds sandbox/ruby.wasm: Ruby 4.1 (ruby-head) for wasm32-wasi with
+# ActiveRecord, SQLite and the js gem.
+#
+# Requires a Rust toolchain and a host Ruby in the 3.3-4.0 range.  The host
+# Ruby cannot be 4.1: ruby_wasm's native extension depends on rb-sys, which
+# does not build against Ruby 4.1's headers.  That is fine -- rbwasm is only a
+# build tool, and the Ruby it produces is the one that matters.
+#
+# The wasi-sdk is downloaded by rbwasm on first run.
+#
+# Several steps here exist only to work around problems that took a while to
+# pin down; see README.md for the reasoning behind each.
+#
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORK="${WORK_DIR:-$ROOT/.build}"
+
+# Pin the revision.  Tracking master would rebuild Ruby from scratch on every
+# CI run, since the build cache is keyed on the source.
+RUBY_REV="${RUBY_REV:-7e1a7201c4}"
+
+cd "$ROOT"
+mkdir -p "$WORK"
+
+# --- Ruby source -------------------------------------------------------------
+# A fresh clone, never a tree that has been built in.  An ordinary working tree
+# leaves prism/.time behind, and VPATH makes an out-of-tree build take that as
+# proof the build directory already exists -- so prism/ is never created and no
+# prism object can be written.  .time is gitignored, so the tree looks clean.
+if [ ! -d "$WORK/ruby-src" ]; then
+  echo "==> Cloning Ruby ($RUBY_REV)"
+  git clone --filter=blob:none https://github.com/ruby/ruby.git "$WORK/ruby-src"
+  git -C "$WORK/ruby-src" checkout --detach "$RUBY_REV"
+fi
+
+echo "==> Installing build gems"
+bundle install
+
+# --- SQLite for wasm32-wasi --------------------------------------------------
+# SQLite has handled __wasi__ itself since 3.41, so the amalgamation needs no
+# patching.  It ships inside the sqlite3 gem, so it is taken from there rather
+# than downloaded separately.
+SQLITE3_GEM=$(bundle show sqlite3)
+
+if [ ! -f "$WORK/sqlite-wasi/lib/libsqlite3.a" ]; then
+  echo "==> Building SQLite for wasm32-wasi"
+  TARBALL=$(ls "$SQLITE3_GEM"/ports/archives/sqlite-autoconf-*.tar.gz | head -1)
+  rm -rf "$WORK/sqlite-src"
+  mkdir -p "$WORK/sqlite-src"
+  tar -xzf "$TARBALL" -C "$WORK/sqlite-src" --strip-components=1
+
+  SDK="${WASI_SDK_PATH:-$WORK/toolchain/wasi-sdk-24.0}"
+  if [ ! -x "$SDK/bin/clang" ]; then
+    echo "wasi-sdk not found at $SDK." >&2
+    echo "Run this script once to let rbwasm download it, or set WASI_SDK_PATH." >&2
+    exit 1
+  fi
+
+  "$SDK/bin/clang" -O2 -c "$WORK/sqlite-src/sqlite3.c" -o "$WORK/sqlite-src/sqlite3.o" \
+    -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_THREADSAFE=0 \
+    -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_MMAN \
+    -D_WASI_EMULATED_GETPID -D_WASI_EMULATED_PROCESS_CLOCKS
+  "$SDK/bin/llvm-ar" rcs "$WORK/sqlite-src/libsqlite3.a" "$WORK/sqlite-src/sqlite3.o"
+
+  mkdir -p "$WORK/sqlite-wasi/include" "$WORK/sqlite-wasi/lib"
+  cp "$WORK/sqlite-src/sqlite3.h" "$WORK/sqlite-wasi/include/"
+  cp "$WORK/sqlite-src/libsqlite3.a" "$WORK/sqlite-wasi/lib/"
+fi
+
+# --- Stage sqlite3 as a bundled extension ------------------------------------
+# The sqlite3 gem cannot be built by rbwasm.  rbwasm builds gem extensions
+# outside Ruby's build tree, where mkmf cannot link a conftest at all -- even
+# have_func("rb_enc_raise") comes back false -- and the gem's extconf aborts on
+# its own find_library check.  Inside Ruby's ext tree mkmf works.
+echo "==> Staging sqlite3 into Ruby's ext tree"
+EXT="$WORK/ruby-src/ext/sqlite3/sqlite3_native"
+rm -rf "$WORK/ruby-src/ext/sqlite3"
+mkdir -p "$EXT"
+cp "$SQLITE3_GEM"/ext/sqlite3/*.c "$SQLITE3_GEM"/ext/sqlite3/*.h "$EXT/"
+rm -f "$EXT/extconf.rb"
+cp "$WORK/sqlite-wasi/include/sqlite3.h" "$EXT/"
+cp "$WORK/sqlite-wasi/lib/libsqlite3.a" "$EXT/"
+cp "$ROOT/ext/sqlite3-extconf.rb" "$EXT/extconf.rb"
+
+# --- Build -------------------------------------------------------------------
+# The build directory is keyed on the gems that have C extensions, so editing
+# the staged extension or the Ruby source rebuilds only the extension and
+# relinks; changing a C-extension gem in the Gemfile rebuilds Ruby.
+echo "==> Building ruby.wasm"
+export RUBY_WASM_ADDITIONAL_EXTS=sqlite3/sqlite3_native
+bundle exec ruby bin/rbwasm-build.rb build \
+  --ruby-version "$WORK/ruby-src" \
+  -o "$ROOT/ruby.wasm"
+
+ls -la "$ROOT/ruby.wasm"
