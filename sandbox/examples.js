@@ -88,7 +88,7 @@ show Author.where { !exists?(Post.where { :posts[:author_id] == :authors[:id] })
 # like? is case-sensitive LIKE on every adapter, PostgreSQL included.
 # ilike? and casecmp? are the ones that are not.
 sql Author.where { :name.ilike?('a%') }
-sql Author.where { :name.casecmp?('matz') }`,
+sql Author.where { :name.casecmp?('alice') }`,
       },
       {
         title: 'start_with? / end_with? / include?',
@@ -102,7 +102,7 @@ sql Post.where { :title.include?('100%') }`,
       {
         title: 'Several prefixes',
         code: `# Variadic, like String#start_with?.  Matching any one of them is enough.
-show Author.where { :name.start_with?('A', 'K') }`,
+show Author.where { :name.start_with?('A', 'B') }`,
       },
       {
         title: 'Regexps are not available on SQLite',

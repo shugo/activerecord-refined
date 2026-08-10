@@ -24,13 +24,13 @@ class Post < ActiveRecord::Base
   def self.published = where { :published == true }
 end
 
-matz  = Author.create!(name: 'matz')
-nobu  = Author.create!(name: 'nobu')
+alice  = Author.create!(name: 'alice')
+bob  = Author.create!(name: 'bob')
 quiet = Author.create!(name: 'quiet')
 
-Post.create!(title: 'refinements', author_id: matz.id, likes: 100, published: true)
-Post.create!(title: 'parser',      author_id: matz.id, likes: 40,  published: true)
-Post.create!(title: 'draft',       author_id: nobu.id, likes: 5,   published: false)
+Post.create!(title: 'refinements', author_id: alice.id, likes: 100, published: true)
+Post.create!(title: 'parser',      author_id: alice.id, likes: 40,  published: true)
+Post.create!(title: 'draft',       author_id: bob.id, likes: 5,   published: false)
 
 def show(title, relation)
   puts "--- #{title} ---"

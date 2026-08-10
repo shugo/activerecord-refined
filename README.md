@@ -126,7 +126,7 @@ collation, so it means the same thing everywhere:
 
 ```ruby
 Author.where { :name.ilike?('ma%') }        # ILIKE 'ma%' / LIKE 'ma%'
-Author.where { :name.casecmp?('Matz') }     # LOWER(name) = LOWER('Matz')
+Author.where { :name.casecmp?('Alice') }     # LOWER(name) = LOWER('Alice')
 ```
 
 `not_distinct_from?` and `distinct_from?` compare with NULL treated as a

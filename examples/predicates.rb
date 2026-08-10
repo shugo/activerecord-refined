@@ -16,11 +16,11 @@ Setup.new.up
 class Account < ActiveRecord::Base
 end
 
-Account.create!(login: 'matz',       country: 'JP', age: 60)
-Account.create!(login: 'nobu',       country: 'JP', age: 50)
-Account.create!(login: 'tenderlove', country: 'US', age: 45)
-Account.create!(login: '100%_pure',  country: nil,  age: 30)
-Account.create!(login: '1002000',    country: 'US', age: 25)
+Account.create!(login: 'alice',     country: 'JP', age: 60)
+Account.create!(login: 'bob',       country: 'JP', age: 50)
+Account.create!(login: 'carol',     country: 'US', age: 45)
+Account.create!(login: '100%_pure', country: nil,  age: 30)
+Account.create!(login: '1002000',   country: 'US', age: 25)
 
 def show(title, relation, rows)
   puts "--- #{title} ---"
@@ -63,12 +63,12 @@ show('distinct_from? keeps NULLs, != drops them',
 #    literals, so % and _ in them are escaped rather than matched as
 #    wildcards.  Note the last row matches only the literal-minded one.
 show('like? takes a pattern',
-  Account.where { :login.like?('%love') },
-  Account.where { :login.like?('%love') }.pluck(:login))
+  Account.where { :login.like?('%rol') },
+  Account.where { :login.like?('%rol') }.pluck(:login))
 
 show('start_with? takes any number of literals, like String#start_with?',
-  Account.where { :login.start_with?('ma', 'no') },
-  Account.where { :login.start_with?('ma', 'no') }.pluck(:login))
+  Account.where { :login.start_with?('al', 'bo') },
+  Account.where { :login.start_with?('al', 'bo') }.pluck(:login))
 
 # The % in the argument is escaped, so only the account whose login really
 # contains "100%" matches; the same pattern spelled with like? treats it as a
@@ -83,8 +83,8 @@ show('include? escapes wildcards; like? does not',
 # casecmp? folds both sides rather than trusting the collation, so it means
 # the same thing on every adapter.
 show('casecmp? is case-insensitive equality',
-  Account.where { :login.casecmp?('MaTz') },
-  Account.where { :login.casecmp?('MaTz') }.pluck(:login))
+  Account.where { :login.casecmp?('AlIcE') },
+  Account.where { :login.casecmp?('AlIcE') }.pluck(:login))
 
 # 4. Combining.  & | ! build the tree; Ruby's precedence puts & and | above
 #    the comparison operators, hence the parentheses around each comparison.
