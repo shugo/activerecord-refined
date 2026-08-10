@@ -49,6 +49,56 @@ but 4.1 cannot be used here: ruby_wasm's native extension depends on rb-sys,
 which does not build against Ruby 4.1's headers. rbwasm is only a build tool,
 so an older host has no bearing on the Ruby it produces being 4.1.
 
+## Serving ruby.wasm from R2
+
+The binary is 40 MB and everything else together is under 200 KB, so it is
+essentially all of the bandwidth. Deployments put it in Cloudflare R2, where
+egress is free, and serve only the page from GitHub Pages.
+
+The workflow skips the upload unless the repository variables are set, and the
+page falls back to a `ruby.wasm` sitting next to it, so a checkout still works
+with nothing configured.
+
+### One-time setup
+
+Create a bucket and give it a custom domain — **not** the `r2.dev` URL, which
+Cloudflare rate-limits and documents as unsuitable for production, and which
+gets no CDN caching:
+
+```sh
+npx wrangler r2 bucket create activerecord-refined-sandbox
+npx wrangler r2 bucket cors set activerecord-refined-sandbox --file r2-cors.json
+```
+
+Then, in the Cloudflare dashboard, connect a custom domain to the bucket
+(R2 → the bucket → Settings → Public access → Custom domain).
+
+`r2-cors.json` lists the origins allowed to fetch the binary. Adjust it if the
+page is served from somewhere other than `shugo.github.io`.
+
+Repository variables (Settings → Secrets and variables → Actions → Variables):
+
+| Name | Example |
+|------|---------|
+| `R2_BUCKET` | `activerecord-refined-sandbox` |
+| `R2_PUBLIC_URL` | `https://wasm.example.net` |
+
+Secrets, on the same page:
+
+| Name | Where it comes from |
+|------|--------------------|
+| `CLOUDFLARE_ACCOUNT_ID` | R2 overview in the dashboard |
+| `CLOUDFLARE_API_TOKEN` | An API token with **Object Read & Write** on that bucket |
+
+### What the workflow does
+
+The object key carries a hash of the binary, so a rebuild lands on a new URL
+and there is nothing to purge; the object is stored with a one-year immutable
+`cache-control` to match. R2 serves what it is given and does not compress, so
+the binary is gzipped and the encoding recorded on the object — 40 MB on disk,
+about 12 MB on the wire. The URL is written into `config.json`, which the page
+reads at startup.
+
 ## Build caching
 
 The cross Ruby's build directory is named after a hash of **the gems that have

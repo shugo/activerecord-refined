@@ -69,6 +69,38 @@ jobs:
       - name: Check the examples
         run: node --stack-size=4000 check-examples.mjs
 
+      # ruby.wasm is 40 MB, which a Cloudflare Pages asset may not be and which
+      # is nearly all of the bandwidth this page uses, so it is served from R2
+      # -- egress there is free -- and only the page itself from Pages.
+      #
+      # The key carries a hash of the binary, so a rebuild lands on a new URL
+      # and nothing has to be purged.  R2 serves what it is given and does not
+      # compress, hence gzip with the encoding recorded on the object: 40 MB
+      # becomes 12 MB on the wire.
+      #
+      # Without the secrets configured the upload is skipped and ruby.wasm
+      # rides along in the Pages artifact as before, which keeps forks working.
+      - name: Upload ruby.wasm to R2
+        id: r2
+        if: github.ref == 'refs/heads/master' && vars.R2_PUBLIC_URL != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          hash=$(sha256sum ruby.wasm | cut -c1-16)
+          key="ruby-$hash.wasm"
+          gzip -9 -c ruby.wasm > /tmp/ruby.wasm.gz
+
+          npx --yes wrangler r2 object put "${{ vars.R2_BUCKET }}/$key" \
+            --file /tmp/ruby.wasm.gz \
+            --content-type application/wasm \
+            --content-encoding gzip \
+            --cache-control "public, max-age=31536000, immutable" \
+            --remote
+
+          echo "{\"rubyWasmUrl\":\"${{ vars.R2_PUBLIC_URL }}/$key\"}" > config.json
+          echo "uploaded=true" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@v7
         with:
           name: sandbox
@@ -77,9 +109,11 @@ jobs:
             sandbox/boot.rb
             sandbox/examples.js
             sandbox/manifest.json
-            sandbox/ruby.wasm
+            sandbox/config.json
+            ${{ steps.r2.outputs.uploaded != 'true' && 'sandbox/ruby.wasm' || '' }}
             sandbox/rb
             sandbox/vendor/browser.umd.js
+          if-no-files-found: ignore
           retention-days: 7
 
   deploy:
