@@ -106,9 +106,10 @@ show Author.where { :name.start_with?('A', 'B') }`,
       },
       {
         title: 'Regexps are not available on SQLite',
-        code: `# REGEXP on MySQL, ~ on PostgreSQL.  SQLite has no operator of its own,
-# so this fails where it is written rather than building SQL that cannot run.
-Author.where { :name =~ '^A' }`,
+        code: `# REGEXP on MySQL, ~ on PostgreSQL.  SQLite has no operator of its
+# own, so no SQL can be built for this -- unlike the checks the block
+# makes as you write it, this one comes from Arel at to_sql.
+sql Author.where { :name =~ '^A' }`,
       },
     ],
   },
