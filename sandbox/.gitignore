@@ -9,6 +9,7 @@
 # Assembled by bin/prepare-rb.
 /rb
 /manifest.json
+/config.json
 /vendor
 
 /build
