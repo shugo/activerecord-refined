@@ -104,12 +104,25 @@ instead, and that one can create and delete every bucket in the account.
 
 ### What the workflow does
 
-The object key carries a hash of the binary, so a rebuild lands on a new URL
-and there is nothing to purge; the object is stored with a one-year immutable
-`cache-control` to match. R2 serves what it is given and does not compress, so
-the binary is gzipped and the encoding recorded on the object — 40 MB on disk,
-about 12 MB on the wire. The URL is written into `config.json`, which the page
-reads at startup.
+The binary goes to a single key, `ruby-head.wasm`, overwritten on each
+deployment — only the newest build is of any use, and content-addressed keys
+would pile up in the bucket with nothing to remove them.
+
+That is why it is not cached as immutable. The URL no longer changes with the
+contents, so a long `max-age` would go on serving the previous binary; the
+alternative, purging Cloudflare's cache on deploy, needs a far broader API
+token than the bucket-scoped one above. Five minutes bounds how stale a
+visitor's copy can be just after a deploy, and revalidating after that costs a
+304 rather than 12 MB.
+
+The page and the binary are deployed separately, so for those few minutes a
+visitor can get a new page with the previous binary. They are independent
+enough for that not to matter — the binary only changes when the Gemfile or
+the pinned Ruby revision does.
+
+R2 serves what it is given and does not compress, so the binary is gzipped and
+the encoding recorded on the object: 40 MB stored, about 12 MB on the wire.
+The URL is written into `config.json`, which the page reads at startup.
 
 ## Build caching
 
