@@ -125,8 +125,37 @@ def show(relation, limit: 20)
   # Read the rows through the connection rather than through the model, so the
   # columns shown are exactly the ones the SELECT asked for.  Going via the
   # model would add its other attributes back as nil.
-  result = ActiveRecord::Base.connection.select_all("#{sql} LIMIT #{limit.to_i}")
+  print_result ActiveRecord::Base.connection.select_all("#{sql} LIMIT #{limit.to_i}")
+rescue ActiveRecord::StatementInvalid => e
+  puts 'The database rejected this query:'
+  puts "  #{e.message.lines.first.strip}"
+end
 
+# Prints just the SQL, for examples where running the query is beside the point.
+def sql(relation)
+  puts relation.to_sql
+end
+
+# The tables behind the examples, for the Data section of the sidebar.  Asked
+# of the connection rather than listed here, so a model added above shows up
+# without the page having to be told about it.
+def tables
+  bookkeeping = /\Aar_internal_|\Asqlite_|\Aschema_migrations\z/
+  ActiveRecord::Base.connection.tables.grep_v(bookkeeping).sort
+end
+
+# Every row of one table as it stands now -- after whatever the examples, or
+# you, have done to it.
+def data(table, limit: 50)
+  name = tables.find { |t| t == table.to_s } or
+    raise ArgumentError, "no such table: #{table} (#{tables.join(', ')})"
+
+  puts "#{name}"
+  puts
+  print_result ActiveRecord::Base.connection.select_all("SELECT * FROM #{name} LIMIT #{limit.to_i}")
+end
+
+def print_result(result)
   if result.empty?
     puts '(no rows)'
     return
@@ -134,8 +163,8 @@ def show(relation, limit: 20)
 
   columns = result.columns
   rows = result.rows
-  widths = columns.each_with_index.map do |name, i|
-    [name.length, *rows.map { |r| r[i].inspect.length }].max
+  widths = columns.each_with_index.map do |column, i|
+    [column.length, *rows.map { |row| row[i].inspect.length }].max
   end
 
   puts columns.each_with_index.map { |c, i| c.ljust(widths[i]) }.join('  ')
@@ -145,12 +174,4 @@ def show(relation, limit: 20)
   end
   puts
   puts "#{rows.size} row(s)"
-rescue ActiveRecord::StatementInvalid => e
-  puts 'The database rejected this query:'
-  puts "  #{e.message.lines.first.strip}"
-end
-
-# Prints just the SQL, for examples where running the query is beside the point.
-def sql(relation)
-  puts relation.to_sql
 end

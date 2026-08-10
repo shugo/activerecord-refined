@@ -46,13 +46,36 @@
   }
   @media (max-width: 800px) {
     #layout { grid-template-columns: 1fr; height: auto; }
-    #sidebar { max-height: 240px; }
+    #sidebar { height: 260px; }
+    #data-nav { max-height: 50%; }
   }
 
+  /* Two panes that scroll apart: the examples are a long list to read
+     through, the tables a short one to keep reaching for.  Letting the
+     examples push the tables out of view would defeat the point of them. */
   #sidebar {
     border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  #examples-nav {
+    flex: 1 1 auto;
     overflow-y: auto;
-    padding: .75rem 0 2rem;
+    min-height: 0;
+    padding: .75rem 0 1rem;
+  }
+  /* 0 0 rather than 0 1: shrinking is what makes this pane feel cramped, since
+     the examples beside it are always the taller of the two and the shrink
+     would come out of both.  It takes the height of its rows, up to half the
+     sidebar, and scrolls beyond that. */
+  #data-nav {
+    flex: 0 0 auto;
+    overflow-y: auto;
+    min-height: 0;
+    max-height: 50%;
+    border-top: 1px solid var(--border);
+    padding-bottom: 1rem;
   }
   #sidebar h2 {
     font-size: .72rem;
@@ -156,7 +179,10 @@
 <div id="status">Loading Ruby… <strong id="status-detail"></strong></div>
 
 <div id="layout" hidden>
-  <nav id="sidebar"></nav>
+  <nav id="sidebar">
+    <div id="examples-nav"></div>
+    <div id="data-nav"></div>
+  </nav>
 
   <div id="main">
     <div class="bar">
@@ -186,6 +212,8 @@ const statusEl = document.getElementById('status');
 const detailEl = document.getElementById('status-detail');
 const layoutEl = document.getElementById('layout');
 const sidebarEl = document.getElementById('sidebar');
+const examplesNavEl = document.getElementById('examples-nav');
+const dataNavEl = document.getElementById('data-nav');
 const editorEl = document.getElementById('editor');
 const outputEl = document.getElementById('output');
 const runEl = document.getElementById('run');
@@ -259,40 +287,66 @@ end
 `;
 }
 
-function run() {
-  if (!vm) return;
+function evaluate(code) {
   const started = performance.now();
   outputEl.textContent = '';
   try {
-    outputEl.textContent = vm.eval(runnerSource(editorEl.value)).toString();
+    outputEl.textContent = vm.eval(runnerSource(code)).toString();
   } catch (e) {
     outputEl.textContent = String(e);
   }
   timingEl.textContent = `${Math.round(performance.now() - started)} ms`;
 }
 
-function buildSidebar() {
-  let firstButton = null;
-  for (const group of examples) {
-    const h2 = document.createElement('h2');
-    h2.textContent = group.group;
-    sidebarEl.append(h2);
+function run() {
+  if (vm) evaluate(editorEl.value);
+}
 
+function select(button) {
+  for (const b of sidebarEl.querySelectorAll('button')) b.removeAttribute('aria-current');
+  button.setAttribute('aria-current', 'true');
+}
+
+function addGroup(pane, title) {
+  const h2 = document.createElement('h2');
+  h2.textContent = title;
+  pane.append(h2);
+}
+
+function addButton(pane, label, onClick) {
+  const button = document.createElement('button');
+  button.textContent = label;
+  button.addEventListener('click', () => {
+    select(button);
+    onClick();
+  });
+  pane.append(button);
+  return button;
+}
+
+function buildSidebar(tables) {
+  let firstButton = null;
+
+  for (const group of examples) {
+    addGroup(examplesNavEl, group.group);
     for (const item of group.items) {
-      const button = document.createElement('button');
-      button.textContent = item.title;
-      button.addEventListener('click', () => {
-        for (const b of sidebarEl.querySelectorAll('button')) {
-          b.removeAttribute('aria-current');
-        }
-        button.setAttribute('aria-current', 'true');
+      const button = addButton(examplesNavEl, item.title, () => {
         editorEl.value = item.code;
         run();
       });
-      sidebarEl.append(button);
       firstButton ??= button;
     }
   }
+
+  // Reading a table leaves the editor alone: it is there to check what the
+  // data looks like now, often in the middle of writing something against it.
+  // The rows are read when the button is pressed, so they reflect whatever the
+  // examples -- or you -- have done to the table since.
+  addGroup(dataNavEl, 'Data');
+  for (const table of tables) {
+    addButton(dataNavEl, table, () => evaluate(`data(${JSON.stringify(table)})`));
+  }
+
   return firstButton;
 }
 
@@ -330,9 +384,13 @@ async function rubyWasmUrl() {
     await installRubyFiles();
     vm.eval(await (await fetch('./boot.rb', FRESH)).text());
 
+    // Asked of the schema rather than listed here, so a model added to boot.rb
+    // appears under Data on its own.
+    const tables = JSON.parse(vm.eval('require "json"; tables.to_json').toString());
+
     statusEl.hidden = true;
     layoutEl.hidden = false;
-    buildSidebar().click();
+    buildSidebar(tables).click();
     editorEl.focus();
   } catch (e) {
     detailEl.textContent = '';
