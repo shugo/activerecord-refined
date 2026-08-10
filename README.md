@@ -264,6 +264,22 @@ Node.with_recursive(
 # ) SELECT "nodes".* FROM "tree" AS "nodes"
 ```
 
+That alias is there for ActiveRecord's sake, not SQL's. Written by hand the
+last line would be `SELECT * FROM tree`, unqualified and unaliased; nobody
+aliases a CTE back to the table it was built from. But ActiveRecord goes on
+qualifying columns with the model's table name, so without `as` that name is
+not in the query and anything qualifying a column fails:
+
+```ruby
+Node.with_recursive(tree: [...]).from(:tree).where(name: 'root')
+# PG::UndefinedTable: missing FROM-clause entry for table "nodes"
+```
+
+What makes this worth spelling out is how selectively it breaks. `count`,
+`order` and `select` never qualify, so they work without the alias on every
+adapter; it is `where` and `find_by` that stop. A query can therefore look
+right until the day a condition is added to it.
+
 A non-recursive CTE joins the same way:
 
 ```ruby

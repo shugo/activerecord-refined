@@ -32,8 +32,14 @@ Product.create!(name: 'apple', category_id: groceries.id, price: 2)
 # 1. Recursive CTE: every category below 'electronics', itself included.
 #    The recursive member joins the CTE by name, so its ON clause is a block
 #    rather than the string join Rails' own documentation reaches for.  `from`
-#    then selects the CTE under the model's table name, which is what lets
-#    Category's own columns resolve against it.
+#    then selects the CTE under the model's table name.
+#
+#    That alias is ActiveRecord's requirement rather than SQL's: by hand the
+#    last line would be `SELECT * FROM tree`, and nobody aliases a CTE back to
+#    the table it was built from.  ActiveRecord keeps qualifying columns with
+#    the model's table name, though, so without it `where` and `find_by` look
+#    for a table the query does not have.  `count`, `order` and `select` never
+#    qualify and would work either way, which is what makes it easy to miss.
 subtree =
   Category.with_recursive(
     tree: [
