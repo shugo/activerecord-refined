@@ -73,10 +73,11 @@ jobs:
       # is nearly all of the bandwidth this page uses, so it is served from R2
       # -- egress there is free -- and only the page itself from Pages.
       #
-      # The key carries a hash of the binary, so a rebuild lands on a new URL
-      # and nothing has to be purged.  R2 serves what it is given and does not
-      # compress, hence gzip with the encoding recorded on the object: 40 MB
-      # becomes 12 MB on the wire.
+      # The key carries the commit, so a deploy lands on a new URL and nothing
+      # has to be purged; the builds behind the newest few are deleted here,
+      # since distinct keys have nothing else to remove them.  R2 serves what
+      # it is given and does not compress, hence gzip with the encoding
+      # recorded on the object: 40 MB becomes 12 MB on the wire.
       #
       # Without the secrets configured the upload is skipped and ruby.wasm
       # rides along in the Pages artifact as before, which keeps forks working.
@@ -96,27 +97,67 @@ jobs:
           # R2 sends no checksum headers back, which newer AWS CLIs insist on.
           AWS_REQUEST_CHECKSUM_CALCULATION: when_required
           AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          BUCKET: ${{ vars.R2_BUCKET }}
+          # How many builds to keep, the newest included.  A page loaded just
+          # before a deploy goes on finding its binary, and a bad build can be
+          # rolled back by hand; further back is 12 MB apiece for nothing.
+          KEEP: 3
         run: |
           gzip -9 -c ruby.wasm > /tmp/ruby.wasm.gz
+          key="ruby-${GITHUB_SHA:0:12}.wasm"
 
-          # One key, overwritten each time, since only the newest build is of
-          # any use.  That rules out caching it as immutable: the URL no longer
-          # changes with the contents, so a long max-age would go on serving
-          # the previous binary.  Five minutes bounds how stale a visitor's
-          # copy can be just after a deploy, and revalidation costs a 304
-          # rather than 12 MB.
+          # The commit names the build, so the URL changes whenever the page
+          # does and the binary can be cached as immutable: nothing to purge,
+          # and a visitor who already has it asks for nothing at all.
           aws s3api put-object \
-            --endpoint-url "https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
-            --bucket "${{ vars.R2_BUCKET }}" \
-            --key ruby-head.wasm \
+            --endpoint-url "$ENDPOINT" \
+            --bucket "$BUCKET" \
+            --key "$key" \
             --body /tmp/ruby.wasm.gz \
             --content-type application/wasm \
             --content-encoding gzip \
-            --cache-control "public, max-age=300" \
+            --cache-control "public, max-age=31536000, immutable" \
             --no-cli-pager
 
-          echo '{"rubyWasmUrl":"${{ vars.R2_PUBLIC_URL }}/ruby-head.wasm"}' > config.json
+          echo "{\"rubyWasmUrl\":\"${{ vars.R2_PUBLIC_URL }}/$key\"}" > config.json
           echo "uploaded=true" >> "$GITHUB_OUTPUT"
+
+          # Distinct keys have nothing to remove them, so the oldest go here.
+          # Ordered by age rather than by name, since a commit says which build
+          # it is but not which came first; the timestamps are UTC ISO 8601, so
+          # sorting them as text sorts them by time.  `head -n -KEEP` is every
+          # line but the last KEEP, and prints nothing until there are more.
+          #
+          # The listing is written out before it is sorted, so that what the if
+          # tests is the listing: a pipeline would report the sort, which
+          # succeeds on no input either way.  A failure is said rather than
+          # raised, since the binary is already up and a stale object left
+          # behind is no reason to hold back the deploy that needs the new one.
+          if aws s3api list-objects-v2 \
+               --endpoint-url "$ENDPOINT" \
+               --bucket "$BUCKET" \
+               --prefix ruby- \
+               --query "Contents[].[LastModified,Key]" \
+               --output text --no-cli-pager > /tmp/builds
+          then
+            sort /tmp/builds | head -n "-$KEEP" | cut -f2 | while read -r stale; do
+              # Whatever else may be in the bucket is not ours to delete.
+              case "$stale" in
+                ruby-*.wasm) ;;
+                *) echo "leaving $stale alone"; continue ;;
+              esac
+              echo "removing $stale"
+              aws s3api delete-object \
+                --endpoint-url "$ENDPOINT" \
+                --bucket "$BUCKET" \
+                --key "$stale" \
+                --no-cli-pager ||
+                echo "::warning::could not remove $stale"
+            done
+          else
+            echo "::warning::could not list $BUCKET; older builds were left in place"
+          fi
 
       - uses: actions/upload-artifact@v7
         with:

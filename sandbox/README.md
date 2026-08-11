@@ -111,21 +111,22 @@ instead, and that one can create and delete every bucket in the account.
 
 ### What the workflow does
 
-The binary goes to a single key, `ruby-head.wasm`, overwritten on each
-deployment — only the newest build is of any use, and content-addressed keys
-would pile up in the bucket with nothing to remove them.
+The binary goes to `ruby-<commit>.wasm`, so a deployment lands on a URL of its
+own. That is what lets it be cached as immutable: nothing has to be purged on
+deploy, and a visitor who already has a copy asks for nothing at all.
 
-That is why it is not cached as immutable. The URL no longer changes with the
-contents, so a long `max-age` would go on serving the previous binary; the
-alternative, purging Cloudflare's cache on deploy, needs a far broader API
-token than the bucket-scoped one above. Five minutes bounds how stale a
-visitor's copy can be just after a deploy, and revalidating after that costs a
-304 rather than 12 MB.
+Distinct keys have nothing to remove them, though, and each is 12 MB, so the
+workflow deletes everything but the newest three after uploading. Three is
+enough that a page fetched moments before a deploy still finds its binary, and
+that a bad build can be rolled back by pointing `config.json` at the previous
+key. The objects are ordered by their timestamps rather than by name — a
+commit says which build it is, not which came first — and anything under the
+`ruby-` prefix that is not one of these is left alone.
 
-The page and the binary are deployed separately, so for those few minutes a
-visitor can get a new page with the previous binary. They are independent
-enough for that not to matter — the binary only changes when the Gemfile or
-the pinned Ruby revision does.
+The page and the binary are deployed separately, so a visitor can briefly get
+a new page with the previous binary. They are independent enough for that not
+to matter — the binary only changes when the Gemfile or the pinned Ruby
+revision does.
 
 R2 serves what it is given and does not compress, so the binary is gzipped and
 the encoding recorded on the object: 40 MB stored, about 12 MB on the wire.
