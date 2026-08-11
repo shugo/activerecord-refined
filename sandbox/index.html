@@ -263,7 +263,10 @@
     #editor       { order: 3; height: 28vh; }
     #output-bar   { order: 4; }
     #output       { order: 5; height: 34vh; }
-    #data-nav     { order: 6; max-height: 220px; padding: .5rem 0; }
+    /* The page scrolls as a whole here, so a pane scrolling inside it is one
+       scroll too many.  The examples are a long list and stay in their own
+       box; the tables are a handful and show all of themselves. */
+    #data-nav     { order: 6; max-height: none; overflow-y: visible; padding: .5rem 0; }
     #data-bar     { order: 7; }
     #data-scroll  { order: 8; max-height: 50vh; }
 
