@@ -6,15 +6,38 @@
 <title>activerecord-refined sandbox</title>
 <style>
   :root {
+    color-scheme: light dark;
     --bg: #ffffff;
     --fg: #1b1f24;
     --muted: #5b6470;
     --border: #d8dee6;
     --accent: #b4433a;
+    /* The accent twice: once as text, once as something white sits on.  A red
+       light enough to read against a dark page is too light to put white on,
+       so in the dark theme the two part company. */
+    --accent-solid: #b4433a;
     --accent-weak: #fdf2f1;
+    --disabled: #b9c0c9;
     --code-bg: #1e232b;
     --code-fg: #e6e9ee;
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  /* Only the page around the panes changes.  The editor and the output are
+     dark in both themes -- CodeMirror's one-dark, and the terminal colours
+     chosen to sit on it -- so leaving --code-bg alone is what keeps the
+     output's reds and greys legible without a second set of them. */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16191f;
+      --fg: #e6e9ee;
+      --muted: #98a1ad;
+      --border: #2b313a;
+      --accent: #f08a80;
+      --accent-solid: #c0453b;
+      --accent-weak: #2b1d1c;
+      --disabled: #3a414c;
+    }
   }
 
   * { box-sizing: border-box; }
@@ -118,7 +141,7 @@
   .bar .spacer { flex: 1; }
 
   button.run {
-    background: var(--accent);
+    background: var(--accent-solid);
     color: #fff;
     border: 0;
     border-radius: 5px;
@@ -127,7 +150,7 @@
     font-size: .85rem;
     cursor: pointer;
   }
-  button.run:disabled { background: #b9c0c9; cursor: default; }
+  button.run:disabled { background: var(--disabled); cursor: default; }
   .hint { color: var(--muted); font-size: .78rem; }
 
   pre {
@@ -149,6 +172,12 @@
   }
   #editor .cm-editor { height: 100%; }
   #editor .cm-editor.cm-focused { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+  /* These boxes are dark whichever way the page went, and the scrollbar is the
+     browser's to paint: left to itself it puts a light one down the side of a
+     dark pane.  Said outright rather than through color-scheme, which Firefox
+     does not take as an answer here. */
+  pre, #editor, #data-scroll { scrollbar-color: #545d6b var(--code-bg); }
 
   pre {
     background: var(--code-bg);
