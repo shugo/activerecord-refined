@@ -130,7 +130,8 @@ end
 # The statements the examples build run past the width of the pane, which does
 # not wrap, so they are broken where SQL itself divides: one clause to a line,
 # indented by how deep in parentheses it is.  A CTE or a subquery then reads as
-# the nested thing it is rather than as one line to scroll along.
+# the nested thing it is rather than as one line to scroll along.  A clause
+# still too wide is divided again, at its own commas and before AND and OR.
 CLAUSES = %w[
   WITH\ RECURSIVE WITH SELECT FROM WHERE GROUP\ BY HAVING WINDOW ORDER\ BY
   LIMIT OFFSET UNION\ ALL UNION INTERSECT EXCEPT
@@ -138,62 +139,115 @@ CLAUSES = %w[
   LEFT\ JOIN RIGHT\ JOIN CROSS\ JOIN JOIN
   INSERT\ INTO UPDATE DELETE\ FROM VALUES SET RETURNING
 ].freeze
-CLAUSE_AT = /\A(?:#{CLAUSES.map { |c| Regexp.escape(c) }.join('|')})(?![A-Z_])/i
+CLAUSE_AT = /\G(?:#{CLAUSES.map { |c| Regexp.escape(c) }.join('|')})(?![A-Z_])/i
+CONNECTIVE_AT = /\G(?:AND|OR)\b/i
+
+# Wide enough for the statements here to keep their shape, narrow enough to
+# read in the output pane when a table is open beside it and it has half the
+# width.
+SQL_WIDTH = 72
+
+# A copy with every quoted run blanked out, so the scanning below can use plain
+# patterns without a value or an identifier answering for one of them: a column
+# named "order", or the word from in 'it''s from me'.  The blanks keep the
+# length, so an offset into one is an offset into the other.
+def mask_quoted(sql)
+  masked = sql.dup
+  i = 0
+  while i < sql.length
+    c = sql[i]
+    unless c == "'" || c == '"'
+      i += 1
+      next
+    end
+    # Doubled quotes escape the quote, so they are not the end of the run.
+    j = i + 1
+    while j < sql.length
+      if sql[j] == c
+        break unless sql[j + 1] == c
+        j += 1
+      end
+      j += 1
+    end
+    j = sql.length - 1 if j >= sql.length
+    masked[i..j] = '.' * (j - i + 1)
+    i = j + 1
+  end
+  masked
+end
 
 def format_sql(sql)
+  masked = mask_quoted(sql)
   out = +''
   # One entry per open parenthesis, saying whether a clause was broken inside
   # it: that is what decides whether its `)` deserves a line of its own or is
   # closing something like COUNT(*).
   broken = []
-  indent = -> { '  ' * broken.size }
   newline = lambda do
     out.rstrip!
-    out << "\n" << indent.call unless out.empty?
+    out << "\n" << '  ' * broken.size unless out.empty?
   end
 
   i = 0
   while i < sql.length
-    case (c = sql[i])
-    when "'", '"'
-      # A quoted value or identifier, doubled quotes escaping the quote.  It is
-      # stepped over whole, so a column named "order" is not read as a clause
-      # and neither is the word from in 'it''s from me'.
-      j = i + 1
-      while j < sql.length
-        if sql[j] == c
-          break unless sql[j + 1] == c
-          j += 1
-        end
-        j += 1
-      end
-      out << sql[i..j]
-      i = j + 1
+    case masked[i]
     when '('
       broken.push(false)
-      out << c
+      out << sql[i]
       i += 1
     when ')'
-      was_broken = broken.pop
-      newline.call if was_broken
-      out << c
+      newline.call if broken.pop
+      out << sql[i]
       i += 1
     else
-      # Only at the start of a word: FROM in "far_from_here" is not a clause.
-      at_word_start = i.zero? || sql[i - 1] =~ /[\s(,]/
-      if at_word_start && (m = CLAUSE_AT.match(sql[i..]))
+      # Only at the start of a word: FROM in far_from_here is not a clause.
+      at_word_start = i.zero? || masked[i - 1] =~ /[\s(,]/
+      if at_word_start && (m = CLAUSE_AT.match(masked, i))
         broken[-1] = true unless broken.empty?
         newline.call
-        out << m[0]
+        out << sql[i, m[0].length]
         i += m[0].length
       else
-        out << c
+        out << sql[i]
         i += 1
       end
     end
   end
 
-  out
+  out.each_line.map { |line| divide_clause(line.chomp) }.join("\n")
+end
+
+# Only at the top level of the clause: the arguments of a function and the
+# innards of an expression are one thing to read and stay on one line.
+def divide_clause(line)
+  return line if line.length <= SQL_WIDTH
+
+  masked = mask_quoted(line)
+  depth = 0
+  starts = []
+  masked.each_char.with_index do |c, i|
+    case c
+    when '(' then depth += 1
+    when ')' then depth -= 1
+    when ',' then starts << i + 1 if depth.zero?
+    end
+    next unless depth.zero? && i.positive? && masked[i - 1] == ' '
+    starts << i if CONNECTIVE_AT.match(masked, i)
+  end
+  return line if starts.empty?
+
+  indent = line[/\A */] + '  '
+  pieces = []
+  from = 0
+  starts.sort.uniq.each do |start|
+    pieces << line[from...start]
+    from = start
+  end
+  pieces << line[from..]
+
+  pieces.each_with_index.map do |piece, n|
+    n.zero? ? piece.rstrip : indent + piece.strip
+  end.join("\n")
 end
 
 # `show` is what the examples call: it prints the SQL a relation builds and then
