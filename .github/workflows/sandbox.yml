@@ -73,11 +73,11 @@ jobs:
       # is nearly all of the bandwidth this page uses, so it is served from R2
       # -- egress there is free -- and only the page itself from Pages.
       #
-      # The key carries the commit, so a deploy lands on a new URL and nothing
-      # has to be purged; the builds behind the newest few are deleted here,
-      # since distinct keys have nothing else to remove them.  R2 serves what
-      # it is given and does not compress, hence gzip with the encoding
-      # recorded on the object: 40 MB becomes 12 MB on the wire.
+      # The key carries a hash of the binary, so a rebuild lands on a new URL
+      # and nothing has to be purged; the builds behind the newest few are
+      # deleted here, since distinct keys have nothing else to remove them.
+      # R2 serves what it is given and does not compress, hence gzip with the
+      # encoding recorded on the object: 40 MB becomes 12 MB on the wire.
       #
       # Without the secrets configured the upload is skipped and ruby.wasm
       # rides along in the Pages artifact as before, which keeps forks working.
@@ -105,11 +105,18 @@ jobs:
           KEEP: 3
         run: |
           gzip -9 -c ruby.wasm > /tmp/ruby.wasm.gz
-          key="ruby-${GITHUB_SHA:0:12}.wasm"
+          key="ruby-$(sha256sum ruby.wasm | cut -c1-16).wasm"
 
-          # The commit names the build, so the URL changes whenever the page
-          # does and the binary can be cached as immutable: nothing to purge,
-          # and a visitor who already has it asks for nothing at all.
+          # The contents name the build rather than the commit, so the URL
+          # changes only when the binary does -- which is when the Gemfile or
+          # the pinned Ruby revision moves, not every time an example is
+          # edited.  That is what makes the immutable caching worth having: a
+          # visitor who already has this binary asks for nothing at all, where
+          # a per-deploy URL would send everyone after 12 MB of the same bytes.
+          #
+          # Uploaded even when the key is already there, so that its timestamp
+          # says when the binary was last in use rather than when it first
+          # appeared, which is what the rotation below reads.
           aws s3api put-object \
             --endpoint-url "$ENDPOINT" \
             --bucket "$BUCKET" \
@@ -142,8 +149,11 @@ jobs:
                --output text --no-cli-pager > /tmp/builds
           then
             sort /tmp/builds | head -n "-$KEEP" | cut -f2 | while read -r stale; do
-              # Whatever else may be in the bucket is not ours to delete.
+              # The one just uploaded is never stale, whatever the listing says
+              # of its age: it is the binary the page about to be deployed asks
+              # for.  Whatever else is under the prefix is not ours to delete.
               case "$stale" in
+                "$key") echo "keeping $stale, which is this build"; continue ;;
                 ruby-*.wasm) ;;
                 *) echo "leaving $stale alone"; continue ;;
               esac

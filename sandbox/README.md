@@ -111,17 +111,26 @@ instead, and that one can create and delete every bucket in the account.
 
 ### What the workflow does
 
-The binary goes to `ruby-<commit>.wasm`, so a deployment lands on a URL of its
-own. That is what lets it be cached as immutable: nothing has to be purged on
-deploy, and a visitor who already has a copy asks for nothing at all.
+The binary goes to `ruby-<hash of the binary>.wasm`, so its URL changes when
+its contents do and not otherwise. That is what makes the immutable caching
+worth having: a deploy that only edits an example leaves the URL alone, and a
+visitor who already has that binary asks for nothing at all. Naming the object
+after the commit instead would send everyone after 12 MB of the same bytes
+every time anything shipped.
 
 Distinct keys have nothing to remove them, though, and each is 12 MB, so the
-workflow deletes everything but the newest three after uploading. Three is
-enough that a page fetched moments before a deploy still finds its binary, and
-that a bad build can be rolled back by pointing `config.json` at the previous
-key. The objects are ordered by their timestamps rather than by name — a
-commit says which build it is, not which came first — and anything under the
-`ruby-` prefix that is not one of these is left alone.
+workflow deletes all but the newest three after uploading. Since the key
+follows the contents, those three are the last three *binaries* rather than
+the last three deployments, which is a good deal longer — the binary only
+changes when the Gemfile or the pinned Ruby revision does. It is enough that a
+page fetched moments before a deploy still finds what it wants, and that a bad
+build can be rolled back by pointing `config.json` at the previous key.
+
+The objects are ordered by their timestamps, and the binary is re-uploaded
+even when its key is already there, so that the timestamp says when it was
+last in use rather than when it first appeared. The key just uploaded is never
+deleted whatever its age says, and anything under the `ruby-` prefix that is
+not one of these objects is left alone.
 
 The page and the binary are deployed separately, so a visitor can briefly get
 a new page with the previous binary. They are independent enough for that not
