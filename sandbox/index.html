@@ -264,7 +264,9 @@
   }
   #data-table tr:last-child td { border-bottom: 0; }
   #data-table td.null { color: #7f8a99; font-style: italic; }
-  #data-table td.number { text-align: right; }
+  /* Not td.number: the heading of a numeric column is right too, and a class
+     outranks the th rule above that puts it left. */
+  #data-table .number { text-align: right; }
 
   #status {
     padding: 2rem 1.25rem;
@@ -532,27 +534,38 @@ function openTable(name) {
     dataTableEl.insertRow().insertCell().textContent = error;
   } else {
     const head = dataTableEl.createTHead().insertRow();
-    for (const column of columns) {
+    // Alignment belongs to the column rather than the cell: a NULL in a column
+    // of numbers is still in that column, and so is its heading.  Aligning
+    // either of them the other way breaks the line the digits make down the
+    // right-hand side.
+    const numeric = columns.map((_, i) =>
+      rows.some(row => typeof row[i] === 'number') &&
+      rows.every(row => row[i] === null || typeof row[i] === 'number'));
+
+    columns.forEach((column, i) => {
       const th = document.createElement('th');
       th.textContent = column;
+      if (numeric[i]) th.className = 'number';
       head.append(th);
-    }
+    });
 
     const body = dataTableEl.createTBody();
     for (const row of rows) {
       const tr = body.insertRow();
-      for (const value of row) {
+      row.forEach((value, i) => {
         const td = tr.insertCell();
+        const classes = [];
         if (value === null) {
           // Worth seeing as itself: telling NULL from an empty string is half
           // of what the DSL is about.
           td.textContent = 'NULL';
-          td.className = 'null';
+          classes.push('null');
         } else {
           td.textContent = String(value);
-          if (typeof value === 'number') td.className = 'number';
         }
-      }
+        if (numeric[i]) classes.push('number');
+        td.className = classes.join(' ');
+      });
     }
     dataCountEl.textContent = `${rows.length} row(s)`;
   }
