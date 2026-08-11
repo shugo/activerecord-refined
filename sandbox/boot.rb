@@ -127,11 +127,80 @@ def red(text)
   "\e[31m#{text}\e[0m"
 end
 
+# The statements the examples build run past the width of the pane, which does
+# not wrap, so they are broken where SQL itself divides: one clause to a line,
+# indented by how deep in parentheses it is.  A CTE or a subquery then reads as
+# the nested thing it is rather than as one line to scroll along.
+CLAUSES = %w[
+  WITH\ RECURSIVE WITH SELECT FROM WHERE GROUP\ BY HAVING WINDOW ORDER\ BY
+  LIMIT OFFSET UNION\ ALL UNION INTERSECT EXCEPT
+  INNER\ JOIN LEFT\ OUTER\ JOIN RIGHT\ OUTER\ JOIN FULL\ OUTER\ JOIN
+  LEFT\ JOIN RIGHT\ JOIN CROSS\ JOIN JOIN
+  INSERT\ INTO UPDATE DELETE\ FROM VALUES SET RETURNING
+].freeze
+CLAUSE_AT = /\A(?:#{CLAUSES.map { |c| Regexp.escape(c) }.join('|')})(?![A-Z_])/i
+
+def format_sql(sql)
+  out = +''
+  # One entry per open parenthesis, saying whether a clause was broken inside
+  # it: that is what decides whether its `)` deserves a line of its own or is
+  # closing something like COUNT(*).
+  broken = []
+  indent = -> { '  ' * broken.size }
+  newline = lambda do
+    out.rstrip!
+    out << "\n" << indent.call unless out.empty?
+  end
+
+  i = 0
+  while i < sql.length
+    case (c = sql[i])
+    when "'", '"'
+      # A quoted value or identifier, doubled quotes escaping the quote.  It is
+      # stepped over whole, so a column named "order" is not read as a clause
+      # and neither is the word from in 'it''s from me'.
+      j = i + 1
+      while j < sql.length
+        if sql[j] == c
+          break unless sql[j + 1] == c
+          j += 1
+        end
+        j += 1
+      end
+      out << sql[i..j]
+      i = j + 1
+    when '('
+      broken.push(false)
+      out << c
+      i += 1
+    when ')'
+      was_broken = broken.pop
+      newline.call if was_broken
+      out << c
+      i += 1
+    else
+      # Only at the start of a word: FROM in "far_from_here" is not a clause.
+      at_word_start = i.zero? || sql[i - 1] =~ /[\s(,]/
+      if at_word_start && (m = CLAUSE_AT.match(sql[i..]))
+        broken[-1] = true unless broken.empty?
+        newline.call
+        out << m[0]
+        i += m[0].length
+      else
+        out << c
+        i += 1
+      end
+    end
+  end
+
+  out
+end
+
 # `show` is what the examples call: it prints the SQL a relation builds and then
 # the rows it actually returns, so the two can be read side by side.
 def show(relation, limit: 20)
   statement = relation.to_sql
-  puts red(statement)
+  puts red(format_sql(statement))
   puts
 
   # Read the rows through the connection rather than through the model, so the
@@ -147,7 +216,7 @@ end
 
 # Prints just the SQL, for examples where running the query is beside the point.
 def sql(relation)
-  puts red(relation.to_sql)
+  puts red(format_sql(relation.to_sql))
   puts
 end
 
