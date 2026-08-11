@@ -63,24 +63,48 @@ module ActiveRecord
           Match.new(self, pattern, negated: true)
         end
 
+        # `!` negates any predicate, so these are here for the four that SQL
+        # spells for itself: IS NOT NULL rather than NOT (... IS NULL), and
+        # likewise NOT IN and NOT LIKE.  They mean the same thing either way,
+        # including when the column is NULL; what they save is the reading.
         def null?
           Comparison.new(self, :==, nil)
+        end
+
+        def not_null?
+          Comparison.new(self, :!=, nil)
         end
 
         def in?(values)
           In.new(self, values)
         end
 
+        def not_in?(values)
+          In.new(self, values, negated: true)
+        end
+
         def between?(min, max)
           In.new(self, min..max)
+        end
+
+        def not_between?(min, max)
+          In.new(self, min..max, negated: true)
         end
 
         def like?(pattern)
           Like.new(self, pattern)
         end
 
+        def not_like?(pattern)
+          Like.new(self, pattern, negated: true)
+        end
+
         def ilike?(pattern)
           Like.new(self, pattern, nil, case_sensitive: false)
+        end
+
+        def not_ilike?(pattern)
+          Like.new(self, pattern, nil, case_sensitive: false, negated: true)
         end
 
         # Case-insensitive equality, folded on both sides rather than left to
@@ -505,19 +529,21 @@ module ActiveRecord
       # IN for a list of values, BETWEEN for a range, IN (SELECT ...) for a
       # relation.
       class In < Predicate
-        attr_reader :operand, :values
+        attr_reader :operand, :values, :negated
 
-        def initialize(operand, values)
+        def initialize(operand, values, negated: false)
           @operand = operand
           @values = values
+          @negated = negated
         end
 
         def to_arel(table)
           arel_operand = to_arel_operand(operand, table)
-          case values
-          when Range then arel_operand.between(values)
-          when ActiveRecord::Relation then arel_operand.in(subquery(values))
-          else arel_operand.in(values)
+          if values.is_a?(Range)
+            arel_operand.public_send(negated ? :not_between : :between, values)
+          else
+            arg = values.is_a?(ActiveRecord::Relation) ? subquery(values) : values
+            arel_operand.public_send(negated ? :not_in : :in, arg)
           end
         end
 
@@ -578,19 +604,23 @@ module ActiveRecord
             inject {|left, right| Or.new(left, right) }
         end
 
-        attr_reader :operand, :pattern, :escape, :case_sensitive
+        attr_reader :operand, :pattern, :escape, :case_sensitive, :negated
 
-        def initialize(operand, pattern, escape = nil, case_sensitive: true)
+        def initialize(operand, pattern, escape = nil, case_sensitive: true,
+                       negated: false)
           @operand = operand
           @pattern = pattern
           @escape = escape
           @case_sensitive = case_sensitive
+          @negated = negated
         end
 
         def to_arel(table)
           # Arel matches case-insensitively unless told otherwise, which is
           # what picks ILIKE over LIKE on PostgreSQL.
-          to_arel_operand(operand, table).matches(pattern, escape, case_sensitive)
+          to_arel_operand(operand, table).
+            public_send(negated ? :does_not_match : :matches,
+                        pattern, escape, case_sensitive)
         end
       end
 

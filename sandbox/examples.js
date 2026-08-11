@@ -52,7 +52,11 @@ Author.where { :country == nil }`,
         title: 'Looking for NULL',
         slug: 'null',
         code: `show Author.where { :country.null? }
-show Author.where { !:country.null? }`,
+show Author.where { :country.not_null? }
+
+# ! negates anything.  The methods above are for the negations SQL spells
+# for itself, and pick the same rows as writing NOT around the positive.
+sql Author.where { !:country.null? }`,
       },
       {
         title: 'Comparing NULL as a value',
@@ -69,7 +73,17 @@ show Author.where { :country.distinct_from?('JP') }`,
         code: `show Author.where { :age.in?(20..50) }        # BETWEEN
 show Author.where { :age.between?(20, 50) }   # the same
 show Author.where { :age.in?(50..) }          # >= 50
-show Author.where { :country.in?(%w[JP US]) } # IN`,
+show Author.where { :country.in?(%w[JP US]) } # IN
+
+# Each has its negative.  This one comes back empty, which is SQL rather
+# than the DSL: the authors left are the ones whose country is NULL, and
+# NULL NOT IN (...) is unknown rather than true, so they are dropped.
+# ! around in? does the same.  distinct_from? is what keeps them.
+show Author.where { :country.not_in?(%w[JP US]) }
+
+# not_between? is the one whose SQL does not look like its name: Arel
+# writes it as the two comparisons.
+show Author.where { :age.not_between?(20, 50) }`,
       },
       {
         title: 'A relation as a subquery',
@@ -106,7 +120,10 @@ show Author.where { !exists?(Post.where { :posts[:author_id] == :authors[:id] })
 # like? is case-sensitive LIKE on every adapter, PostgreSQL included.
 # ilike? and casecmp? are the ones that are not.
 sql Author.where { :name.ilike?('a%') }
-sql Author.where { :name.casecmp?('alice') }`,
+sql Author.where { :name.casecmp?('alice') }
+
+# not_like? and not_ilike? are the negatives.
+show Author.where { :name.not_like?('A%') }`,
       },
       {
         title: 'start_with? / end_with? / include?',

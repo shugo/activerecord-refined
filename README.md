@@ -87,6 +87,24 @@ Author.where { :country.in?(%w[JP US]) }    # IN
 Author.where { :country.null? }             # IS NULL
 ```
 
+`!` negates any of these. Where SQL has a negative of its own, so does the
+block, which is the same rows written the way they would be written by hand:
+
+```ruby
+Author.where { :country.not_null? }             # IS NOT NULL
+Author.where { :country.not_in?(%w[JP US]) }    # NOT IN
+Author.where { :age.not_between?(20, 40) }      # not between 20 and 40
+Author.where { :name.not_like?('A%') }          # NOT LIKE
+Author.where { :name.not_ilike?('a%') }         # NOT ILIKE / NOT LIKE
+
+Author.where { !:name.start_with?('A') }        # NOT (name LIKE 'A%')
+```
+
+Nothing turns on the choice: `NOT (country IS NULL)` and `country IS NOT NULL`
+select the same rows, NULLs included. `not_between?` is the one whose SQL
+looks unlike its name — Arel writes it as the two comparisons, `age < 20 OR
+age > 40`, which is again the same rows.
+
 `in?` also takes a relation as a subquery. Without an explicit select list the
 subquery selects the relation's primary key, the same way ActiveRecord's own
 `where(id: relation)` does:

@@ -91,9 +91,20 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(['Alice'], User.where { :name.casecmp?('aLiCe') }.pluck(:name))
   end
 
-  def test_not_like
+  def test_bang_negates_like
     assert_sql(/WHERE NOT \("users"."name" LIKE 'tender%'\)/,
       User.where { !:name.like?('tender%') }.to_sql)
+  end
+
+  def test_not_like
+    assert_sql(/WHERE "users"."name" NOT LIKE 'tender%'/,
+      User.where { :name.not_like?('tender%') }.to_sql)
+  end
+
+  def test_not_ilike
+    expected = ADAPTER == 'postgresql' ? 'ILIKE' : 'LIKE'
+    assert_sql(/WHERE "users"."name" NOT #{expected} 'tender%'/,
+      User.where { :name.not_ilike?('tender%') }.to_sql)
   end
 
   def test_start_with
@@ -298,9 +309,21 @@ class TestBlockSyntax < Minitest::Test
       User.where { :age.in?(18...65) }.to_sql)
   end
 
-  def test_not_between
+  def test_bang_negates_between
     assert_sql(/WHERE NOT \("users"."age" BETWEEN 18 AND 65\)/,
       User.where { !:age.between?(18, 65) }.to_sql)
+  end
+
+  # Arel spells the negation as the two comparisons rather than NOT BETWEEN,
+  # which is the same set of rows, NULLs included.
+  def test_not_between
+    assert_sql(/WHERE \("users"."age" < 18 OR "users"."age" > 65\)/,
+      User.where { :age.not_between?(18, 65) }.to_sql)
+  end
+
+  def test_not_in_range
+    assert_sql(/WHERE \("users"."age" < 18 OR "users"."age" > 65\)/,
+      User.where { :age.not_in?(18..65) }.to_sql)
   end
 
   def test_is_null
@@ -311,6 +334,36 @@ class TestBlockSyntax < Minitest::Test
   def test_is_null_qualified
     assert_sql(/WHERE "users"."name" IS NULL/,
       User.where { :users[:name].null? }.to_sql)
+  end
+
+  def test_is_not_null
+    assert_sql(/WHERE "users"."name" IS NOT NULL/,
+      User.where { :name.not_null? }.to_sql)
+  end
+
+  def test_is_not_null_qualified
+    assert_sql(/WHERE "users"."name" IS NOT NULL/,
+      User.where { :users[:name].not_null? }.to_sql)
+  end
+
+  # The claim these methods rest on: the direct spelling is the same rows as
+  # negating the positive one, which is where a NULL would show a difference
+  # if there were one.
+  def test_the_negations_match_what_bang_selects
+    User.delete_all
+    User.create!(name: 'alice', age: 60)
+    User.create!(name: 'bob', age: 20)
+    User.create!(name: nil, age: 40)
+    [
+      [-> { :name.not_null? },          -> { !:name.null? }],
+      [-> { :age.not_in?([20, 30]) },   -> { !:age.in?([20, 30]) }],
+      [-> { :age.not_between?(20, 30) }, -> { !:age.between?(20, 30) }],
+      [-> { :name.not_like?('a%') },    -> { !:name.like?('a%') }],
+    ].each do |direct, negated|
+      assert_equal(User.where(&negated).pluck(:id).sort,
+                   User.where(&direct).pluck(:id).sort,
+                   "#{direct.source_location} did not match the ! form")
+    end
   end
 
   def test_equal_nil_is_rejected
@@ -333,9 +386,19 @@ class TestBlockSyntax < Minitest::Test
       User.where { :users[:age].in?([1, 2, 3]) }.to_sql)
   end
 
-  def test_not_in
+  def test_bang_negates_in
     assert_sql(/WHERE NOT \("users"."age" IN \(1, 2, 3\)\)/,
       User.where { !:age.in?([1, 2, 3]) }.to_sql)
+  end
+
+  def test_not_in
+    assert_sql(/WHERE "users"."age" NOT IN \(1, 2, 3\)/,
+      User.where { :age.not_in?([1, 2, 3]) }.to_sql)
+  end
+
+  def test_not_in_qualified
+    assert_sql(/WHERE "users"."age" NOT IN \(1, 2, 3\)/,
+      User.where { :users[:age].not_in?([1, 2, 3]) }.to_sql)
   end
 
   # Spelled IS [NOT] DISTINCT FROM on PostgreSQL, IS / IS NOT on SQLite and
