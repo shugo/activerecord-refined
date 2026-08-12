@@ -133,8 +133,8 @@ and each is 12 MB, so the workflow deletes all but the newest three after
 uploading one. Those three are the last three *builds* rather than the last
 three deployments, which is a good deal longer — the inputs change rarely. It
 is enough that a page fetched moments before a deploy still finds what it
-wants, and that a bad build can be rolled back by pointing `config.json` at
-the previous key.
+wants, and that a bad build can be rolled back by pointing the page at the
+previous key.
 
 The objects are ordered by their timestamps. The key this run is using is
 never deleted whatever its age says, since it need not have been uploaded
@@ -148,7 +148,14 @@ revision does.
 
 R2 serves what it is given and does not compress, so the binary is gzipped and
 the encoding recorded on the object: 40 MB stored, about 12 MB on the wire.
-The URL is written into `config.json`, which the page reads at startup.
+
+The URL goes into the `<link rel="preload">` at the top of `index.html`, which
+the workflow rewrites; the script fetches the binary by that element's href.
+Naming it in the page rather than in a file the page has to read first means
+the browser can start on the 12 MB while it is still parsing the head — 8 ms
+into the load rather than 86 ms, measured locally, where a round trip costs
+almost nothing. A checkout keeps the line as written and loads the `ruby.wasm`
+beside it.
 
 ## Build caching
 

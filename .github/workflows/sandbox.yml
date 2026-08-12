@@ -225,16 +225,34 @@ jobs:
             echo "::warning::could not list $BUCKET; older builds were left in place"
           fi
 
-      # The page reads this at startup to learn where the binary is.  Written
-      # whether it went up in this run or was already there from an earlier
-      # one; without it the page falls back to a ruby.wasm sitting beside it,
-      # which is what the artifact carries when R2 is not in use.
+      # The preload in the head is what the page fetches the binary by, and it
+      # ships pointing at the local build.  Naming R2 there rather than in a
+      # file the page has to read first is worth a round trip on every visit:
+      # the browser can start on the 12 MB while it is still parsing the head,
+      # instead of after the scripts have loaded and asked where to look.
+      #
+      # Done whether the binary went up in this run or was already there.  A
+      # checkout with no deployment behind it keeps the line as written, and
+      # the artifact carries the ruby.wasm beside it.
       - name: Point the page at R2
         id: r2url
         if: steps.prebuilt.outputs.found == 'true' || steps.r2.outputs.uploaded == 'true'
+        env:
+          URL: ${{ vars.R2_PUBLIC_URL }}/${{ steps.build.outputs.key }}
         run: |
-          echo '{"rubyWasmUrl":"${{ vars.R2_PUBLIC_URL }}/${{ steps.build.outputs.key }}"}' > config.json
-          cat config.json
+          before=$(grep -c 'id="ruby-wasm"' index.html)
+          if [ "$before" != 1 ]; then
+            echo "::error::expected one preload link in index.html, found $before" >&2
+            exit 1
+          fi
+
+          sed -i "s|\(<link id=\"ruby-wasm\"[^>]*href=\)\"[^\"]*\"|\1\"$URL\"|" index.html
+          grep '<link id="ruby-wasm"' index.html
+
+          if ! grep -q "href=\"$URL\"" index.html; then
+            echo "::error::the preload link was not rewritten" >&2
+            exit 1
+          fi
           echo "served=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
@@ -245,7 +263,6 @@ jobs:
             sandbox/boot.rb
             sandbox/examples.js
             sandbox/manifest.json
-            sandbox/config.json
             ${{ steps.r2url.outputs.served != 'true' && 'sandbox/ruby.wasm' || '' }}
             sandbox/rb
             sandbox/assets

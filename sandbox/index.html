@@ -4,6 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>activerecord-refined sandbox</title>
+
+<!-- ruby.wasm is 40 MB, 12 MB on the wire, and nothing here can start until
+     it has arrived, so it is asked for while this document is still being
+     parsed rather than after the scripts below have loaded and run.  The
+     script fetches the same URL off this element, which is what lets the
+     browser hand it what the preload has already been collecting.
+
+     `as=fetch` with `crossorigin` is what a plain fetch() of a cross-origin
+     URL is, and it has to match or the file comes down twice.
+
+     The href is the local build.  Deployments serve the binary from R2 --
+     egress there is free -- and the workflow rewrites this line, which is
+     also what leaves a checkout working with no deployment behind it. -->
+<link id="ruby-wasm" rel="preload" as="fetch" crossorigin href="./ruby.wasm">
 <style>
   :root {
     color-scheme: light dark;
@@ -670,24 +684,13 @@ function buildSidebar(examples, tables) {
 runEl.addEventListener('click', run);
 dataCloseEl.addEventListener('click', closeTable);
 
-// ruby.wasm is 40 MB and nearly all of the bandwidth this page uses, so
-// deployments serve it from R2 -- egress there is free -- and name it in
-// config.json.  Without that file -- a checkout being served locally -- it
-// sits next to this page.
-async function rubyWasmUrl() {
-  try {
-    const config = await (await fetch('./config.json', FRESH)).json();
-    if (config.rubyWasmUrl) return config.rubyWasmUrl;
-  } catch {
-    // No config.json, or nothing useful in it.
-  }
-  return './ruby.wasm';
-}
-
 (async () => {
   try {
     detailEl.textContent = '(downloading ruby.wasm — tens of megabytes the first time)';
-    const module = await WebAssembly.compileStreaming(fetch(await rubyWasmUrl()));
+    // The href off the preload in the head, so the two cannot name different
+    // things and the fetch is answered by what is already on its way.
+    const wasmUrl = document.getElementById('ruby-wasm').href;
+    const module = await WebAssembly.compileStreaming(fetch(wasmUrl));
 
     detailEl.textContent = '(starting Ruby)';
     ({ vm } = await DefaultRubyVM(module));
