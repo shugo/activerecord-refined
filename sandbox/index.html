@@ -362,7 +362,6 @@
 
 <script src="./assets/browser.umd.js"></script>
 <script type="module">
-import { examples } from './examples.js';
 import { createEditor } from './assets/editor.js';
 
 const { DefaultRubyVM } = globalThis['ruby-wasm-wasi'];
@@ -400,6 +399,27 @@ let openTableName = null;
 // has changed.  ruby.wasm is deliberately left out of this -- it is 40 MB,
 // and its own cache-control is what governs it.
 const FRESH = { cache: 'no-cache' };
+
+// examples.js is one of those files, and the one where a stale copy shows: it
+// is edited on most deployments, and the page reads fields out of it -- a new
+// page with last week's examples would be missing whatever the newest of them
+// were added to demonstrate.  A static import cannot be given FRESH, since the
+// module loader does the fetching, so it is fetched here like everything else
+// and imported from what came back.
+//
+// The alternative, a hash in the filename, would have to be written into this
+// page, which means generating it; and on Pages the previous file is gone
+// after a deployment, so a page still in a cache would ask for one that is no
+// longer there and fail outright rather than be a little out of date.
+async function loadExamples() {
+  const source = await (await fetch('./examples.js', FRESH)).text();
+  const url = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+  try {
+    return (await import(url)).examples;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 // Nothing under rb/lib is packed into ruby.wasm.  The sources are handed to
 // Ruby, which writes them into the in-memory filesystem and puts that on
@@ -607,7 +627,7 @@ function addButton(pane, label, onClick) {
   return button;
 }
 
-function buildSidebar(tables) {
+function buildSidebar(examples, tables) {
   let firstButton = null;
   const bySlug = new Map();
 
@@ -686,7 +706,7 @@ async function rubyWasmUrl() {
     // After the layout is shown, so CodeMirror measures a box that has a size.
     editorEl = createEditor({ parent: editorParentEl, onRun: run });
 
-    const { firstButton, bySlug } = buildSidebar(tables);
+    const { firstButton, bySlug } = buildSidebar(await loadExamples(), tables);
 
     // A hash naming no example -- an old link, or a typo -- opens the first
     // one, which then corrects the URL.
