@@ -133,9 +133,9 @@ jobs:
       - name: Check the examples
         run: node --stack-size=4000 check-examples.mjs
 
-      # ruby.wasm is 40 MB, which a Cloudflare Pages asset may not be and which
-      # is nearly all of the bandwidth this page uses, so it is served from R2
-      # -- egress there is free -- and only the page itself from Pages.
+      # ruby.wasm is 40 MB and nearly all of the bandwidth this page uses, so
+      # it is served from R2 -- egress there is free -- and only the page
+      # itself from Pages.
       #
       # Only when it was built here: found in the bucket, it is already up.
       # The object is therefore written once and never rewritten, which is what
