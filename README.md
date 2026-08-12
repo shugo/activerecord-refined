@@ -274,8 +274,7 @@ Node.with_recursive(
     Node.where { :id == root.id }.
       select { [:id, :name, :parent_id, 0.as(:depth)] },
     Node.joins(:tree) { :nodes[:parent_id] == :tree[:id] }.
-      select { [:nodes[:id], :nodes[:name], :nodes[:parent_id],
-                (:tree[:depth] + 1).as(:depth)] },
+      select { [:id, :name, :parent_id, (:tree[:depth] + 1).as(:depth)] },
   ]
 ).from_cte(:tree)
 # WITH RECURSIVE "tree" AS (

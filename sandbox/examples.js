@@ -302,7 +302,7 @@ forest = Node.with_recursive(
     Node.where { :parent_id.null? }.
       select { [:id, :name, :parent_id, :id.as(:root_id), 0.as(:depth)] },
     Node.joins(:tree) { :nodes[:parent_id] == :tree[:id] }.
-      select { [:nodes[:id], :nodes[:name], :nodes[:parent_id],
+      select { [:id, :name, :parent_id,
                 :tree[:root_id], (:tree[:depth] + 1).as(:depth)] },
   ]
 ).from_cte(:tree).order { [:depth, :id] }

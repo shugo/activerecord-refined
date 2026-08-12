@@ -63,7 +63,7 @@ forest =
       Category.where { :parent_id.null? }.
         select { [:id, :name, :parent_id, :id.as(:root_id), 0.as(:depth)] },
       Category.joins(:tree) { :categories[:parent_id] == :tree[:id] }.
-        select { [:categories[:id], :categories[:name], :categories[:parent_id],
+        select { [:id, :name, :parent_id,
                   :tree[:root_id], (:tree[:depth] + 1).as(:depth)] },
     ]
   ).from_cte(:tree).order { [:depth, :id] }
@@ -98,10 +98,10 @@ puts
 expensive =
   Category.with(pricey: Product.where { :price >= 100 }).
     joins(:pricey) { :pricey[:category_id] == :categories[:id] }.
-    group { :categories[:id] }.
+    group { :id }.
     select {
       [
-        :categories[:name].as(:category),
+        :name.as(:category),
         count(:pricey[:id]).as(:pricey_count),
         max(:pricey[:price]).as(:top_price),
       ]
