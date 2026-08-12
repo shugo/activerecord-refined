@@ -299,7 +299,10 @@
        box; the tables are a handful and show all of themselves. */
     #data-nav     { order: 6; max-height: none; overflow-y: visible; padding: .5rem 0; }
     #data-bar     { order: 7; }
-    #data-scroll  { order: 8; max-height: 50vh; }
+    /* A height rather than a maximum, like the two panes above: with the box
+       sized by its rows, every table put the page's foot somewhere else and
+       moved whatever was below it.  The rows scroll inside instead. */
+    #data-scroll  { order: 8; height: 34vh; }
 
     /* The two-column placement above is for the wide layout only. */
     #output-bar, #output, #data-bar, #data-scroll {
