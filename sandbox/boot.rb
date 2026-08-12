@@ -83,10 +83,13 @@ class Employee < ActiveRecord::Base; end
 class Item < ActiveRecord::Base; end
 class Node < ActiveRecord::Base; end
 
-alice = Author.create!(name: 'Alice', country: 'JP', age: 60)
-bob   = Author.create!(name: 'Bob',   country: 'JP', age: 47)
-carol = Author.create!(name: 'Carol', country: nil,  age: 55)
-dave  = Author.create!(name: 'Dave',  country: 'US', age: 46)
+# The ages are spread so that every example that filters on one has something
+# to show: Erin is the only one under 18, Carol the only one over 50, and the
+# average falls between the two thresholds the examples use.
+alice = Author.create!(name: 'Alice', country: 'JP', age: 38)
+bob   = Author.create!(name: 'Bob',   country: 'JP', age: 26)
+carol = Author.create!(name: 'Carol', country: nil,  age: 52)
+dave  = Author.create!(name: 'Dave',  country: 'US', age: 31)
 Author.create!(name: 'Erin', country: nil, age: 17)
 
 p1 = Post.create!(author: alice, title: 'Ruby 4.1 is coming',    published: true,  likes: 120)
