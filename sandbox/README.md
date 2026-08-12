@@ -111,25 +111,34 @@ instead, and that one can create and delete every bucket in the account.
 
 ### What the workflow does
 
-The binary goes to `ruby-<hash of the binary>.wasm`, so its URL changes when
-its contents do and not otherwise. That is what makes the immutable caching
-worth having: a deploy that only edits an example leaves the URL alone, and a
-visitor who already has that binary asks for nothing at all. Naming the object
-after the commit instead would send everyone after 12 MB of the same bytes
-every time anything shipped.
+The binary goes to `ruby-<hash of the build's inputs>.wasm` — of
+`.ruby-version`, `Gemfile.lock`, `ext/`, and the scripts under `bin/` that
+pin `RUBY_REV` and the toolchain versions. Not of the binary itself: the build
+is not reproducible to the byte, and the same tree built twice came out 1 KB
+apart, mtimes riding along in the packed filesystem. A hash of the output
+would therefore change on every deploy and hand every visitor 12 MB to fetch
+again for nothing, which is the whole thing the immutable caching is there to
+avoid. Keyed on the inputs, the URL changes when the binary has a reason to.
 
-Distinct keys have nothing to remove them, though, and each is 12 MB, so the
-workflow deletes all but the newest three after uploading. Since the key
-follows the contents, those three are the last three *binaries* rather than
-the last three deployments, which is a good deal longer — the binary only
-changes when the Gemfile or the pinned Ruby revision does. It is enough that a
-page fetched moments before a deploy still finds what it wants, and that a bad
-build can be rolled back by pointing `config.json` at the previous key.
+That also means the build can be skipped. Before building, the workflow asks
+R2 for the object under this key, and if it is there it takes it — a few
+seconds against two minutes warm and sixteen cold. The examples are still
+checked against the binary that comes down, which is what the run is really
+for. Anything going wrong in the attempt — no credentials, as on a fork, or a
+half-written file — falls through to building.
 
-The objects are ordered by their timestamps, and the binary is re-uploaded
-even when its key is already there, so that the timestamp says when it was
-last in use rather than when it first appeared. The key just uploaded is never
-deleted whatever its age says, and anything under the `ruby-` prefix that is
+An object is therefore written once and never rewritten, which is what
+`immutable` claims of it. Distinct keys have nothing to remove them, though,
+and each is 12 MB, so the workflow deletes all but the newest three after
+uploading one. Those three are the last three *builds* rather than the last
+three deployments, which is a good deal longer — the inputs change rarely. It
+is enough that a page fetched moments before a deploy still finds what it
+wants, and that a bad build can be rolled back by pointing `config.json` at
+the previous key.
+
+The objects are ordered by their timestamps. The key this run is using is
+never deleted whatever its age says, since it need not have been uploaded
+recently to be the one in use, and anything under the `ruby-` prefix that is
 not one of these objects is left alone.
 
 The page and the binary are deployed separately, so a visitor can briefly get

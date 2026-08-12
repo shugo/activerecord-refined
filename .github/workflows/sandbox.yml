@@ -33,13 +33,75 @@ jobs:
         with:
           node-version: '24'
 
+      # What the binary is made of: the gems with C extensions, the scripts
+      # that drive the build -- RUBY_REV and the toolchain versions are pinned
+      # in them -- the staged extension, and the host Ruby.  Not the gem's own
+      # lib and not the page, neither of which the binary contains; those are
+      # files the page fetches at startup.
+      #
+      # Naming the build after this rather than after the binary is what makes
+      # the URL stable.  The build is not reproducible to the byte -- the same
+      # tree twice over came out 1 KB apart, mtimes riding along in the packed
+      # filesystem -- so a hash of the output would change on every deploy and
+      # give every visitor 12 MB to fetch again for nothing.
+      - name: Identify the build
+        id: build
+        run: |
+          hash="${{ hashFiles('sandbox/.ruby-version', 'sandbox/Gemfile.lock', 'sandbox/bin/build-wasm', 'sandbox/bin/rbwasm-build.rb', 'sandbox/bin/install-wasi-sdk.rb', 'sandbox/ext/**') }}"
+
+          # hashFiles gives back an empty string when it matches nothing, and
+          # an empty hash would quietly name every build alike -- and hand out
+          # whichever binary happened to be uploaded first, for good.
+          if [ -z "$hash" ]; then
+            echo "::error::hashFiles matched none of the build inputs" >&2
+            exit 1
+          fi
+
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+          echo "key=ruby-${hash:0:16}.wasm" >> "$GITHUB_OUTPUT"
+          echo "this build is ruby-${hash:0:16}.wasm"
+
+      # The binary for these inputs may already be in the bucket from an
+      # earlier deploy, in which case there is nothing to build: 12 MB comes
+      # down in a few seconds where a build takes two minutes warm and sixteen
+      # cold.  The examples are still checked against it below, which is what
+      # the deploy is really for.
+      #
+      # Anything at all going wrong here -- no credentials, as on a fork, a
+      # network failure, a half-written file -- falls through to building.
+      - name: Fetch this build from R2 if it is there
+        id: prebuilt
+        if: vars.R2_PUBLIC_URL != ''
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+          ENDPOINT: https://${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          BUCKET: ${{ vars.R2_BUCKET }}
+          KEY: ${{ steps.build.outputs.key }}
+        run: |
+          if aws s3api get-object \
+               --endpoint-url "$ENDPOINT" \
+               --bucket "$BUCKET" \
+               --key "$KEY" \
+               /tmp/ruby.wasm.gz \
+               --no-cli-pager > /dev/null 2>&1 &&
+             gunzip -c /tmp/ruby.wasm.gz > ruby.wasm
+          then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "took $KEY from the bucket; not building"
+            ls -l ruby.wasm
+          else
+            rm -f ruby.wasm
+            echo "$KEY is not in the bucket; building it"
+          fi
+
       # The Ruby checkout and the build tree have to be cached together.  make
       # decides by mtime, so restoring objects next to a freshly cloned Ruby
-      # would rebuild everything.
-      #
-      # The build directory is keyed on the gems that have C extensions, so
-      # Gemfile.lock covers it; RUBY_REV is pinned in bin/build-wasm, and the
-      # staged extension comes from ext/ and the sqlite3 gem.
+      # would rebuild everything.  Keyed on the same inputs as the binary, so
+      # the two cannot drift apart.
       #
       # restore-keys is what keeps this worth caching -- a key change would
       # otherwise mean a cold 16-minute build rather than two minutes -- but it
@@ -48,16 +110,18 @@ jobs:
       # deleting the cache does.  bin/build-wasm rejects a ruby.wasm built from
       # such a tree, so it fails the run rather than shipping.
       - name: Restore the WASM build tree
+        if: steps.prebuilt.outputs.found != 'true'
         uses: actions/cache@v6
         with:
           path: sandbox/build
-          key: wasm-${{ runner.os }}-${{ hashFiles('sandbox/Gemfile.lock', 'sandbox/bin/build-wasm', 'sandbox/ext/**') }}
+          key: wasm-${{ runner.os }}-${{ steps.build.outputs.hash }}
           restore-keys: wasm-${{ runner.os }}-
 
       - run: bundle install --jobs 4
       - run: npm ci
 
       - name: Build ruby.wasm
+        if: steps.prebuilt.outputs.found != 'true'
         run: ./bin/build-wasm
 
       - name: Assemble the Ruby files served to the page
@@ -73,11 +137,11 @@ jobs:
       # is nearly all of the bandwidth this page uses, so it is served from R2
       # -- egress there is free -- and only the page itself from Pages.
       #
-      # The key carries a hash of the binary, so a rebuild lands on a new URL
-      # and nothing has to be purged; the builds behind the newest few are
-      # deleted here, since distinct keys have nothing else to remove them.
-      # R2 serves what it is given and does not compress, hence gzip with the
-      # encoding recorded on the object: 40 MB becomes 12 MB on the wire.
+      # Only when it was built here: found in the bucket, it is already up.
+      # The object is therefore written once and never rewritten, which is what
+      # the immutable caching claims.  R2 serves what it is given and does not
+      # compress, hence gzip with the encoding recorded on the object: 40 MB
+      # becomes 12 MB on the wire.
       #
       # Without the secrets configured the upload is skipped and ruby.wasm
       # rides along in the Pages artifact as before, which keeps forks working.
@@ -89,8 +153,11 @@ jobs:
       # account, which is not what a public repository's CI should hold.
       - name: Upload ruby.wasm to R2
         id: r2
-        if: github.ref == 'refs/heads/master' && vars.R2_PUBLIC_URL != ''
+        if: >-
+          github.ref == 'refs/heads/master' && vars.R2_PUBLIC_URL != ''
+          && steps.prebuilt.outputs.found != 'true'
         env:
+          KEY: ${{ steps.build.outputs.key }}
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
@@ -105,36 +172,25 @@ jobs:
           KEEP: 3
         run: |
           gzip -9 -c ruby.wasm > /tmp/ruby.wasm.gz
-          key="ruby-$(sha256sum ruby.wasm | cut -c1-16).wasm"
 
-          # The contents name the build rather than the commit, so the URL
-          # changes only when the binary does -- which is when the Gemfile or
-          # the pinned Ruby revision moves, not every time an example is
-          # edited.  That is what makes the immutable caching worth having: a
-          # visitor who already has this binary asks for nothing at all, where
-          # a per-deploy URL would send everyone after 12 MB of the same bytes.
-          #
-          # Uploaded even when the key is already there, so that its timestamp
-          # says when the binary was last in use rather than when it first
-          # appeared, which is what the rotation below reads.
           aws s3api put-object \
             --endpoint-url "$ENDPOINT" \
             --bucket "$BUCKET" \
-            --key "$key" \
+            --key "$KEY" \
             --body /tmp/ruby.wasm.gz \
             --content-type application/wasm \
             --content-encoding gzip \
             --cache-control "public, max-age=31536000, immutable" \
             --no-cli-pager
 
-          echo "{\"rubyWasmUrl\":\"${{ vars.R2_PUBLIC_URL }}/$key\"}" > config.json
           echo "uploaded=true" >> "$GITHUB_OUTPUT"
 
           # Distinct keys have nothing to remove them, so the oldest go here.
-          # Ordered by age rather than by name, since a commit says which build
-          # it is but not which came first; the timestamps are UTC ISO 8601, so
-          # sorting them as text sorts them by time.  `head -n -KEEP` is every
-          # line but the last KEEP, and prints nothing until there are more.
+          # Ordered by age rather than by name, since a key says which inputs
+          # built it but not which came first; the timestamps are UTC ISO 8601,
+          # so sorting them as text sorts them by time.  `head -n -KEEP` is
+          # every line but the last KEEP, and prints nothing until there are
+          # more.
           #
           # The listing is written out before it is sorted, so that what the if
           # tests is the listing: a pipeline would report the sort, which
@@ -153,7 +209,7 @@ jobs:
               # of its age: it is the binary the page about to be deployed asks
               # for.  Whatever else is under the prefix is not ours to delete.
               case "$stale" in
-                "$key") echo "keeping $stale, which is this build"; continue ;;
+                "$KEY") echo "keeping $stale, which is this build"; continue ;;
                 ruby-*.wasm) ;;
                 *) echo "leaving $stale alone"; continue ;;
               esac
@@ -169,6 +225,18 @@ jobs:
             echo "::warning::could not list $BUCKET; older builds were left in place"
           fi
 
+      # The page reads this at startup to learn where the binary is.  Written
+      # whether it went up in this run or was already there from an earlier
+      # one; without it the page falls back to a ruby.wasm sitting beside it,
+      # which is what the artifact carries when R2 is not in use.
+      - name: Point the page at R2
+        id: r2url
+        if: steps.prebuilt.outputs.found == 'true' || steps.r2.outputs.uploaded == 'true'
+        run: |
+          echo '{"rubyWasmUrl":"${{ vars.R2_PUBLIC_URL }}/${{ steps.build.outputs.key }}"}' > config.json
+          cat config.json
+          echo "served=true" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@v7
         with:
           name: sandbox
@@ -178,7 +246,7 @@ jobs:
             sandbox/examples.js
             sandbox/manifest.json
             sandbox/config.json
-            ${{ steps.r2.outputs.uploaded != 'true' && 'sandbox/ruby.wasm' || '' }}
+            ${{ steps.r2url.outputs.served != 'true' && 'sandbox/ruby.wasm' || '' }}
             sandbox/rb
             sandbox/assets
           if-no-files-found: ignore
