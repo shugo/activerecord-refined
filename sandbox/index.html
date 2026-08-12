@@ -380,6 +380,12 @@ const dataCountEl = document.getElementById('data-count');
 const dataTableEl = document.getElementById('data-table');
 const dataCloseEl = document.getElementById('data-close');
 const dataScrollEl = document.getElementById('data-scroll');
+const dataBarEl = document.getElementById('data-bar');
+
+// The width at which the stylesheet stops putting the table beside the output
+// and sends it to the foot of the page instead.  Kept in step by hand; there
+// is nowhere for the two to read it from.
+const narrow = matchMedia('(max-width: 800px)');
 
 let vm;
 let openTableName = null;
@@ -624,7 +630,15 @@ function buildSidebar(tables) {
   // examples -- or you -- have done to the table since.
   addGroup(dataNavEl, 'Data');
   for (const table of tables) {
-    addButton(dataNavEl, table, () => openTable(table));
+    addButton(dataNavEl, table, () => {
+      openTable(table);
+      // On a narrow screen the table opens at the foot of the page rather than
+      // beside the output, below the list that was just pressed, so pressing a
+      // name would otherwise look like it had done nothing.  Only here and not
+      // in openTable: Run refreshes the open table too, and that is a moment
+      // to be looking at the output rather than to be sent down the page.
+      if (narrow.matches) dataBarEl.scrollIntoView({ block: 'start' });
+    });
   }
 
   return { firstButton, bySlug };
