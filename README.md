@@ -320,12 +320,21 @@ Node.with(roots: Node.where { :parent_id.null? }).
 
 `examples/ctes.rb` walks a category tree with these.
 
-### Aggregates, functions and aliases
+### Aggregates and functions
 
 `count`, `sum`, `avg`, `min` and `max` are available as methods, as are the
-scalar functions below, with `fn` for anything else. Use `.as` for a column
-alias, and `.asc` / `.desc` for the sort direction. Return an array to select
+scalar functions below, with `fn` for anything else. Return an array to select
 or order by multiple expressions.
+
+Pass `:*` to `count` for `COUNT(*)`, and `distinct: true` for
+`COUNT(DISTINCT ...)`:
+
+```ruby
+Author.group { :country }.having { count(:*) > 1 }
+# SELECT "authors".* FROM "authors" GROUP BY "authors"."country" HAVING COUNT(*) > 1
+
+Post.select { count(:author_id, distinct: true) }   # COUNT(DISTINCT "author_id")
+```
 
 The scalar functions are real methods rather than anything caught dynamically,
 so a misspelling is a `NoMethodError` where you wrote it, and a name Ruby also
@@ -349,6 +358,29 @@ only the one. Where an adapter has no equivalent — `date_trunc` outside
 PostgreSQL, `now` and the `local*` pair on SQLite, `log2` on PostgreSQL,
 whose spelling is `log(2, x)` — the block raises `NotImplementedError`
 rather than leaving the database to reject the SQL.
+
+`format` is printf formatting, and raises on MySQL, where a function of the
+same name does something else entirely: it puts separators in a number, and
+reads a printf template as the number zero rather than complaining. `fn` still
+reaches it, spelled as the different thing it is:
+
+```ruby
+Post.select { fn(:format, :amount, 2) }   # MySQL's, on purpose
+```
+
+`fn` reaches functions without a method of their own. Its name is emitted as
+written, so a case-sensitive one can be spelled exactly:
+
+```ruby
+Post.select { fn(:date_trunc, 'day', :created_at).as(:day) }
+# SELECT date_trunc('day', "posts"."created_at") AS day
+```
+
+Values are quoted by the adapter wherever they appear, as they are in
+ActiveRecord. Column aliases and `fn`'s function name are not — they are
+written into the SQL as given — so those two have to be plain names,
+optionally qualified by a schema in `fn`'s case. Anything else raises
+`ArgumentError` rather than reaching the query.
 
 `current_date`, `current_time`, `current_timestamp`, `localtime` and
 `localtimestamp` come out without parentheses, as the grammar has them —
@@ -380,7 +412,40 @@ Post.select { cast(:price, 'decimal(10,2)').as(:price) }
 # SELECT CAST("posts"."price" AS decimal(10,2)) AS price
 ```
 
-`CASE` is grammar too, and has two shapes. With an operand, each `when` is
+### Expressions
+
+`+`, `-`, `*` and `/` build arithmetic. Ruby puts them above the comparison
+operators, so an expression groups the way it reads:
+
+```ruby
+Item.where { :price * :quantity > 1000 }
+Item.select { sum(:price * :quantity).as(:total) }
+```
+
+One place asks for a value to be said out loud: the top of a select list.
+Everywhere else a bare literal is already a value — `where { :age > 18 }`,
+`concat(:name, '-x')` — but ActiveRecord reads a string in `select` as SQL,
+so `value` is how you ask for the other meaning. It carries the predications
+and arithmetic with it, so a literal can be compared and combined like
+anything else. Numbers have a shorthand, since nothing else could be meant by
+one:
+
+```ruby
+Node.select { [:id, value(0).as(:depth)] }
+# SELECT "nodes"."id", 0 AS depth FROM "nodes"
+
+Node.select { [:id, 0.as(:depth)] }         # the same thing
+
+Post.select { [:title, value('draft').as(:state)] }
+# SELECT "posts"."title", 'draft' AS state FROM "posts"
+```
+
+The shorthand is `Integer` and `Float` only. `String` keeps its two meanings —
+SQL in a select list, a value everywhere else — and refining it would make the
+same literal mean one thing or the other depending on whether it had been sent
+a message.
+
+`CASE` is grammar rather than a function, and has two shapes. With an operand, each `when` is
 something to compare it against; without one, each `when` carries a condition
 of its own. `case` is a Ruby keyword, so the method behind both is only
 reachable through the receiver — `self.case` — and each shape has a shorthand
@@ -413,6 +478,8 @@ Author.select {
 Author.select { sum(case_when { :age >= 60 }.then(1).else(0)).as(:seniors) }
 # SUM(CASE WHEN "age" >= 60 THEN 1 ELSE 0 END) AS seniors
 ```
+
+### Window functions
 
 `over` gives a function a window, which is what turns an aggregate into a
 running one and the only thing `row_number` and its kind can be used with.
@@ -453,77 +520,18 @@ Post.select { sum(:likes).over.order(:created_at).rows(0..).as(:remaining) }
 none. Named windows — `WINDOW w AS (...)` — have no clause in ActiveRecord to
 live in, so they are not here.
 
-`format` is printf formatting, and raises on MySQL, where a function of the
-same name does something else entirely: it puts separators in a number, and
-reads a printf template as the number zero rather than complaining. `fn` still
-reaches it, spelled as the different thing it is:
+### Aliases and ordering
 
-```ruby
-Post.select { fn(:format, :amount, 2) }   # MySQL's, on purpose
-```
-
-Pass `:*` to `count` for `COUNT(*)`, and `distinct: true` for
-`COUNT(DISTINCT ...)`:
-
-```ruby
-Author.group { :country }.having { count(:*) > 1 }
-# SELECT "authors".* FROM "authors" GROUP BY "authors"."country" HAVING COUNT(*) > 1
-
-Post.select { count(:author_id, distinct: true) }   # COUNT(DISTINCT "author_id")
-```
-
-Values are quoted by the adapter wherever they appear, as they are in
-ActiveRecord. Column aliases and `fn`'s function name are not — they are
-written into the SQL as given — so those two have to be plain names,
-optionally qualified by a schema in `fn`'s case. Anything else raises
-`ArgumentError` rather than reaching the query.
-
-One place asks for a value to be said out loud: the top of a select list.
-Everywhere else a bare literal is already a value — `where { :age > 18 }`,
-`concat(:name, '-x')` — but ActiveRecord reads a string in `select` as SQL,
-so `value` is how you ask for the other meaning. It carries the predications
-and arithmetic with it, so a literal can be compared and combined like
-anything else. Numbers have a shorthand, since nothing else could be meant by
-one:
-
-```ruby
-Node.select { [:id, value(0).as(:depth)] }
-# SELECT "nodes"."id", 0 AS depth FROM "nodes"
-
-Node.select { [:id, 0.as(:depth)] }         # the same thing
-
-Post.select { [:title, value('draft').as(:state)] }
-# SELECT "posts"."title", 'draft' AS state FROM "posts"
-```
-
-The shorthand is `Integer` and `Float` only. `String` keeps its two meanings —
-SQL in a select list, a value everywhere else — and refining it would make the
-same literal mean one thing or the other depending on whether it had been sent
-a message.
-
-`fn` reaches functions without a method of their own. Its name is emitted as
-written, so a case-sensitive one can be spelled exactly:
-
-```ruby
-Post.select { fn(:date_trunc, 'day', :created_at).as(:day) }
-# SELECT date_trunc('day', "posts"."created_at") AS day
-```
-
-`+`, `-`, `*` and `/` build arithmetic. Ruby puts them above the comparison
-operators, so an expression groups the way it reads:
-
-```ruby
-Item.where { :price * :quantity > 1000 }
-Item.select { sum(:price * :quantity).as(:total) }
-```
-
-`.asc` and `.desc` take `.nulls_first` / `.nulls_last`. MySQL has no such
-syntax, but Arel emulates it there, so the resulting order is the same
-everywhere:
+`.as` gives an expression a column alias, and `.asc` / `.desc` give an
+ordering its direction. The orderings take `.nulls_first` / `.nulls_last` as
+well. MySQL has no such syntax, but Arel emulates it there, so the resulting
+order is the same everywhere:
 
 ```ruby
 Author.order { :country.asc.nulls_last }
 ```
+
+Together:
 
 ```ruby
 Author.
@@ -540,22 +548,6 @@ Author.
     ]
   }
 ```
-
-## Examples
-
-`examples/` holds runnable scripts, each printing the SQL it builds and, where
-the result is the point, the rows that come back. All but the last run against
-an in-memory SQLite database and need no setup.
-
-| | |
-| --- | --- |
-| `predicates.rb` | the `where` vocabulary: ranges, sets, NULL, text matching |
-| `subqueries.rb` | `in?` with a relation, `exists?`, scalar subqueries |
-| `expressions.rb` | arithmetic, aggregates, functions, `NULLS LAST` |
-| `complex_joins.rb` | compound `ON` clauses, outer joins, a self join |
-| `aggregations.rb` | `GROUP BY`, `HAVING` and aggregates across joins |
-| `ctes.rb` | `with` and `with_recursive` |
-| `postgresql.rb` | array columns, regular expressions, `ILIKE` (needs a server) |
 
 ## Performance
 
