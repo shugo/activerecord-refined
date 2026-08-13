@@ -304,6 +304,21 @@ show Post.select { [:title, :likes, sum(:likes).over.order(:id).rows(..0).as(:ru
 Author.select { row_number.as(:r) }`,
       },
       {
+        title: 'One row per group',
+        slug: 'row-number-per-group',
+        code: `# The oldest author of each country: number the rows within each group
+# and keep the first.  This is what PostgreSQL's DISTINCT ON says in one
+# clause, and it runs everywhere.
+#
+# The subquery is named after the model's own table for the reason from_cte
+# is: ActiveRecord goes on qualifying columns with it.
+ranked = Author.select {
+  [:name, :country, :age, row_number.over.partition(:country).order(:age.desc).as(:rn)]
+}
+
+show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
+      },
+      {
         title: 'Ordering, and where NULLs go',
         slug: 'order',
         code: `show Author.order { :country.asc.nulls_last }.select { [:name, :country] }`,
@@ -383,67 +398,6 @@ show Author.where { :name == 'Alice' }`,
   },
 
   {
-    group: 'One row per group',
-    items: [
-      {
-        title: 'distinct_on',
-        slug: 'distinct-on',
-        code: `# distinct_on is PostgreSQL's DISTINCT ON: the first row of each group
-# the order brings up.  Arel refuses to write it for the others, so this
-# page -- which is SQLite -- cannot run it.
-sql Author.distinct_on { :country }.order { [:country, :age.desc] }`,
-      },
-      {
-        title: 'The portable shape',
-        slug: 'row-number-per-group',
-        code: `# A row_number window in a subquery says the same thing and runs
-# everywhere.  The subquery is named after the model's own table for the
-# reason from_cte is: ActiveRecord goes on qualifying columns with it.
-ranked = Author.select {
-  [:name, :country, :age, row_number.over.partition(:country).order(:age.desc).as(:rn)]
-}
-
-show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
-      },
-    ],
-  },
-
-  {
-    group: 'Grouping several ways',
-    items: [
-      {
-        title: 'grouping_sets, rollup and cube',
-        slug: 'grouping-sets',
-        code: `# More than one grouping in a single query, the totals of each coming
-# back beside the rows.  An empty set is the grand total.  These are
-# PostgreSQL's; this page is SQLite, so it says so rather than running.
-Post.group { grouping_sets([:author_id], [:published], []) }.
-  select { [:author_id, :published, count(:*).as(:posts)] }`,
-      },
-    ],
-  },
-
-  {
-    group: 'Lateral joins',
-    items: [
-      {
-        title: 'lateral',
-        slug: 'lateral',
-        code: `# A lateral join lets the relation joined see the row being joined to,
-# which is what makes the top row of each group reachable in one query.
-# PostgreSQL has it and so has MySQL 8; this page is SQLite, which has
-# none, so this says so rather than running.
-top_post = Post.select { :title }.
-  where { :posts[:author_id] == :authors[:id] }.
-  order { :likes.desc }.limit(1)
-
-Author.left_outer_joins(top_post, as: :top, lateral: true).
-  select { [:name, :top[:title].as(:top_post)] }`,
-      },
-    ],
-  },
-
-  {
     group: 'Common table expressions',
     items: [
       {
@@ -499,8 +453,39 @@ show forest.where { :root_id == root.id }`,
   },
 
   {
-    group: 'PostgreSQL only',
+    group: 'Not on SQLite',
     items: [
+      {
+        title: 'distinct_on',
+        slug: 'distinct-on',
+        code: `# distinct_on is PostgreSQL's DISTINCT ON: the first row of each group
+# the order brings up.  Arel refuses to write it for the others, so this
+# page -- which is SQLite -- cannot run it.
+sql Author.distinct_on { :country }.order { [:country, :age.desc] }`,
+      },
+      {
+        title: 'grouping_sets, rollup and cube',
+        slug: 'grouping-sets',
+        code: `# More than one grouping in a single query, the totals of each coming
+# back beside the rows.  An empty set is the grand total.  These are
+# PostgreSQL's; this page is SQLite, so it says so rather than running.
+Post.group { grouping_sets([:author_id], [:published], []) }.
+  select { [:author_id, :published, count(:*).as(:posts)] }`,
+      },
+      {
+        title: 'lateral',
+        slug: 'lateral',
+        code: `# A lateral join lets the relation joined see the row being joined to,
+# which is what makes the top row of each group reachable in one query.
+# PostgreSQL has it and so has MySQL 8; this page is SQLite, which has
+# none, so this says so rather than running.
+top_post = Post.select { :title }.
+  where { :posts[:author_id] == :authors[:id] }.
+  order { :likes.desc }.limit(1)
+
+Author.left_outer_joins(top_post, as: :top, lateral: true).
+  select { [:name, :top[:title].as(:top_post)] }`,
+      },
       {
         title: 'Array column operators',
         slug: 'arrays',
