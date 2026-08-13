@@ -810,12 +810,41 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_from_cte_takes_the_alias_from_the_model
-    assert_sql(/FROM "tree" (?:AS )?"nodes"/, Node.from_cte(:tree).to_sql)
-    assert_equal(Node.from(:tree, as: :nodes).to_sql, Node.from_cte(:tree).to_sql)
+    declared = Node.with(tree: Node.all)
+    assert_sql(/FROM "tree" (?:AS )?"nodes"/, declared.from_cte(:tree).to_sql)
+    assert_equal(declared.from(:tree, as: :nodes).to_sql,
+                 declared.from_cte(:tree).to_sql)
   end
 
   def test_from_cte_needs_a_symbol
     assert_raises(ArgumentError) { Node.from_cte('tree') }
+  end
+
+  # The name has to be one `with` declares, or the query is against a table
+  # nobody has -- which the database would say much later and less clearly.
+  def test_from_cte_needs_a_cte_of_that_name
+    e = assert_raises(ArgumentError) do
+      Node.with(tree: Node.all).from_cte(:tre).to_sql
+    end
+    assert_match(/names no CTE/, e.message)
+    assert_match(/:tree/, e.message)
+
+    e = assert_raises(ArgumentError) { Node.from_cte(:tree).to_sql }
+    assert_match(/declares none/, e.message)
+  end
+
+  # Checked when the SQL is built, so where the CTE is declared in the chain
+  # does not matter.
+  def test_from_cte_takes_a_cte_declared_later
+    assert_sql(/FROM "tree" (?:AS )?"nodes"/,
+      Node.from_cte(:tree).with(tree: Node.all).to_sql)
+    assert_sql(/FROM "tree" (?:AS )?"nodes"/,
+      Node.from_cte(:tree).merge(Node.with(tree: Node.all)).to_sql)
+  end
+
+  # from itself says nothing about CTEs and goes on taking any table.
+  def test_from_with_an_alias_is_not_checked
+    assert_sql(/FROM "tree" (?:AS )?"nodes"/, Node.from(:tree, as: :nodes).to_sql)
   end
 
   # The alias is what lets a where find its column, which is the whole reason

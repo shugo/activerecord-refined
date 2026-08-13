@@ -330,8 +330,13 @@ Node.with_recursive(tree: [...]).from(:tree).where(name: 'root')
 ```
 
 Since the model's name is the only one that works, `from_cte` takes it from
-the model rather than asking. `from(:tree, as: :nodes)` is the same thing
-spelled out, and is what to reach for when the name wanted is not the model's.
+the model rather than asking. It also checks that the name is one `with`
+declares, so a typo is an `ArgumentError` here rather than a query against a
+table nobody has — checked when the SQL is built, so the CTE may be declared
+later in the chain or by a scope merged into it.
+
+`from(:tree, as: :nodes)` is the same thing spelled out, without the check,
+and is what to reach for when the name wanted is not the model's.
 
 What makes this worth spelling out is how selectively it breaks. `count`,
 `order` and `select` never qualify, so they work without the alias on every

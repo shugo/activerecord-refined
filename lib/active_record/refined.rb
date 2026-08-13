@@ -315,11 +315,27 @@ module ActiveRecord
       # so the model's is the only name that works -- which is why it is
       # taken from the model rather than asked for:
       # with_recursive(tree: [...]).from_cte(:tree)
+      #
+      # The name is checked against what `with` declares, so that a typo is
+      # not a query against a table nobody has.  Checked when the SQL is
+      # built, since the CTE may be declared after this in the chain, or by a
+      # scope merged into it.
       def from_cte(name)
         unless name.is_a?(Symbol)
           raise ArgumentError, "from_cte takes the CTE's name as a symbol"
         end
-        from(name, as: klass.table_name)
+        relation = from(name, as: klass.table_name)
+        relation.from_cte_value = name
+        relation
+      end
+
+      def from_cte_value
+        @values[:from_cte]
+      end
+
+      def from_cte_value=(name)
+        assert_modifiable!
+        @values[:from_cte] = name
       end
 
       # DISTINCT ON (...), which keeps the first row of each group the order
@@ -378,11 +394,28 @@ module ActiveRecord
       private
 
       def build_arel(...)
+        check_from_cte
         arel = super
         unless distinct_on_values.empty?
           arel.distinct_on(distinct_on_values.map {|column| to_arel_field(column) })
         end
         arel
+      end
+
+      # Only when every `with` is one this can read the names out of; anything
+      # else and there is nothing to be sure about, so nothing is said.
+      def check_from_cte
+        name = from_cte_value
+        return unless name
+        return unless with_values.all? {|value| value.is_a?(::Hash) }
+
+        declared = with_values.flat_map {|value| value.keys.map(&:to_sym) }
+        return if declared.include?(name)
+
+        raise ArgumentError,
+          "from_cte(#{name.inspect}) names no CTE; " +
+          (declared.empty? ? "this query declares none" :
+                             "this query declares #{declared.map(&:inspect).join(', ')}")
       end
 
       def evaluate_block(&block)
