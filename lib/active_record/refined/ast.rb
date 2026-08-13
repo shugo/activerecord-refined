@@ -4,11 +4,6 @@ require 'json'
 module ActiveRecord
   module Refined
     module AST
-      # Column aliases and function names are written into the SQL as given,
-      # where a value would have been quoted, so anything that is not a plain
-      # name is refused.  Quoting them instead would need the model's adapter,
-      # which does not reach this far, and quoting with the wrong one would be
-      # a bug of its own -- MySQL does not read "x" as an identifier.
       NAME = /[[:alpha:]_][[:alnum:]_$]*/
       ALIAS_NAME = /\A#{NAME}\z/
       FUNCTION_NAME = /\A#{NAME}(\.#{NAME})?\z/
@@ -279,8 +274,8 @@ module ActiveRecord
           raise ScriptError, "subclass must override this method"
         end
 
-        def as(alias_name)
-          As.new(self, alias_name)
+        def as(alias_name, quote: true)
+          As.new(self, alias_name, quote: quote)
         end
 
         def asc
@@ -722,16 +717,37 @@ module ActiveRecord
         end
       end
 
+      # A column alias, quoted by the adapter, so that the name asked for is
+      # the name that comes back: unquoted, PostgreSQL folds a capital away
+      # and the other two keep it, which is one block meaning two things.
+      # Quoting also leaves nothing to refuse -- a name that would have been
+      # SQL is an identifier with a strange name instead.
+      #
+      # `quote: false` asks for the name as written, for a schema that wants
+      # the folding.
       class As < Node
-        attr_reader :operand, :alias_name
+        attr_reader :operand, :alias_name, :quote
 
-        def initialize(operand, alias_name)
+        def initialize(operand, alias_name, quote: true)
+          # Checked here rather than where the SQL is built, so that a name
+          # the adapter is not being asked to quote is refused where it was
+          # written.
+          AST.check_name(alias_name, ALIAS_NAME, "column alias") unless quote
           @operand = operand
-          @alias_name = AST.check_name(alias_name, ALIAS_NAME, "column alias")
+          @alias_name = alias_name
+          @quote = quote
         end
 
         def to_arel(table, model)
-          to_arel_operand(operand, table, model).as(alias_name.to_s)
+          to_arel_operand(operand, table, model).as(alias_sql(model))
+        end
+
+        private
+
+        def alias_sql(model)
+          name = alias_name.to_s
+          return name unless quote
+          model.with_connection {|connection| connection.quote_column_name(name) }
         end
       end
 

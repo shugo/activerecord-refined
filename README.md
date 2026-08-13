@@ -377,9 +377,29 @@ Post.select { fn(:date_trunc, 'day', :created_at).as(:day) }
 ```
 
 Values are quoted by the adapter wherever they appear, as they are in
-ActiveRecord. Column aliases and `fn`'s function name are not — they are
-written into the SQL as given — so those two have to be plain names,
-optionally qualified by a schema in `fn`'s case. Anything else raises
+ActiveRecord, and so is a column alias. That is what makes the name asked for
+the name that comes back: unquoted, PostgreSQL folds a capital away where the
+other two keep it, so one block would mean two things. It also leaves nothing
+to refuse — a name that would have been SQL becomes an identifier with a
+strange name instead:
+
+```ruby
+Author.select { count(:*).as(:postCount) }       # AS "postCount" everywhere
+Author.select { count(:*).as(:'total sales') }   # AS "total sales"
+```
+
+`quote: false` asks for the name as written, for a schema that wants the
+folding. Nothing quotes it then, so a name that is not plain is refused:
+
+```ruby
+Author.select { count(:*).as(:post_count, quote: false) }   # AS post_count
+Author.select { count(:*).as(:'total sales', quote: false) }  # ArgumentError
+```
+
+`fn`'s function name is the one that cannot be quoted: quoting stops
+PostgreSQL folding it, and `"UPPER"(x)` is a function that does not exist.
+That one, `cast`'s type and `extract`'s field are neither values nor
+identifiers, so they have to be plain names and anything else raises
 `ArgumentError` rather than reaching the query.
 
 `current_date`, `current_time`, `current_timestamp`, `localtime` and

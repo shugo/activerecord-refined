@@ -6,8 +6,8 @@ module ActiveRecord
         import_methods AST::Arithmetics
         import_methods AST::Aggregations
 
-        def as(alias_name)
-          AST::As.new(self, alias_name)
+        def as(alias_name, quote: true)
+          AST::As.new(self, alias_name, quote: quote)
         end
 
         def asc
@@ -29,8 +29,8 @@ module ActiveRecord
       # depending on whether it had been sent a message.
       [Integer, Float].each do |klass|
         refine klass do
-          def as(alias_name)
-            AST::As.new(AST::Value.new(self), alias_name)
+          def as(alias_name, quote: true)
+            AST::As.new(AST::Value.new(self), alias_name, quote: quote)
           end
         end
       end

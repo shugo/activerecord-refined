@@ -349,7 +349,7 @@ class TestBlockSyntax < Minitest::Test
   # CASE has two shapes, and so does the block: an operand to compare each
   # `when` against, or a condition on every `when`.
   def test_case_with_an_operand
-    assert_sql(/SELECT CASE "users"."age" WHEN 10 THEN 'ten' ELSE 'other' END AS v/,
+    assert_sql(/SELECT CASE "users"."age" WHEN 10 THEN 'ten' ELSE 'other' END AS "v"/,
       User.select { self.case(:age).when(10).then('ten').else('other').as(:v) }.to_sql)
   end
 
@@ -360,7 +360,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_searched_case
-    assert_sql(/SELECT CASE WHEN "users"."age" >= 60 THEN 'senior' ELSE 'other' END AS v/,
+    assert_sql(/SELECT CASE WHEN "users"."age" >= 60 THEN 'senior' ELSE 'other' END AS "v"/,
       User.select { case_when { :age >= 60 }.then('senior').else('other').as(:v) }.to_sql)
   end
 
@@ -429,8 +429,8 @@ class TestBlockSyntax < Minitest::Test
       started = case_when { :age >= 60 }.then(1)
       [started.else(0).as(:a), started.else(9).as(:b)]
     }.to_sql
-    assert_sql(/THEN 1 ELSE 0 END AS a/, sql)
-    assert_sql(/THEN 1 ELSE 9 END AS b/, sql)
+    assert_sql(/THEN 1 ELSE 0 END AS "a"/, sql)
+    assert_sql(/THEN 1 ELSE 9 END AS "b"/, sql)
   end
 
   def test_when_needs_a_value_or_a_block
@@ -452,7 +452,7 @@ class TestBlockSyntax < Minitest::Test
 
   # A window is built by chaining, the way Arel's own is.
   def test_over_with_no_window
-    assert_sql(/SELECT AVG\("users"."age"\) OVER \(\) AS v/,
+    assert_sql(/SELECT AVG\("users"."age"\) OVER \(\) AS "v"/,
       User.select { avg(:age).over.as(:v) }.to_sql)
   end
 
@@ -494,7 +494,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_over_is_an_expression_like_any_other
-    assert_sql(/\(RANK\(\) OVER \(ORDER BY "users"."age"\) \+ 1\) AS v/,
+    assert_sql(/\(RANK\(\) OVER \(ORDER BY "users"."age"\) \+ 1\) AS "v"/,
       User.select { (rank.over.order(:age) + 1).as(:v) }.to_sql)
   end
 
@@ -515,8 +515,8 @@ class TestBlockSyntax < Minitest::Test
       started = sum(:age).over.order(:age)
       [started.partition(:name).as(:a), started.as(:b)]
     }.to_sql
-    assert_sql(/PARTITION BY "users"."name" ORDER BY "users"."age"\) AS a/, sql)
-    assert_sql(/SUM\("users"."age"\) OVER \(ORDER BY "users"."age"\) AS b/, sql)
+    assert_sql(/PARTITION BY "users"."name" ORDER BY "users"."age"\) AS "a"/, sql)
+    assert_sql(/SUM\("users"."age"\) OVER \(ORDER BY "users"."age"\) AS "b"/, sql)
   end
 
   def test_a_window_function_needs_over
@@ -913,7 +913,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_select_count_star_alias
-    assert_sql(/SELECT COUNT\(\*\) AS cnt/,
+    assert_sql(/SELECT COUNT\(\*\) AS "cnt"/,
       User.select { count(:*).as(:cnt) }.to_sql)
   end
 
@@ -923,7 +923,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_count_distinct_as_method
-    assert_sql(/SELECT COUNT\(DISTINCT "users"."name"\) AS n/,
+    assert_sql(/SELECT COUNT\(DISTINCT "users"."name"\) AS "n"/,
       User.select { :name.count(distinct: true).as(:n) }.to_sql)
   end
 
@@ -1015,7 +1015,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_fn_alias
-    assert_sql(/SELECT date_trunc\('day', "users"."name"\) AS d/,
+    assert_sql(/SELECT date_trunc\('day', "users"."name"\) AS "d"/,
       User.select { fn(:date_trunc, 'day', :name).as(:d) }.to_sql)
   end
 
@@ -1024,10 +1024,46 @@ class TestBlockSyntax < Minitest::Test
   # given the chance to close the identifier and carry on.
   INJECTION = %q{a" AS x, (SELECT 1) AS "y}
 
-  def test_alias_rejects_an_injected_name
-    assert_raises(ArgumentError) { User.select { :name.as(INJECTION.to_sym) } }
-    assert_raises(ArgumentError) { User.select { count(:*).as(INJECTION.to_sym) } }
-    assert_raises(ArgumentError) { User.select { :name.as(:'a; DROP TABLE users') } }
+  # An alias that is not a plain name is quoted by the adapter rather than
+  # refused, so an injected one becomes an alias with a strange name and
+  # nothing else.  Each spells the quoting its own way, so what is asserted is
+  # that the payload arrived as the name of the column it labelled.
+  def test_an_injected_alias_is_quoted_rather_than_refused
+    User.delete_all
+    User.create!(name: 'alice')
+    payload = 'a" FROM users; --'
+    row = User.select { :name.as(payload.to_sym) }.first
+    assert_equal('alice', row[payload])
+    assert_equal(1, User.count)
+  end
+
+  def test_an_alias_that_needs_quoting_gets_it
+    assert_sql(/AS "total sales"/, User.select { :name.as(:'total sales') }.to_sql)
+    assert_sql(/AS "select"/, User.select { :name.as(:select, quote: true) }.to_sql)
+    assert_sql(/AS "up per"/, User.select { upper(:name).as(:'up per') }.to_sql)
+    assert_sql(/AS "d epth"/, User.select { 0.as(:'d epth') }.to_sql)
+  end
+
+  # Quoted, the name asked for is the name that comes back.  Unquoted,
+  # PostgreSQL would fold the capital away and the other two would keep it.
+  def test_an_alias_keeps_the_name_as_written
+    assert_sql(/AS "postCount"/, User.select { :name.as(:postCount) }.to_sql)
+    User.delete_all
+    User.create!(name: 'alice')
+    assert_equal('alice', User.select { :name.as(:postCount) }.first['postCount'])
+  end
+
+  def test_quote_false_asks_for_the_name_as_it_is
+    assert_sql(/AS post_count/, User.select { :name.as(:post_count, quote: false) }.to_sql)
+    refute_match(/"post_count"/,
+      normalize_sql(User.select { :name.as(:post_count, quote: false) }.to_sql))
+  end
+
+  # Nothing quotes it, so a name that would be SQL has to be refused.
+  def test_quote_false_refuses_a_name_that_is_not_plain
+    e = assert_raises(ArgumentError) { User.select { :name.as(:'total sales', quote: false) } }
+    assert_match(/plain column alias/, e.message)
+    assert_raises(ArgumentError) { User.select { :name.as(INJECTION.to_sym, quote: false) } }
   end
 
   def test_fn_rejects_an_injected_name
@@ -1035,8 +1071,8 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_plain_names_are_still_accepted
-    assert_sql(/AS post_count/, User.select { :name.as(:post_count) }.to_sql)
-    assert_sql(/AS 名前/, User.select { :name.as(:名前) }.to_sql)
+    assert_sql(/AS "post_count"/, User.select { :name.as(:post_count) }.to_sql)
+    assert_sql(/AS "名前"/, User.select { :name.as(:名前) }.to_sql)
     assert_sql(/SELECT myFunc\(/, User.select { fn(:myFunc, :name) }.to_sql)
     assert_sql(/SELECT pg_catalog.upper\(/,
       User.select { fn(:'pg_catalog.upper', :name) }.to_sql)
@@ -1149,7 +1185,7 @@ class TestBlockSyntax < Minitest::Test
   def test_datetime_value_function_in_comparison_and_alias
     assert_sql(/WHERE "users"."name" < CURRENT_TIMESTAMP/,
       User.where { :name < current_timestamp }.to_sql)
-    assert_sql(/SELECT CURRENT_TIMESTAMP AS ts FROM/,
+    assert_sql(/SELECT CURRENT_TIMESTAMP AS "ts" FROM/,
       User.select { current_timestamp.as(:ts) }.to_sql)
   end
 
@@ -1295,7 +1331,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_arithmetic_multiplication
-    assert_sql(/SELECT "users"."age" \* 2 AS dbl/,
+    assert_sql(/SELECT "users"."age" \* 2 AS "dbl"/,
       User.select { (:age * 2).as(:dbl) }.to_sql)
   end
 
@@ -1316,7 +1352,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_aggregate_on_arithmetic
-    assert_sql(/SELECT SUM\(\("users"."age" \+ 1\)\) AS s/,
+    assert_sql(/SELECT SUM\(\("users"."age" \+ 1\)\) AS "s"/,
       User.select { (:age + 1).sum.as(:s) }.to_sql)
   end
 
@@ -1378,22 +1414,22 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_select_function_with_alias
-    assert_sql(/SELECT UPPER\("users"."name"\) AS upper_name, "users"."age"/,
+    assert_sql(/SELECT UPPER\("users"."name"\) AS "upper_name", "users"."age"/,
       User.select { [upper(:name).as(:upper_name), :age] }.to_sql)
   end
 
   def test_select_column_alias
-    assert_sql(/SELECT "users"."name" AS n/,
+    assert_sql(/SELECT "users"."name" AS "n"/,
       User.select { :name.as(:n) }.to_sql)
   end
 
   def test_select_qualified_column_alias
-    assert_sql(/SELECT "users"."name" AS n/,
+    assert_sql(/SELECT "users"."name" AS "n"/,
       User.select { :users[:name].as(:n) }.to_sql)
   end
 
   def test_select_aggregate_alias
-    assert_sql(/SELECT COUNT\("users"."id"\) AS cnt/,
+    assert_sql(/SELECT COUNT\("users"."id"\) AS "cnt"/,
       User.select { count(:id).as(:cnt) }.to_sql)
   end
 
@@ -1635,7 +1671,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_value_in_a_select_list
-    assert_sql(/SELECT "users"."name", 0 AS depth/,
+    assert_sql(/SELECT "users"."name", 0 AS "depth"/,
       User.select { [:name, value(0).as(:depth)] }.to_sql)
   end
 
@@ -1645,7 +1681,7 @@ class TestBlockSyntax < Minitest::Test
     User.delete_all
     User.create!(name: 'alice')
     payload = "it's a value"
-    assert_sql(/SELECT 'draft' AS state/,
+    assert_sql(/SELECT 'draft' AS "state"/,
       User.select { value('draft').as(:state) }.to_sql)
     assert_equal([payload],
       User.select { value(payload).as(:note) }.map(&:note))
@@ -1662,7 +1698,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_value_takes_the_arithmetics
-    assert_sql(/SELECT \(1 \+ "users"."age"\) AS next_year/,
+    assert_sql(/SELECT \(1 \+ "users"."age"\) AS "next_year"/,
       User.select { (value(1) + :age).as(:next_year) }.to_sql)
   end
 
@@ -1672,12 +1708,12 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_integer_shorthand_for_value
-    assert_sql(/SELECT "users"."name", 0 AS depth/,
+    assert_sql(/SELECT "users"."name", 0 AS "depth"/,
       User.select { [:name, 0.as(:depth)] }.to_sql)
   end
 
   def test_float_shorthand_for_value
-    assert_sql(/SELECT 1\.5 AS rate/, User.select { 1.5.as(:rate) }.to_sql)
+    assert_sql(/SELECT 1\.5 AS "rate"/, User.select { 1.5.as(:rate) }.to_sql)
   end
 
   def test_numeric_shorthand_has_no_orderings
@@ -1685,9 +1721,15 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(NoMethodError) { User.order { 1.desc } }
   end
 
-  def test_value_alias_rejects_an_injected_name
-    assert_raises(ArgumentError) { User.select { value(0).as(INJECTION.to_sym) } }
-    assert_raises(ArgumentError) { User.select { 0.as(INJECTION.to_sym) } }
+  # The alias on a literal is quoted like any other, so a name that is not a
+  # plain one arrives as itself rather than as SQL.
+  def test_a_value_alias_is_quoted_rather_than_refused
+    User.delete_all
+    User.create!(name: 'alice')
+    payload = 'a" FROM users; --'
+    assert_equal(0, User.select { value(0).as(payload.to_sym) }.first[payload].to_i)
+    assert_equal(0, User.select { 0.as(payload.to_sym) }.first[payload].to_i)
+    assert_equal(1, User.count)
   end
 
   def test_a_value_selected_reaches_the_row
