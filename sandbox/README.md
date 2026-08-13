@@ -1,6 +1,7 @@
 # activerecord-refined sandbox
 
-A page that runs Ruby 4.1, ActiveRecord and SQLite inside the browser so that
+A page that runs Ruby 4.1, ActiveRecord, SQLite and PostgreSQL inside the
+browser so that
 [activerecord-refined](https://github.com/shugo/activerecord-refined)'s block
 syntax can be tried out without installing anything.
 
@@ -22,13 +23,15 @@ A server is required because browsers refuse to load WebAssembly over
 `file://`. Everything served is static; nothing runs on the server side.
 
 ```
-index.html      example list, editor, output
-boot.rb         schema and seed data for the in-memory SQLite database, the show helper
-examples.js     the examples
-manifest.json   list of the Ruby files written into the VM at boot   (generated)
-rb/lib/**       their contents                                       (generated)
-assets/         the browser bundles: ruby.wasm's loader, and CodeMirror (generated)
-ruby.wasm       Ruby 4.1 + ActiveRecord + SQLite                     (generated, ~40 MB)
+index.html         example list, editor, output
+boot.rb            schema and seed data, the database switch, the show helper
+examples.js        the examples
+pglite/            the PostgreSQL adapter and what it is missing
+pglite-bridge.mjs  the JS half of that adapter
+manifest.json      list of the Ruby files written into the VM at boot   (generated)
+rb/lib/**          their contents                                       (generated)
+assets/            ruby.wasm's loader and CodeMirror                    (generated)
+ruby.wasm          Ruby 4.1 + ActiveRecord + SQLite                  (generated, ~40 MB)
 ```
 
 Each example has its own URL, so one can be linked to:
@@ -40,6 +43,58 @@ however long the title is. Adding an example means adding a slug, and
 
 `ruby.wasm` is large, so serve it with gzip or brotli enabled — it compresses
 to about 12 MB.
+
+## The two databases
+
+The page starts on SQLite, which is compiled into `ruby.wasm` and costs
+nothing more to load. PostgreSQL is [PGlite](https://pglite.dev) — PostgreSQL
+itself compiled to WebAssembly — and is fetched from jsDelivr, about 5 MB, when
+it is first chosen rather than by everyone who opens the page. Switching either
+way rebuilds the schema and the sample data, so what the sidebar describes is
+what is there.
+
+The schemas are not quite identical: `posts.tags` is an array, which is a type
+PostgreSQL has and SQLite has not, and `docs.meta` is `jsonb` there against
+`json` here, since containment and the rest of the operators the JSON examples
+use belong to `jsonb` alone.
+
+The adapter is [wasmify-rails](https://github.com/palkan/wasmify-rails)'s,
+vendored under `pglite/` unmodified: it subclasses `PostgreSQLAdapter` and
+swaps only the connection for an object that calls out to JS, so the SQL
+ActiveRecord builds and the results it reads are its own. `pglite.rb` beside it
+adds what this needs on top — the array types, the array encoder and decoder
+the pg stub does without, the registration Rails 7.2 and later want in place of
+the `*_connection` hook, and the translation of a failure into
+`StatementInvalid`, which is what `show` is written to catch.
+
+The gem itself needs one thing: `pglite` in `ADAPTER_FAMILIES`. Without it the
+adapter is one nobody has classified and the block syntax falls back to the
+standard spellings, so the page would be told PostgreSQL's JSON operators do
+not exist.
+
+**Everything that reaches the database goes through `evalAsync`.** PGlite
+answers a query with a promise, which the Ruby side waits on with
+`JS::Object#await`, and `await` unwinds the whole Ruby stack through asyncify
+— only `evalAsync` picks it up again. So `vm.eval` is left for what cannot
+touch a database, on both adapters.
+
+**PGlite's own parsers are turned off.** Left on, they hand over what JS would
+make of a value, which is not what ActiveRecord is about to do with it: a float
+arrives as a JS number and is rounded to an integer, a timestamp as a Date and
+is read back in the local zone, and jsonb as an object that comes out of `to_s`
+as nothing ActiveRecord can parse. Parsing every type as itself hands over the
+text PostgreSQL wrote, which is what the pg gem would have handed over.
+
+The array types have to be named for this one by one, and named on each call:
+PGlite parses an array whether or not a parser is registered for its type, and
+only the options of the call itself are consulted for them — the ones
+`PGlite.create` was given are not. What arrives when this is missed is a JS
+array, which reaches Ruby through `to_s` as its elements joined by commas, so
+`{a,"b,c"}` and `{a,b,c}` both come out as `a,b,c`.
+
+A result read through the connection rather than through a model is not cast by
+anyone, and with the parsers off it is text all the way down, so `show` and the
+table pane ask for `cast_values`.
 
 `bin/build-wasm` strips the binary at the end. rbwasm builds with `-g`
 throughout, and the DWARF that leaves behind is about 21 MB, a third of the
@@ -58,9 +113,11 @@ so an older host has no bearing on the Ruby it produces being 4.1.
 
 ## Serving ruby.wasm from R2
 
-The binary is 40 MB and everything else together is under 200 KB, so it is
-essentially all of the bandwidth. Deployments put it in Cloudflare R2, where
-egress is free, and serve only the page from GitHub Pages.
+The binary is 40 MB and everything else served from here together is under
+200 KB, so it is essentially all of the bandwidth. Deployments put it in
+Cloudflare R2, where egress is free, and serve only the page from GitHub Pages.
+PGlite is nobody's build but its own and comes from jsDelivr, so it is not in
+this at all.
 
 The workflow skips the upload unless the repository variables are set, and the
 page falls back to a `ruby.wasm` sitting next to it, so a checkout still works
@@ -156,6 +213,37 @@ the browser can start on the 12 MB while it is still parsing the head — 8 ms
 into the load rather than 86 ms, measured locally, where a round trip costs
 almost nothing. A checkout keeps the line as written and loads the `ruby.wasm`
 beside it.
+
+## Where PGlite comes from
+
+Not from here. `ruby.wasm` is built in this repository and has to be put
+somewhere; PGlite is the package as npm published it, so the page imports it
+from jsDelivr at a version written into the `<meta name="pglite">` in the head:
+
+```
+https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.5.4/dist/index.js
+```
+
+The version in the URL is what makes it immutable, and jsDelivr serves it as
+such — `max-age=31536000, immutable`, `access-control-allow-origin: *`, brotli
+on the way out, which brings the 17 MB down to about 5 MB. Serving a copy could
+only match that, at the cost of a hashed name to work out, eleven objects to
+upload and old ones to age out — the files have to stay beside one another,
+`index.js` finding its own `.wasm` and `.data` through `import.meta.url`.
+
+`bin/prepare-rb` fails if that version is not the one in `node_modules`, since
+that second one is what `npm run check` runs against and nothing else would
+notice the two parting.
+
+Deliberately not a preload: most visits never ask for it, so the URL is read
+when PostgreSQL is chosen and imported then. `name` rather than `id` because an
+element with an `id` becomes a property of `window` under it, and
+`window.pglite` is where the adapter looks for its own object — an element
+there is truthy, and the page would take it for a PGlite already loaded.
+
+The page is therefore the only thing here that reaches outside the deployment,
+and only when PostgreSQL is chosen: everything else, `ruby.wasm` included, is
+served from R2 or from Pages.
 
 ## Build caching
 
@@ -305,9 +393,9 @@ node devserver.mjs
 
 ## Checking the examples
 
-All 25 examples can be run without opening a browser. They go through the same
-WASI shim the page uses, set up the same way, so anything that passes here
-passes on the page.
+All 25 examples can be run without opening a browser, on both databases. They
+go through the same WASI shim the page uses, set up the same way, so anything
+that passes here passes on the page.
 
 ```sh
 npm run check
@@ -316,4 +404,9 @@ npm run check
 Features SQLite does not have — the regexp operators, `date_trunc`,
 PostgreSQL's array operators — are supposed to raise `NotImplementedError` and
 the like, so only unexpected exceptions such as `NoMethodError` or `NameError`
-count as failures.
+count as failures. An example that prints nothing is a failure too, which is
+what says that one written to show a refusal is now running on the database
+that has the thing.
+
+`browser-check.html` runs both databases in a real browser, which is the only
+place the JS stack depth and the asyncify path can be tested.

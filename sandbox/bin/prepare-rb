@@ -4,11 +4,11 @@
 #
 #   rb/lib          the Ruby files written into the WASM filesystem at boot
 #   manifest.json   the list the page fetches to know what to write
-#   vendor/         the @ruby/wasm-wasi browser bundle
+#   assets/         the browser bundles
 #
 # None of it is committed.  The gem's own lib comes from the checkout one
-# directory up, sqlite3's Ruby files from the bundle, and the browser bundle
-# from node_modules.  Only stubs/ is maintained by hand.
+# directory up, sqlite3's Ruby files from the bundle, and the browser bundles
+# from node_modules.  Only stubs/ and pglite/ are maintained by hand.
 #
 set -euo pipefail
 
@@ -27,6 +27,7 @@ mkdir -p rb/lib
 cp -r ../lib/. rb/lib/
 cp -r "$SQLITE3_GEM"/lib/. rb/lib/
 cp -r stubs/. rb/lib/
+cp -r pglite/. rb/lib/
 
 # A .so from the host build of the gem would be copied along with the .rb files.
 find rb/lib -name '*.so' -delete
@@ -52,3 +53,24 @@ npx esbuild src/editor.js \
   --outfile=assets/editor.js \
   --log-level=warning
 echo "$(du -h assets/editor.js | cut -f1) assets/editor.js"
+
+# PGlite is not assembled here at all: the pages import it from jsDelivr when
+# they are switched to PostgreSQL.  What is checked is that the version they
+# name is the version npm installed, since that second one is what
+# check-examples runs against and nothing else would notice them parting.
+PGLITE_PACKAGE=node_modules/@electric-sql/pglite/package.json
+if [ ! -f "$PGLITE_PACKAGE" ]; then
+  echo "$PGLITE_PACKAGE not found; run 'npm ci' first" >&2
+  exit 1
+fi
+
+installed=$(node -p "require('./$PGLITE_PACKAGE').version")
+# Both pages name it, so this is a set: more than one version left in it is a
+# disagreement of its own and fails the comparison below.
+in_pages=$(sed -n 's|.*<meta name="pglite"[^>]*pglite@\([^/]*\)/.*|\1|p' \
+             index.html browser-check.html | sort -u | tr '\n' ' ' | sed 's/ $//')
+if [ "$installed" != "$in_pages" ]; then
+  echo "the pages ask jsDelivr for PGlite ${in_pages:-(none)}, but node_modules has $installed" >&2
+  exit 1
+fi
+echo "PGlite $installed, from jsDelivr"

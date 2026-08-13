@@ -2228,4 +2228,31 @@ class TestBlockSyntax < Minitest::Test
   def test_numeric_shorthand_is_confined_to_the_block
     assert_raises(NoMethodError) { 0.as(:depth) }
   end
+
+  # pglite is PostgreSQL compiled to WebAssembly, which the sandbox runs in the
+  # browser.  Its adapter answers to a name of its own, so without this the
+  # spellings would fall back to the standard ones and the browser would be
+  # told PostgreSQL's JSON operators do not exist.
+  def test_adapter_families
+    model = Class.new do
+      def self.with_adapter(name)
+        config = Struct.new(:adapter).new(name)
+        Class.new { define_singleton_method(:connection_db_config) { config } }
+      end
+    end
+
+    {
+      'sqlite3' => :sqlite,
+      'postgresql' => :postgresql,
+      'postgis' => :postgresql,
+      'pglite' => :postgresql,
+      'mysql2' => :mysql,
+      'trilogy' => :mysql,
+      'nothing_of_the_sort' => :unknown,
+    }.each do |adapter, family|
+      assert_equal(family,
+        ActiveRecord::Refined::AST.adapter_family(model.with_adapter(adapter)),
+        adapter)
+    end
+  end
 end

@@ -15,8 +15,8 @@ Author.
 ```
 
 **[Try it in your browser](https://shugo.github.io/activerecord-refined/)** —
-Ruby 4.1, ActiveRecord and SQLite run in the page, so the examples build real
-SQL and return real rows without a `ruby-master` build of your own.
+Ruby 4.1, ActiveRecord, SQLite and PostgreSQL run in the page, so the examples
+build real SQL and return real rows without a `ruby-master` build of your own.
 
 ## History
 

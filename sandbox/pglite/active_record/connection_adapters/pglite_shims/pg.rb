@@ -1,0 +1,38 @@
+# frozen_string_literal: true
+
+# Vendored from wasmify-rails (MIT), palkan/wasmify-rails at 094ba7e, and left
+# as it stands there.  pglite.rb beside the adapter adds the array encoder and
+# decoder to it, which an array column needs.
+
+# pg gem stub
+module PG
+  PQTRANS_IDLE = 0 # (connection idle)
+  PQTRANS_ACTIVE = 1 # (command in progress)
+  PQTRANS_INTRANS = 2 # (idle, within transaction block)
+  PQTRANS_INERROR = 3 # (idle, within failed transaction)
+  PQTRANS_UNKNOWN = 4 # (cannot determine status)
+
+  class Error < StandardError; end
+  class ConnectionBad < Error; end
+  class FeatureNotSupported < Error; end
+
+  class Connection
+    class << self
+      def conndefaults_hash = {}
+
+      def quote_ident(str)
+        str = str.to_s
+        return '""' if str.empty?
+        if str =~ /[^a-zA-Z_0-9]/ || str =~ /^[0-9]/
+          '"' + str.gsub('"', '""') + '"'
+        else
+          str
+        end
+      end
+    end
+  end
+
+  # Just a stub for now
+  class SimpleDecoder
+  end
+end

@@ -7,6 +7,7 @@
     "check": "node --stack-size=4000 check-examples.mjs"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.4",
     "@ruby/wasm-wasi": "2.10.1"
   },
   "devDependencies": {

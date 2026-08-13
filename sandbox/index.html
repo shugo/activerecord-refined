@@ -18,6 +18,23 @@
      egress there is free -- and the workflow rewrites this line, which is
      also what leaves a checkout working with no deployment behind it. -->
 <link id="ruby-wasm" rel="preload" as="fetch" crossorigin href="./ruby.wasm">
+
+<!-- Where PGlite is imported from when the page is switched to PostgreSQL --
+     the package as npm published it, from jsDelivr, at a version named here
+     so that the URL is as immutable as the caching says.  It is nobody's
+     build but its own, so there is nothing gained by serving a copy: this is
+     the same 5 MB from a CDN either way, and index.js finds its own .wasm and
+     .data beside itself wherever that is.
+
+     Deliberately not a preload: most visits never ask for it.
+
+     bin/prepare-rb checks this version against the one in node_modules, which
+     is what check-examples runs against.
+
+     name rather than id: an element with an id of its own becomes a property
+     of window under that name, and the object the adapter is given lives at
+     window.pglite. -->
+<meta name="pglite" content="https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.5.4/dist/index.js">
 <style>
   :root {
     color-scheme: light dark;
@@ -171,6 +188,20 @@
   }
   button.run:disabled { background: var(--disabled); cursor: default; }
   .hint { color: var(--muted); font-size: .78rem; }
+
+  #database {
+    font: inherit;
+    font-size: .8rem;
+    padding: .15rem .3rem;
+    color: var(--fg);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+  }
+  #database:disabled { color: var(--muted); }
+  /* The label sits against the control it names rather than in the row of
+     things spaced apart from each other. */
+  label[for="database"] { margin-right: -.45rem; }
 
   pre {
     font-family: var(--font-mono);
@@ -341,7 +372,7 @@
 <header>
   <h1>activerecord-refined sandbox</h1>
   <p>
-    Ruby 4.1, ActiveRecord and SQLite, running inside your browser.
+    Ruby 4.1, ActiveRecord, SQLite and PostgreSQL, running inside your browser.
     <a href="https://github.com/shugo/activerecord-refined" target="_blank" rel="noopener">GitHub</a>
   </p>
 </header>
@@ -358,6 +389,13 @@
     <div class="bar" id="code-bar">
       <h2>Code</h2>
       <div class="spacer"></div>
+      <!-- PostgreSQL is PGlite, fetched when it is first chosen: it is a
+           download of its own, where SQLite is inside ruby.wasm already. -->
+      <label class="hint" for="database">Database</label>
+      <select id="database">
+        <option value="sqlite3">SQLite</option>
+        <option value="postgresql">PostgreSQL</option>
+      </select>
       <span class="hint">Ctrl/Cmd + Enter to run</span>
       <button class="run" id="run">Run</button>
     </div>
@@ -402,6 +440,7 @@ const dataTableEl = document.getElementById('data-table');
 const dataCloseEl = document.getElementById('data-close');
 const dataScrollEl = document.getElementById('data-scroll');
 const dataBarEl = document.getElementById('data-bar');
+const databaseEl = document.getElementById('database');
 
 // The width at which the stylesheet stops putting the table beside the output
 // and sends it to the foot of the page instead.  Kept in step by hand; there
@@ -531,20 +570,80 @@ function writeAnsi(el, text) {
   }
 }
 
-function evaluate(code) {
+// evalAsync rather than eval, on both databases.  PGlite answers a query with
+// a promise, which the Ruby side waits on with JS::Object#await -- and await
+// unwinds the whole Ruby stack through asyncify, which only evalAsync can pick
+// up again.
+async function evaluate(code) {
   try {
-    writeAnsi(outputEl, vm.eval(runnerSource(code)).toString());
+    writeAnsi(outputEl, (await vm.evalAsync(runnerSource(code))).toString());
   } catch (e) {
     writeAnsi(outputEl, String(e));
   }
 }
 
-function run() {
-  if (!vm) return;
-  evaluate(editorEl.value);
+// One thing at a time: a query is no longer over by the time the call
+// returns, and Ruby is one interpreter however many callers it has.  What
+// arrives while it is working is dropped rather than queued -- the controls
+// are disabled meanwhile, so it takes some doing to arrive at all.
+let busy = false;
+
+async function exclusive(work) {
+  if (!vm || busy) return;
+  busy = true;
+  runEl.disabled = true;
+  databaseEl.disabled = true;
+  try {
+    await work();
+  } finally {
+    busy = false;
+    runEl.disabled = false;
+    databaseEl.disabled = false;
+  }
+}
+
+async function runEditor() {
+  await evaluate(editorEl.value);
   // What just ran may well have changed the table on display -- creating a row
   // is one of the things you come here to try.
-  if (openTableName) openTable(openTableName);
+  if (openTableName) await openTable(openTableName);
+}
+
+function run() {
+  return exclusive(runEditor);
+}
+
+// The page starts on SQLite, which is inside ruby.wasm.  PostgreSQL is PGlite
+// -- PostgreSQL itself compiled to WebAssembly -- and is fetched here, the
+// first time it is asked for, rather than by everyone who opens the page.
+let pglite = false;
+
+function useDatabase(name) {
+  return exclusive(async () => {
+    try {
+      if (name === 'postgresql' && !pglite) {
+        writeAnsi(outputEl, 'Fetching PostgreSQL (about 5 MB, once)…');
+        const url = document.querySelector('meta[name="pglite"]').content;
+        const [{ PGlite, types }, { createBridge }] = await Promise.all([
+          import(url),
+          import('./pglite-bridge.mjs'),
+        ]);
+        // Where the adapter looks for it, the name being the adapter's.
+        globalThis.pglite = createBridge({ PGlite, types });
+        pglite = true;
+      }
+      writeAnsi(outputEl, 'Building the sample data…');
+      await vm.evalAsync(`use_database(${JSON.stringify(name)})`);
+    } catch (e) {
+      writeAnsi(outputEl, String(e));
+      // The database is whatever Ruby is still connected to, which is what it
+      // was: say so rather than leave the control claiming otherwise.
+      databaseEl.value = (await vm.evalAsync('current_database')).toString();
+      return;
+    }
+
+    await runEditor();
+  });
 }
 
 // Each pane keeps its own selection: opening a table does not mean you have
@@ -559,19 +658,19 @@ function select(button) {
 // Shown beside the output rather than in it, so a query and the table it ran
 // against can be read together.  The rows are read when the button is pressed;
 // pressing it again is the refresh.
-function openTable(name) {
+async function openTable(name) {
   // Reopening the same table is a refresh, so hold the scroll position rather
   // than throwing the reader back to the first row.
   const scrollTop = name === openTableName ? dataScrollEl.scrollTop : 0;
 
-  const json = vm.eval(`
+  const json = (await vm.evalAsync(`
     begin
       data_json(${JSON.stringify(name)})
     rescue => e
       require 'json'
       JSON.generate(error: "#{e.class}: #{e.message}")
     end
-  `).toString();
+  `)).toString();
 
   const { columns, rows, error } = JSON.parse(json);
   dataTitleEl.textContent = name;
@@ -638,9 +737,9 @@ function addGroup(pane, title) {
 function addButton(pane, label, onClick) {
   const button = document.createElement('button');
   button.textContent = label;
-  button.addEventListener('click', () => {
+  button.addEventListener('click', async () => {
     select(button);
-    onClick();
+    await onClick();
   });
   pane.append(button);
   return button;
@@ -653,13 +752,13 @@ function buildSidebar(examples, tables) {
   for (const group of examples) {
     addGroup(examplesNavEl, group.group);
     for (const item of group.items) {
-      const button = addButton(examplesNavEl, item.title, () => {
+      const button = addButton(examplesNavEl, item.title, async () => {
         editorEl.value = item.code;
         // replaceState rather than assigning location.hash: the URL is worth
         // having so it can be copied, but stepping through the examples is
         // not what the back button is for.
         history.replaceState(null, '', `#${item.slug}`);
-        run();
+        await run();
       });
       bySlug.set(item.slug, button);
       firstButton ??= button;
@@ -672,8 +771,8 @@ function buildSidebar(examples, tables) {
   // examples -- or you -- have done to the table since.
   addGroup(dataNavEl, 'Data');
   for (const table of tables) {
-    addButton(dataNavEl, table, () => {
-      openTable(table);
+    addButton(dataNavEl, table, async () => {
+      await exclusive(() => openTable(table));
       // On a narrow screen the table opens at the foot of the page rather than
       // beside the output, below the list that was just pressed, so pressing a
       // name would otherwise look like it had done nothing.  Only here and not
@@ -688,6 +787,7 @@ function buildSidebar(examples, tables) {
 
 runEl.addEventListener('click', run);
 dataCloseEl.addEventListener('click', closeTable);
+databaseEl.addEventListener('change', () => useDatabase(databaseEl.value));
 
 (async () => {
   try {
@@ -702,11 +802,12 @@ dataCloseEl.addEventListener('click', closeTable);
 
     detailEl.textContent = '(loading ActiveRecord and creating the sample data)';
     await installRubyFiles();
-    vm.eval(await (await fetch('./boot.rb', FRESH)).text());
+    await vm.evalAsync(await (await fetch('./boot.rb', FRESH)).text());
 
     // Asked of the schema rather than listed here, so a model added to boot.rb
     // appears under Data on its own.
-    const tables = JSON.parse(vm.eval('require "json"; tables.to_json').toString());
+    const tables = JSON.parse(
+      (await vm.evalAsync('require "json"; tables.to_json')).toString());
 
     statusEl.hidden = true;
     layoutEl.hidden = false;

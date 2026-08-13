@@ -1,6 +1,6 @@
 // Runs every example through the same code path the page uses and prints the
 // output, so the examples can be checked without opening a browser.
-import { boot, run } from './harness.mjs';
+import { boot, run, useDatabase } from './harness.mjs';
 import { examples } from './examples.js';
 
 const wasm = process.argv[2] ?? './ruby.wasm';
@@ -35,17 +35,28 @@ for (const group of examples) {
   }
 }
 
-for (const group of examples) {
-  for (const item of group.items) {
-    const out = run(vm, item.code);
-    const wrong = complaint(out);
-    if (wrong) failures++;
+// Both databases: the page offers both, and an example that says what
+// PostgreSQL makes of it has to have been run there to be worth saying.
+for (const database of ['sqlite3', 'postgresql']) {
+  await useDatabase(vm, database);
 
-    console.log('='.repeat(72));
-    console.log(`${group.group} / ${item.title}${wrong ? `   <-- ${wrong}` : ''}`);
-    console.log('='.repeat(72));
-    console.log(out.trimEnd());
-    console.log();
+  console.log('#'.repeat(72));
+  console.log(`# ${database}`);
+  console.log('#'.repeat(72));
+  console.log();
+
+  for (const group of examples) {
+    for (const item of group.items) {
+      const out = await run(vm, item.code);
+      const wrong = complaint(out);
+      if (wrong) failures++;
+
+      console.log('='.repeat(72));
+      console.log(`${database} / ${group.group} / ${item.title}${wrong ? `   <-- ${wrong}` : ''}`);
+      console.log('='.repeat(72));
+      console.log(out.trimEnd());
+      console.log();
+    }
   }
 }
 

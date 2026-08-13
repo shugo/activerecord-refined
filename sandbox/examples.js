@@ -298,8 +298,9 @@ sql Item.select { greatest(:price, :quantity).as(:g) }`,
         title: 'A function an adapter lacks raises',
         slug: 'missing-function',
         code: `# SQLite has no date_trunc.  The block fails rather than leaving the
-# database to reject the SQL.
-Post.select { date_trunc('day', :created_at) }`,
+# database to reject the SQL -- on PostgreSQL, where the function is,
+# there is nothing to refuse and the same line builds.
+sql Post.select { date_trunc('day', :created_at) }`,
       },
       {
         title: 'fn reaches any function',
@@ -495,23 +496,25 @@ show forest.where { :root_id == root.id }`,
   },
 
   {
-    group: 'Not on SQLite',
+    group: 'PostgreSQL only',
     items: [
       {
         title: 'distinct_on',
         slug: 'distinct-on',
         code: `# distinct_on is PostgreSQL's DISTINCT ON: the first row of each group
-# the order brings up.  Arel refuses to write it for the others, so this
-# page -- which is SQLite -- cannot run it.
-sql Author.distinct_on { :country }.order { [:country, :age.desc] }`,
+# the order brings up, which is why the order has to start with what the
+# distinct is on.  Arel refuses to write it for the others, so on SQLite
+# this says so rather than running.  Switch the database above to see it
+# run.
+show Author.distinct_on { :country }.order { [:country, :age.desc] }`,
       },
       {
         title: 'grouping_sets, rollup and cube',
         slug: 'grouping-sets',
         code: `# More than one grouping in a single query, the totals of each coming
-# back beside the rows.  An empty set is the grand total.  These are
-# PostgreSQL's; this page is SQLite, so it says so rather than running.
-Post.group { grouping_sets([:author_id], [:published], []) }.
+# back beside the rows.  An empty set is the grand total.  MySQL has only
+# WITH ROLLUP, which is a clause of its own, and SQLite has none of it.
+show Post.group { grouping_sets([:author_id], [:published], []) }.
   select { [:author_id, :published, count(:*).as(:posts)] }`,
       },
       {
@@ -519,13 +522,12 @@ Post.group { grouping_sets([:author_id], [:published], []) }.
         slug: 'lateral',
         code: `# A lateral join lets the relation joined see the row being joined to,
 # which is what makes the top row of each group reachable in one query.
-# PostgreSQL has it and so has MySQL 8; this page is SQLite, which has
-# none, so this says so rather than running.
+# PostgreSQL has it and so has MySQL 8; SQLite has neither.
 top_post = Post.select { :title }.
   where { :posts[:author_id] == :authors[:id] }.
   order { :likes.desc }.limit(1)
 
-Author.left_outer_joins(top_post, as: :top, lateral: true).
+show Author.left_outer_joins(top_post, as: :top, lateral: true).
   select { [:name, :top[:title].as(:top_post)] }`,
       },
       {
@@ -535,23 +537,25 @@ Author.left_outer_joins(top_post, as: :top, lateral: true).
 # than the smallest row it returns, >= all than every one.  PostgreSQL
 # and MySQL have both; SQLite has neither, and the gem says so rather
 # than leaving SQLite's parser to.
-sql Author.where { :age > any(Author.where { :country == 'JP' }.select(:age)) }`,
+show Author.where { :age > any(Author.where { :country == 'JP' }.select(:age)) }`,
       },
       {
         title: 'The bit aggregates',
         slug: 'bit-aggregates',
         code: `# bit_and, bit_or and bit_xor aggregate the bitwise operators over a
 # group, and bit_count counts the bits that are set.  PostgreSQL and
-# MySQL have all four; SQLite has none, so this says so instead.
-Post.select { [bit_and(:flags).as(:common), bit_or(:flags).as(:any)] }`,
+# MySQL have all four; SQLite has none.
+show Post.select { [bit_and(:flags).as(:common), bit_or(:flags).as(:any)] }`,
       },
       {
         title: 'Array column operators',
         slug: 'arrays',
         code: `# member?, superset?, subset? and intersect? become PostgreSQL's array
-# operators (@> <@ &&).  This sandbox is on SQLite, so they do not run
-# here -- only the shape of the SQL is worth looking at.
-sql Post.where { :title.member?('ruby') }`,
+# operators (@> <@ &&).  An array is a column type there and nowhere
+# else, so posts has tags only on PostgreSQL: on SQLite there is nothing
+# for this to ask about.
+show Post.where { :tags.member?('ruby') }
+show Post.where { :tags.intersect?(%w[jit release]) }`,
       },
     ],
   },

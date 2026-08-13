@@ -3,11 +3,13 @@
 <head>
 <meta charset="utf-8">
 <title>sandbox browser check</title>
+<!-- As in index.html, and kept at the same version by bin/prepare-rb. -->
+<meta name="pglite" content="https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.5.4/dist/index.js">
 </head>
 <body>
 <pre id="out">running…</pre>
 
-<script src="./vendor/browser.umd.js"></script>
+<script src="./assets/browser.umd.js"></script>
 <script type="module">
 // Boots the sandbox the same way index.html does and reports the outcome back
 // to the dev server, so a headless browser can be used to check whether the
@@ -44,14 +46,31 @@ try {
     $LOAD_PATH.unshift '/rb/lib'
   `);
 
-  vm.eval(await (await fetch('./boot.rb')).text());
+  // evalAsync, as the page does: what reaches the database has to be able to
+  // wait on a promise when the database is PGlite.
+  await vm.evalAsync(await (await fetch('./boot.rb')).text());
 
-  const result = vm.eval(`
+  const result = (await vm.evalAsync(`
     rel = Author.where { :age >= 50 }
     "#{RUBY_DESCRIPTION}\n#{rel.to_sql}\n#{rel.pluck(:name).inspect}"
-  `).toString();
+  `)).toString();
 
-  report('OK', result);
+  // And the other database, which is where the stack is deepest: every query
+  // goes out to JS and comes back through asyncify.
+  const [{ PGlite, types }, { createBridge }] = await Promise.all([
+    import(document.querySelector('meta[name="pglite"]').content),
+    import('./pglite-bridge.mjs'),
+  ]);
+  globalThis.pglite = createBridge({ PGlite, types });
+  await vm.evalAsync("use_database('postgresql')");
+
+  const postgres = (await vm.evalAsync(`
+    rel = Author.distinct_on { :country }.order { [:country, :age.desc] }
+    version = ActiveRecord::Base.connection.select_value('SELECT version()')
+    "#{version[0, 40]}\n#{rel.to_sql}\n#{rel.pluck(:name).inspect}"
+  `)).toString();
+
+  report('OK', `${result}\n${postgres}`);
 } catch (e) {
   report('FAILED', String(e).split('\n').slice(0, 4).join('\n'));
 }

@@ -1,5 +1,5 @@
-# Runs once when the sandbox starts.  Sets up an in-memory SQLite database and
-# the models the examples use, then defines the helpers the examples call.
+# Runs once when the sandbox starts.  Sets up an in-memory database and the
+# models the examples use, then defines the helpers the examples call.
 
 # ruby.wasm starts with RubyGems disabled, so Gem is not defined.  ActiveSupport's
 # BacktraceCleaner reads Gem.path and Gem.default_dir while ActiveRecord loads,
@@ -17,58 +17,108 @@ Gem.loaded_specs['sqlite3'] ||= Gem::Specification.new('sqlite3', SQLite3::VERSI
 require 'active_record'
 require 'activerecord-refined'
 
-# reaping_frequency has to be off: the connection pool's reaper runs on a
-# Thread, and WASI has no threads (Thread.new raises NotImplementedError).
-# Nothing here holds a connection long enough to need reaping anyway.
-ActiveRecord::Base.establish_connection(
-  adapter: 'sqlite3',
-  database: ':memory:',
-  reaping_frequency: nil
-)
 ActiveRecord::Base.logger = nil
-
 ActiveRecord::Schema.verbose = false
-ActiveRecord::Schema.define do
-  create_table :authors do |t|
-    t.string  :name
-    t.string  :country
-    t.integer :age
+
+# Which of the two the page is on.  PostgreSQL is PGlite, which is PostgreSQL
+# itself compiled to WebAssembly and reached through the adapter under
+# pglite/; the DSL cannot tell it from a server.
+def postgresql?
+  ActiveRecord::Base.connection_db_config.adapter == 'pglite'
+end
+
+def current_database
+  postgresql? ? 'postgresql' : 'sqlite3'
+end
+
+# The page calls this to change database, and once at startup.  Both are in
+# memory, so the schema and the sample data are built afresh each time: what
+# is being switched to was left in whatever state the examples put it in, and
+# starting from the rows the sidebar describes is the point of them.
+def use_database(name)
+  case name
+  when 'sqlite3'
+    # reaping_frequency has to be off: the connection pool's reaper runs on a
+    # Thread, and WASI has no threads (Thread.new raises NotImplementedError).
+    # Nothing here holds a connection long enough to need reaping anyway.
+    ActiveRecord::Base.establish_connection(
+      adapter: 'sqlite3',
+      database: ':memory:',
+      reaping_frequency: nil
+    )
+  when 'postgresql'
+    # PostgreSQLAdapter opens with `gem "pg", "~> 1.1"`, and what answers for
+    # the gem here is a stub of a few classes, so RubyGems has to be told the
+    # requirement is met.  Same reasoning as sqlite3 above.
+    Gem.loaded_specs['pg'] ||= Gem::Specification.new('pg', '1.5.9')
+    require 'active_record/connection_adapters/pglite'
+    ActiveRecord::Base.establish_connection(
+      adapter: 'pglite',
+      database: 'sandbox',
+      reaping_frequency: nil
+    )
+  else
+    raise ArgumentError, "no such database: #{name}"
   end
 
-  create_table :posts do |t|
-    t.integer :author_id
-    t.string  :title
-    t.boolean :published
-    # A bit field, for the bitwise operators: 1 comments open, 2 pinned,
-    # 4 featured.
-    t.integer :flags
-    t.integer :likes
-  end
+  define_schema
+  # The two schemas are not identical -- an array column is PostgreSQL's alone
+  # -- so what the models know about their columns has to be forgotten.
+  ActiveRecord::Base.descendants.each(&:reset_column_information)
+  seed
+  current_database
+end
 
-  create_table :comments do |t|
-    t.integer :post_id
-    t.string  :body
-  end
+def define_schema
+  postgresql = postgresql?
 
-  create_table :employees do |t|
-    t.string  :name
-    t.integer :manager_id
-  end
+  ActiveRecord::Schema.define do
+    create_table :authors, force: true do |t|
+      t.string  :name
+      t.string  :country
+      t.integer :age
+    end
 
-  create_table :items do |t|
-    t.string  :name
-    t.integer :price
-    t.integer :quantity
-  end
+    create_table :posts, force: true do |t|
+      t.integer :author_id
+      t.string  :title
+      t.boolean :published
+      # A bit field, for the bitwise operators: 1 comments open, 2 pinned,
+      # 4 featured.
+      t.integer :flags
+      t.integer :likes
+      # An array of them is a type PostgreSQL has and SQLite has not, so the
+      # column exists only where the array operators can be asked about it.
+      t.string :tags, array: true if postgresql
+    end
 
-  create_table :nodes do |t|
-    t.string  :name
-    t.integer :parent_id
-  end
+    create_table :comments, force: true do |t|
+      t.integer :post_id
+      t.string  :body
+    end
 
-  create_table :docs do |t|
-    t.string :name
-    t.json   :meta
+    create_table :employees, force: true do |t|
+      t.string  :name
+      t.integer :manager_id
+    end
+
+    create_table :items, force: true do |t|
+      t.string  :name
+      t.integer :price
+      t.integer :quantity
+    end
+
+    create_table :nodes, force: true do |t|
+      t.string  :name
+      t.integer :parent_id
+    end
+
+    create_table :docs, force: true do |t|
+      t.string :name
+      # jsonb rather than json on PostgreSQL: containment and the rest of the
+      # operators the JSON examples use belong to jsonb alone.
+      postgresql ? t.jsonb(:meta) : t.json(:meta)
+    end
   end
 end
 
@@ -92,52 +142,62 @@ class Item < ActiveRecord::Base; end
 class Node < ActiveRecord::Base; end
 class Doc < ActiveRecord::Base; end
 
-# The ages are spread so that every example that filters on one has something
-# to show: Erin is the only one under 18, Carol the only one over 50, and the
-# average falls between the two thresholds the examples use.
-alice = Author.create!(name: 'Alice', country: 'JP', age: 38)
-bob   = Author.create!(name: 'Bob',   country: 'JP', age: 26)
-carol = Author.create!(name: 'Carol', country: nil,  age: 52)
-dave  = Author.create!(name: 'Dave',  country: 'US', age: 31)
-Author.create!(name: 'Erin', country: nil, age: 17)
+def seed
+  # The ages are spread so that every example that filters on one has something
+  # to show: Erin is the only one under 18, Carol the only one over 50, and the
+  # average falls between the two thresholds the examples use.
+  alice = Author.create!(name: 'Alice', country: 'JP', age: 38)
+  bob   = Author.create!(name: 'Bob',   country: 'JP', age: 26)
+  carol = Author.create!(name: 'Carol', country: nil,  age: 52)
+  dave  = Author.create!(name: 'Dave',  country: 'US', age: 31)
+  Author.create!(name: 'Erin', country: nil, age: 17)
 
-p1 = Post.create!(author: alice, title: 'Ruby 4.1 is coming',    published: true,  likes: 120, flags: 5)
-p2 = Post.create!(author: alice, title: 'Refinements revisited', published: true,  likes: 80,  flags: 1)
-p3 = Post.create!(author: bob,   title: 'YJIT internals',        published: false, likes: 30,  flags: 3)
-p4 = Post.create!(author: dave,  title: 'A test post',           published: true,  likes: 5,   flags: 0)
-Post.create!(author: carol, title: 'Patch review notes', published: true, likes: 42, flags: 4)
-# Nobody has said either way about this one, which is what the truth tests
-# are there to tell apart from a plain false.
-Post.create!(author: bob, title: 'Pattern matching notes', published: nil, likes: 0, flags: 6)
+  posts = [
+    [alice, 'Ruby 4.1 is coming',      true,  120, 5, %w[ruby release]],
+    [alice, 'Refinements revisited',   true,  80,  1, %w[ruby lang]],
+    [bob,   'YJIT internals',          false, 30,  3, %w[ruby jit]],
+    [dave,  'A test post',             true,  5,   0, %w[meta]],
+    [carol, 'Patch review notes',      true,  42,  4, %w[ruby lang review]],
+    # Nobody has said either way about the last one, which is what the truth
+    # tests are there to tell apart from a plain false.
+    [bob,   'Pattern matching notes',  nil,   0,   6, %w[ruby lang]],
+  ].map do |author, title, published, likes, flags, tags|
+    attributes = {author: author, title: title, published: published,
+                  likes: likes, flags: flags}
+    attributes[:tags] = tags if postgresql?
+    Post.create!(**attributes)
+  end
+  p1, p2, p3, p4 = posts
 
-Comment.create!(post: p1, body: 'Nice')
-Comment.create!(post: p1, body: 'Looking forward to it')
-Comment.create!(post: p2, body: 'Great write-up')
-Comment.create!(post: p3, body: 'Deep')
-Comment.create!(post: p4, body: 'Thanks')
+  Comment.create!(post: p1, body: 'Nice')
+  Comment.create!(post: p1, body: 'Looking forward to it')
+  Comment.create!(post: p2, body: 'Great write-up')
+  Comment.create!(post: p3, body: 'Deep')
+  Comment.create!(post: p4, body: 'Thanks')
 
-boss = Employee.create!(name: 'Boss', manager_id: nil)
-lead = Employee.create!(name: 'Lead', manager_id: boss.id)
-Employee.create!(name: 'Dev A', manager_id: lead.id)
-Employee.create!(name: 'Dev B', manager_id: lead.id)
+  boss = Employee.create!(name: 'Boss', manager_id: nil)
+  lead = Employee.create!(name: 'Lead', manager_id: boss.id)
+  Employee.create!(name: 'Dev A', manager_id: lead.id)
+  Employee.create!(name: 'Dev B', manager_id: lead.id)
 
-Item.create!(name: 'Keyboard', price: 120, quantity: 3)
-Item.create!(name: 'Monitor',  price: 400, quantity: 2)
-Item.create!(name: 'Cable',    price: 10,  quantity: 25)
+  Item.create!(name: 'Keyboard', price: 120, quantity: 3)
+  Item.create!(name: 'Monitor',  price: 400, quantity: 2)
+  Item.create!(name: 'Cable',    price: 10,  quantity: 25)
 
-# Two trees rather than one: walking the first has to leave the second behind,
-# which is the whole point of the recursive example and invisible if every row
-# in the table is a descendant of the same root.
-root  = Node.create!(name: 'root',   parent_id: nil)
-child = Node.create!(name: 'child',  parent_id: root.id)
-Node.create!(name: 'grandchild', parent_id: child.id)
-Node.create!(name: 'sibling',    parent_id: root.id)
+  # Two trees rather than one: walking the first has to leave the second behind,
+  # which is the whole point of the recursive example and invisible if every row
+  # in the table is a descendant of the same root.
+  root  = Node.create!(name: 'root',   parent_id: nil)
+  child = Node.create!(name: 'child',  parent_id: root.id)
+  Node.create!(name: 'grandchild', parent_id: child.id)
+  Node.create!(name: 'sibling',    parent_id: root.id)
 
-other = Node.create!(name: 'other root',  parent_id: nil)
-Node.create!(name: 'other child', parent_id: other.id)
+  other = Node.create!(name: 'other root',  parent_id: nil)
+  Node.create!(name: 'other child', parent_id: other.id)
 
-Doc.create!(name: 'first',  meta: { 'author' => { 'name' => 'Alice' }, 'tags' => %w[ruby sql], 'stars' => 5 })
-Doc.create!(name: 'second', meta: { 'author' => { 'name' => 'Bob' }, 'tags' => %w[ruby], 'stars' => 12 })
+  Doc.create!(name: 'first',  meta: { 'author' => { 'name' => 'Alice' }, 'tags' => %w[ruby sql], 'stars' => 5 })
+  Doc.create!(name: 'second', meta: { 'author' => { 'name' => 'Bob' }, 'tags' => %w[ruby], 'stars' => 12 })
+end
 
 # Set the SQL apart from the rows printed under it.  The page reads the escape
 # and colours the text; a terminal running check-examples does the same.
@@ -319,7 +379,31 @@ end
 def data_json(table, limit: 200)
   require 'json'
   result = ActiveRecord::Base.connection.select_all("SELECT * FROM #{table_named(table)} LIMIT #{limit.to_i}")
-  JSON.generate(table: table_named(table), columns: result.columns, rows: result.rows)
+  rows = cast_rows(result).map { |row| row.map { |value| cell_value(value) } }
+  JSON.generate(table: table_named(table), columns: result.columns, rows: rows)
+end
+
+# The rows as Ruby values rather than as the adapter left them.  PGlite hands
+# every value over as the text PostgreSQL wrote -- on purpose, so that
+# ActiveRecord's casting is what decides what a value is -- and a result read
+# through the connection rather than through a model has not been cast yet.
+# One column is a special case: cast_values flattens it.
+def cast_rows(result)
+  rows = result.cast_values
+  result.columns.one? ? rows.map { |value| [value] } : rows
+end
+
+# What a table cell in the page can be given: a number stays a number, so the
+# column is recognised as numeric and lines up on the right, and nil stays
+# null, so it can be shown as NULL.  Anything with a shape of its own -- a
+# JSON document, an array column, a time -- is written out as text, since the
+# page has one line per cell to show it in.
+def cell_value(value)
+  case value
+  when nil, true, false, String, Integer, Float then value
+  when Hash, Array then JSON.generate(value)
+  else value.to_s
+  end
 end
 
 def table_named(table)
@@ -334,7 +418,7 @@ def print_result(result)
   end
 
   columns = result.columns
-  rows = result.rows
+  rows = cast_rows(result)
   widths = columns.each_with_index.map do |column, i|
     [column.length, *rows.map { |row| row[i].inspect.length }].max
   end
@@ -347,3 +431,8 @@ def print_result(result)
   puts
   puts "#{rows.size} row(s)"
 end
+
+# Last, so that everything above is defined by the time the schema is built.
+# SQLite to start with: it is inside ruby.wasm already, where PostgreSQL is a
+# download of its own and is fetched when it is asked for.
+use_database('sqlite3')

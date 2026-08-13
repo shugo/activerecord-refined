@@ -15,10 +15,14 @@ module ActiveRecord
       # the mysql2 adapter and is counted with MySQL, though the two part
       # company over JSON.  An adapter nobody has classified keeps the
       # standard spellings and is left to say for itself what it cannot do.
+      #
+      # pglite is PostgreSQL itself compiled to WebAssembly, reached through
+      # wasmify-rails' adapter; the server it answers for is the same one.
       ADAPTER_FAMILIES = {
         'sqlite3' => :sqlite,
         'postgresql' => :postgresql,
         'postgis' => :postgresql,
+        'pglite' => :postgresql,
         'mysql2' => :mysql,
         'trilogy' => :mysql,
       }.freeze

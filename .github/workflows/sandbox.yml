@@ -262,6 +262,7 @@ jobs:
             sandbox/index.html
             sandbox/boot.rb
             sandbox/examples.js
+            sandbox/pglite-bridge.mjs
             sandbox/manifest.json
             ${{ steps.r2url.outputs.served != 'true' && 'sandbox/ruby.wasm' || '' }}
             sandbox/rb
