@@ -162,11 +162,38 @@ sql Author.where { :name =~ '^A' }`,
 show Author.where { (:age >= 18) & ((:country == 'JP') | (:country == 'US')) }
 show Author.where { !:country.in?(%w[JP US]) }`,
       },
+    ],
+  },
+
+  {
+    group: 'Expressions',
+    items: [
       {
         title: 'Arithmetic',
         slug: 'arithmetic',
         code: `show Item.where { :price * :quantity > 500 }
 show Item.select { [:name, (:price * :quantity).as(:total)] }`,
+      },
+      {
+        title: 'CASE',
+        slug: 'case',
+        code: `# Two shapes: an operand to compare each when against, or a condition on
+# every when.  \`case\` is a Ruby keyword, so the method behind both needs
+# the receiver -- self.case -- and each shape has a shorthand that does not.
+show Author.select { [:name, :country.when('JP').then('Japan').else('elsewhere').as(:place)] }
+
+show Author.select {
+  [
+    :name,
+    case_when { :age < 18 }.then('minor').
+      when { :age >= 50 }.then('senior').
+      else('adult').as(:band),
+  ]
+}
+
+# A when takes a value or a block, and so do then and else.  It is an
+# expression like any other, so it goes inside an aggregate too.
+show Author.select { sum(case_when { :age >= 50 }.then(1).else(0)).as(:seniors) }`,
       },
     ],
   },
@@ -209,27 +236,6 @@ show Employee.joins(:employees, as: :managers) {
         slug: 'count',
         code: `sql Author.group { :country }.having { count(:*) > 1 }
 sql Post.select { count(:author_id, distinct: true) }`,
-      },
-      {
-        title: 'CASE',
-        slug: 'case',
-        code: `# Two shapes: an operand to compare each when against, or a condition on
-# every when.  \`case\` is a Ruby keyword, so the method behind both needs
-# the receiver -- self.case -- and each shape has a shorthand that does not.
-show Author.select { [:name, :country.when('JP').then('Japan').else('elsewhere').as(:place)] }
-
-show Author.select {
-  [
-    :name,
-    case_when { :age < 18 }.then('minor').
-      when { :age >= 50 }.then('senior').
-      else('adult').as(:band),
-  ]
-}
-
-# A when takes a value or a block, and so do then and else.  It is an
-# expression like any other, so it goes inside an aggregate too.
-show Author.select { sum(case_when { :age >= 50 }.then(1).else(0)).as(:seniors) }`,
       },
       {
         title: 'Scalar functions',
