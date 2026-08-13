@@ -46,6 +46,10 @@
   carries the constraint.  Neither should be a copy of the other.
 - Rationale, rejected alternatives and history go in the commit message, not
   in the code.
+- A Markdown table needs a header row with something in it.  GitHub renders
+  an empty one, `| | |`, and so does every markdown library YARD picks from,
+  but rubydoc.info leaves such a table as raw pipes while rendering the
+  tables beside it.
 
 ## Tests
 
