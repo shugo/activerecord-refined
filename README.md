@@ -380,6 +380,40 @@ Post.select { cast(:price, 'decimal(10,2)').as(:price) }
 # SELECT CAST("posts"."price" AS decimal(10,2)) AS price
 ```
 
+`CASE` is grammar too, and has two shapes. With an operand, each `when` is
+something to compare it against; without one, each `when` carries a condition
+of its own. `case` is a Ruby keyword, so the method behind both is only
+reachable through the receiver — `self.case` — and each shape has a shorthand
+that does not need it:
+
+```ruby
+Author.select { :country.when('JP').then('Japan').else('elsewhere').as(:where) }
+# CASE "country" WHEN 'JP' THEN 'Japan' ELSE 'elsewhere' END AS where
+
+Author.select { case_when { :age >= 60 }.then('senior').else('adult').as(:band) }
+# CASE WHEN "age" >= 60 THEN 'senior' ELSE 'adult' END AS band
+
+Author.select { self.case(mod(:age, 10)).when(0).then('round').else('not').as(:v) }
+```
+
+A `when` takes a value or a block, and so do `then` and `else`; the block is
+there to read like the blocks around it, since an argument works just as well
+— `:age >= 60` has already become an expression by the time it is passed.
+Leaving the `else` off is SQL's own default, which is NULL. `when` and `then`
+come in pairs, and one without the other is an `ArgumentError` rather than
+something that reaches the database:
+
+```ruby
+Author.select {
+  case_when { :age < 18 }.then('minor').
+    when { :age >= 60 }.then('senior').
+    else('adult').as(:band)
+}
+
+Author.select { sum(case_when { :age >= 60 }.then(1).else(0)).as(:seniors) }
+# SUM(CASE WHEN "age" >= 60 THEN 1 ELSE 0 END) AS seniors
+```
+
 `format` is printf formatting, and raises on MySQL, where a function of the
 same name does something else entirely: it puts separators in a number, and
 reads a printf template as the number zero rather than complaining. `fn` still

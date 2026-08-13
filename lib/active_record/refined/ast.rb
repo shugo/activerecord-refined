@@ -91,6 +91,13 @@ module ActiveRecord
           In.new(self, min..max, negated: true)
         end
 
+        # CASE with this as the operand, compared against each `when`:
+        # `:age.when(10).then(1).else(0)`.  The other shape, where each `when`
+        # carries its own condition, starts at `case_when`.
+        def when(value = nil, &block)
+          Case.new(self).when(value, &block)
+        end
+
         def like?(pattern)
           Like.new(self, pattern)
         end
@@ -290,6 +297,90 @@ module ActiveRecord
 
         def to_arel(_table)
           Arel::Nodes.build_quoted(value)
+        end
+      end
+
+      # CASE, in both of the shapes SQL has for it.  With an operand, each
+      # `when` is something to compare it against; without one, each `when` is
+      # a condition of its own.
+      #
+      # Every method returns a new node rather than adding to this one, so a
+      # case kept in a variable can be branched from more than once.
+      class Case < Node
+        include Predications
+        include Arithmetics
+        include Aggregations
+
+        # Having no ELSE is not the same as an ELSE of nil, and nil is what an
+        # omitted argument looks like, so the absence needs a value of its own.
+        NOTHING = Object.new.freeze
+        private_constant :NOTHING
+
+        attr_reader :operand, :whens, :default
+
+        def initialize(operand = nil, whens = [], default = NOTHING)
+          @operand = operand
+          @whens = whens
+          @default = default
+        end
+
+        def when(value = nil, &block)
+          Pending.new(self, Case.argument(:when, value, block))
+        end
+
+        # Kernel#then is on every object, so `then` in the wrong place would be
+        # answered by it -- with no block, silently, with an Enumerator.
+        def then(*)
+          raise ArgumentError, "then follows a when, and there is none to follow here"
+        end
+
+        def else(value = nil, &block)
+          Case.new(operand, whens, Case.argument(:else, value, block))
+        end
+
+        def to_arel(table)
+          raise ArgumentError, "case needs a when before it means anything" if whens.empty?
+
+          node = operand ? Arel::Nodes::Case.new(to_arel_operand(operand, table))
+                         : Arel::Nodes::Case.new
+          whens.each do |condition, result|
+            node.when(to_arel_argument(condition, table)).
+              then(to_arel_argument(result, table))
+          end
+          node.else(to_arel_argument(default, table)) unless default.equal?(NOTHING)
+          node
+        end
+
+        # A value or a block, and exactly one of them: the block is what makes
+        # `when { :age >= 60 }` read like the blocks around it, and the value is
+        # what makes `when(10)` possible at all.
+        def self.argument(name, value, block)
+          if block
+            raise ArgumentError, "#{name} takes a value or a block, not both" unless value.nil?
+            return block.call
+          end
+          raise ArgumentError, "#{name} needs a value or a block" if value.nil?
+          value
+        end
+
+        # What a `when` is until its `then` arrives.  A Node so that using it
+        # as one says what is missing rather than reaching ActiveRecord as
+        # something it cannot read.
+        class Pending < Node
+          def initialize(kase, condition)
+            @kase = kase
+            @condition = condition
+          end
+
+          def then(value = nil, &block)
+            Case.new(@kase.operand,
+                     @kase.whens + [[@condition, Case.argument(:then, value, block)]],
+                     @kase.default)
+          end
+
+          def to_arel(_table)
+            raise ArgumentError, "when needs a matching then"
+          end
         end
       end
 

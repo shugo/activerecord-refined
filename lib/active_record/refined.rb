@@ -187,6 +187,24 @@ module ActiveRecord
         AST::Value.new(literal)
       end
 
+      # CASE.  `case` is a keyword, so Ruby only reaches this one through the
+      # receiver -- `self.case` -- which is why the two shapes have shorthands
+      # that do not need it: `:age.when(...)` for the form with an operand, and
+      # `case_when` for the form where each when carries its own condition.
+      #
+      #   self.case(:age).when(10).then(1).else(0)
+      #   self.case.when { :age >= 60 }.then { :age - 60 }
+      def case(operand = nil)
+        AST::Case.new(operand)
+      end
+
+      # The searched CASE, started at its first when:
+      #
+      #   case_when { :age >= 60 }.then { :age - 60 }.else(0)
+      def case_when(value = nil, &block)
+        AST::Case.new.when(value, &block)
+      end
+
       private
 
       def function_name(name, functions)

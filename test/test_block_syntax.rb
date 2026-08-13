@@ -346,6 +346,115 @@ class TestBlockSyntax < Minitest::Test
       User.where { :users[:name].not_null? }.to_sql)
   end
 
+  # CASE has two shapes, and so does the block: an operand to compare each
+  # `when` against, or a condition on every `when`.
+  def test_case_with_an_operand
+    assert_sql(/SELECT CASE "users"."age" WHEN 10 THEN 'ten' ELSE 'other' END AS v/,
+      User.select { self.case(:age).when(10).then('ten').else('other').as(:v) }.to_sql)
+  end
+
+  def test_when_on_a_column_is_the_same_case
+    assert_equal(
+      User.select { self.case(:age).when(10).then('ten').else('other').as(:v) }.to_sql,
+      User.select { :age.when(10).then('ten').else('other').as(:v) }.to_sql)
+  end
+
+  def test_searched_case
+    assert_sql(/SELECT CASE WHEN "users"."age" >= 60 THEN 'senior' ELSE 'other' END AS v/,
+      User.select { case_when { :age >= 60 }.then('senior').else('other').as(:v) }.to_sql)
+  end
+
+  def test_case_when_is_the_same_as_case_with_no_operand
+    assert_equal(
+      User.select { self.case.when { :age >= 60 }.then(1).else(0).as(:v) }.to_sql,
+      User.select { case_when { :age >= 60 }.then(1).else(0).as(:v) }.to_sql)
+  end
+
+  # A value and a block say the same thing; the block is there to read like
+  # the blocks around it.
+  def test_a_condition_reads_the_same_either_way
+    assert_equal(
+      User.select { case_when(:age >= 60).then(1).else(0).as(:v) }.to_sql,
+      User.select { case_when { :age >= 60 }.then(1).else(0).as(:v) }.to_sql)
+  end
+
+  def test_case_with_several_whens
+    assert_sql(
+      /CASE WHEN "users"."age" < 18 THEN 'minor' WHEN "users"."age" >= 60 THEN 'senior' ELSE 'adult' END/,
+      User.select {
+        case_when { :age < 18 }.then('minor').
+          when { :age >= 60 }.then('senior').
+          else('adult').as(:v)
+      }.to_sql)
+  end
+
+  # Leaving the ELSE off is SQL's own default rather than an omission.
+  def test_case_without_an_else
+    sql = User.select { case_when { :age >= 60 }.then('senior').as(:v) }.to_sql
+    assert_sql(/CASE WHEN "users"."age" >= 60 THEN 'senior' END/, sql)
+    refute_match(/ELSE/, sql)
+  end
+
+  def test_case_takes_expressions_and_columns
+    assert_sql(/THEN \("users"."age" - 60\)/,
+      User.select { case_when { :age >= 60 }.then { :age - 60 }.else(0).as(:v) }.to_sql)
+    assert_sql(/THEN "users"."name"/,
+      User.select { case_when { :age >= 60 }.then(:name).else('x').as(:v) }.to_sql)
+  end
+
+  def test_case_is_an_expression_like_any_other
+    assert_sql(/SUM\(CASE WHEN/,
+      User.select { sum(case_when { :age >= 60 }.then(1).else(0)).as(:v) }.to_sql)
+    assert_sql(/WHERE CASE "users"."age" WHEN 10 THEN 1 ELSE 2 END = 1/,
+      User.where { self.case(:age).when(10).then(1).else(2) == 1 }.to_sql)
+  end
+
+  def test_case_execution
+    User.delete_all
+    User.create!(name: 'senior', age: 70)
+    User.create!(name: 'adult', age: 30)
+    User.create!(name: 'minor', age: 10)
+    assert_equal(%w[adult minor senior],
+      User.select {
+        case_when { :age < 18 }.then('minor').
+          when { :age >= 60 }.then('senior').
+          else('adult').as(:v)
+      }.map(&:v).sort)
+  end
+
+  # One case finished two ways: the methods return new nodes rather than
+  # adding to the one they were called on.
+  def test_a_case_is_not_added_to_in_place
+    sql = User.select {
+      started = case_when { :age >= 60 }.then(1)
+      [started.else(0).as(:a), started.else(9).as(:b)]
+    }.to_sql
+    assert_sql(/THEN 1 ELSE 0 END AS a/, sql)
+    assert_sql(/THEN 1 ELSE 9 END AS b/, sql)
+  end
+
+  def test_when_needs_a_value_or_a_block
+    assert_raises(ArgumentError) { User.select { case_when.then(1) } }
+    e = assert_raises(ArgumentError) { User.select { case_when(1) { 2 }.then(1) } }
+    assert_match(/not both/, e.message)
+  end
+
+  def test_when_needs_a_matching_then
+    e = assert_raises(ArgumentError) { User.select { :age.when(10) }.to_sql }
+    assert_match(/matching then/, e.message)
+  end
+
+  # Kernel#then would otherwise answer this one, with no block and no noise.
+  def test_then_without_a_when_says_so
+    e = assert_raises(ArgumentError) { User.select { self.case(:age).then(1) } }
+    assert_match(/follows a when/, e.message)
+  end
+
+  def test_case_needs_a_when
+    e = assert_raises(ArgumentError) { User.select { self.case(:age).else(1) }.to_sql }
+    assert_match(/needs a when/, e.message)
+  end
+
   # The claim these methods rest on: the direct spelling is the same rows as
   # negating the positive one, which is where a NULL would show a difference
   # if there were one.

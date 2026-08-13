@@ -211,6 +211,27 @@ show Employee.joins(:employees, as: :managers) {
 sql Post.select { count(:author_id, distinct: true) }`,
       },
       {
+        title: 'CASE',
+        slug: 'case',
+        code: `# Two shapes: an operand to compare each when against, or a condition on
+# every when.  \`case\` is a Ruby keyword, so the method behind both needs
+# the receiver -- self.case -- and each shape has a shorthand that does not.
+show Author.select { [:name, :country.when('JP').then('Japan').else('elsewhere').as(:place)] }
+
+show Author.select {
+  [
+    :name,
+    case_when { :age < 18 }.then('minor').
+      when { :age >= 50 }.then('senior').
+      else('adult').as(:band),
+  ]
+}
+
+# A when takes a value or a block, and so do then and else.  It is an
+# expression like any other, so it goes inside an aggregate too.
+show Author.select { sum(case_when { :age >= 50 }.then(1).else(0)).as(:seniors) }`,
+      },
+      {
         title: 'Scalar functions',
         slug: 'functions',
         code: `show Author.select { [:name, upper(:name).as(:upper_name), length(:name).as(:len)] }
