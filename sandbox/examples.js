@@ -409,6 +409,26 @@ show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
   },
 
   {
+    group: 'Lateral joins',
+    items: [
+      {
+        title: 'lateral',
+        slug: 'lateral',
+        code: `# A lateral join lets the relation joined see the row being joined to,
+# which is what makes the top row of each group reachable in one query.
+# PostgreSQL has it and so has MySQL 8; this page is SQLite, which has
+# none, so this says so rather than running.
+top_post = Post.select { :title }.
+  where { :posts[:author_id] == :authors[:id] }.
+  order { :likes.desc }.limit(1)
+
+Author.left_outer_joins(top_post, as: :top, lateral: true).
+  select { [:name, :top[:title].as(:top_post)] }`,
+      },
+    ],
+  },
+
+  {
     group: 'Common table expressions',
     items: [
       {

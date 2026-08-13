@@ -373,8 +373,13 @@ module ActiveRecord
 
       # `as` names the table within the query, which is what makes a self
       # join expressible: joins(:employees, as: :managers) { ... }.
-      def joins(*args, as: nil, &block)
-        if block
+      #
+      # `lateral` joins a relation instead of a table, and lets it see the row
+      # being joined to -- the top few rows of each group, and the like.
+      def joins(*args, as: nil, lateral: false, &block)
+        if lateral
+          super(build_lateral_join(args.first, Arel::Nodes::InnerJoin, as, &block))
+        elsif block
           super(build_join_node(args.first, Arel::Nodes::InnerJoin, as, &block))
         else
           reject_join_alias(as)
@@ -382,8 +387,10 @@ module ActiveRecord
         end
       end
 
-      def left_outer_joins(*args, as: nil, &block)
-        if block
+      def left_outer_joins(*args, as: nil, lateral: false, &block)
+        if lateral
+          joins(build_lateral_join(args.first, Arel::Nodes::OuterJoin, as, &block))
+        elsif block
           joins(build_join_node(args.first, Arel::Nodes::OuterJoin, as, &block))
         else
           reject_join_alias(as)
@@ -434,6 +441,42 @@ module ActiveRecord
       def reject_join_alias(alias_name)
         return unless alias_name
         raise ArgumentError, "as: needs a block to write the ON clause with"
+      end
+
+      # The subquery is written out rather than handed over as a tree: Arel has
+      # a LATERAL node but only PostgreSQL's visitor writes it, and MySQL can
+      # read what it will not write.  Without a block the join is ON TRUE,
+      # which is the usual shape -- what the subquery is allowed to see is
+      # what makes it lateral, and that is said inside it.
+      def build_lateral_join(relation, join_class, alias_name, &block)
+        unless relation.is_a?(ActiveRecord::Relation)
+          raise ArgumentError, "a lateral join takes a relation to join against"
+        end
+        unless alias_name
+          raise ArgumentError, "a lateral join needs a name: joins(..., as: :top)"
+        end
+        check_lateral_support
+
+        aliased = Arel::Nodes::TableAlias.new(
+          Arel::Nodes::SqlLiteral.new("LATERAL (#{relation.to_sql})"), alias_name)
+        on = block ? evaluate_block(&block).to_arel(table, klass) : Arel::Nodes::True.new
+        join_class.new(aliased, Arel::Nodes::On.new(on))
+      end
+
+      # PostgreSQL has LATERAL and so does MySQL, from 8.0.14.  SQLite has
+      # none, and neither has MariaDB, which answers to the same adapter as
+      # MySQL.  An adapter nobody has classified is left to say for itself.
+      def check_lateral_support
+        case AST.adapter_family(klass)
+        when :sqlite
+          refuse_lateral('sqlite3')
+        when :mysql
+          refuse_lateral('MariaDB') if klass.with_connection {|c| c.mariadb? }
+        end
+      end
+
+      def refuse_lateral(database)
+        raise NotImplementedError, "a lateral join has no equivalent on #{database}"
       end
 
       def build_join_node(target_table, join_class, alias_name, &block)

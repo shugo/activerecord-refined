@@ -286,6 +286,33 @@ The subquery is named after the model's own table for the reason `from_cte`
 is: ActiveRecord goes on qualifying columns with that name, so `where` needs
 to find it.
 
+### Lateral joins
+
+`lateral: true` joins a relation rather than a table, and lets it see the row
+being joined to. That is what makes the top row of each group reachable in one
+query:
+
+```ruby
+top_post = Post.select { :title }.
+  where { :posts[:author_id] == :authors[:id] }.
+  order { :likes.desc }.limit(1)
+
+Author.left_outer_joins(top_post, as: :top, lateral: true).
+  select { [:name, :top[:title].as(:top_post)] }
+# SELECT "name", "top"."title" AS "top_post" FROM "authors"
+#   LEFT OUTER JOIN LATERAL (SELECT "title" FROM "posts"
+#     WHERE "posts"."author_id" = "authors"."id" ORDER BY "likes" DESC LIMIT 1) "top" ON TRUE
+```
+
+`as` is required — the relation has no name of its own to qualify with. Without
+a block the join is `ON TRUE`, which is the usual shape: what the subquery is
+allowed to see is said inside it. A block writes a real `ON` clause.
+
+PostgreSQL has `LATERAL` and so has MySQL, from 8.0.14. SQLite has none, and
+neither has MariaDB, which answers to the same adapter as MySQL; both raise
+`NotImplementedError`. Arel has a node for it but only PostgreSQL's visitor
+writes it, so the SQL is written here instead.
+
 ### Common table expressions
 
 ActiveRecord's `with` and `with_recursive` need nothing from this gem: a CTE

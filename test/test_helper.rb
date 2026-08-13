@@ -94,6 +94,12 @@ module SqlAssertions
     ADAPTER == 'mysql2' && ActiveRecord::Base.connection.mariadb?
   end
 
+  # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
+  def skip_without_lateral
+    return if ADAPTER == 'postgresql'
+    skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no LATERAL" if ADAPTER != 'mysql2' || mariadb?
+  end
+
   # DISTINCT ON is PostgreSQL's; Arel refuses to write it for the others.
   def skip_without_distinct_on
     skip "#{ADAPTER} has no DISTINCT ON" unless ADAPTER == 'postgresql'

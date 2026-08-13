@@ -1807,6 +1807,64 @@ class TestBlockSyntax < Minitest::Test
     refute_match(/DISTINCT ON/, Author.all.to_sql)
   end
 
+  # A lateral join lets the relation joined see the row being joined to, which
+  # is what makes the top row of each group reachable in one query.
+  def top_post
+    Post.select { :title }.
+      where { :posts[:author_id] == :authors[:id] }.
+      order { :title.desc }.limit(1)
+  end
+
+  def seed_for_lateral
+    Author.delete_all
+    Post.delete_all
+    author = Author.create!(name: 'writes')
+    Author.create!(name: 'does not')
+    Post.create!(author_id: author.id, title: 'a')
+    Post.create!(author_id: author.id, title: 'b')
+  end
+
+  def test_lateral_join
+    skip_without_lateral
+    seed_for_lateral
+    rows = Author.joins(top_post, as: :top, lateral: true).
+      select { [:name, :top[:title].as(:v)] }.map {|r| [r.name, r.v] }
+    assert_equal([['writes', 'b']], rows)
+  end
+
+  # Left, so that a row with nothing to join to is kept.
+  def test_left_outer_lateral_join
+    skip_without_lateral
+    seed_for_lateral
+    rows = Author.left_outer_joins(top_post, as: :top, lateral: true).
+      select { [:name, :top[:title].as(:v)] }.order { :name }.map {|r| [r.name, r.v] }
+    assert_equal([['does not', nil], ['writes', 'b']], rows)
+  end
+
+  # Without a block the join is ON TRUE; what the subquery may see is said
+  # inside it.
+  def test_lateral_join_takes_an_on_clause
+    skip_without_lateral
+    seed_for_lateral
+    assert_equal(0, Author.joins(top_post, as: :top, lateral: true) {
+      :top[:title] == 'nothing'
+    }.count)
+    assert_sql(/ON TRUE/, Author.joins(top_post, as: :top, lateral: true).to_sql)
+  end
+
+  def test_lateral_join_needs_a_relation_and_a_name
+    e = assert_raises(ArgumentError) { Author.joins(:posts, as: :top, lateral: true) }
+    assert_match(/takes a relation/, e.message)
+    e = assert_raises(ArgumentError) { Author.joins(top_post, lateral: true) }
+    assert_match(/needs a name/, e.message)
+  end
+
+  def test_lateral_join_says_where_it_cannot_go
+    skip 'this one has LATERAL' if ADAPTER == 'postgresql' || (ADAPTER == 'mysql2' && !mariadb?)
+    e = assert_raises(NotImplementedError) { Author.joins(top_post, as: :top, lateral: true) }
+    assert_match(/lateral join has no equivalent/, e.message)
+  end
+
   def test_default_where_syntax
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)
