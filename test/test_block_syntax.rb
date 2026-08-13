@@ -1492,6 +1492,110 @@ class TestBlockSyntax < Minitest::Test
       User.select { :users[:age] - 1 }.to_sql)
   end
 
+  def test_bitwise_and_or
+    assert_sql(/SELECT \("users"."flags" & 4\) AS "masked"/,
+      User.select { (:flags & 4).as(:masked) }.to_sql)
+    assert_sql(/SELECT \("users"."flags" \| 4\) AS "set"/,
+      User.select { (:flags | 4).as(:set) }.to_sql)
+  end
+
+  # Ruby puts & above >, so this groups the way it reads, and the node
+  # parenthesises itself so that the adapter's own precedence cannot regroup
+  # it -- PostgreSQL gives & and | the same one.
+  def test_bitwise_in_where_without_parentheses
+    assert_sql(/WHERE \("users"."flags" & 4\) > 0/,
+      User.where { :flags & 4 > 0 }.to_sql)
+  end
+
+  def test_bitwise_shifts
+    assert_sql(/SELECT \("users"."flags" << 2\)/, User.select { :flags << 2 }.to_sql)
+    assert_sql(/SELECT \("users"."flags" >> 1\)/, User.select { :flags >> 1 }.to_sql)
+  end
+
+  def test_bitwise_not
+    assert_sql(/SELECT \( ~ "users"."flags"\)/, User.select { ~:flags }.to_sql)
+  end
+
+  # The one operator the three do not share: PostgreSQL's # is where a comment
+  # starts on MySQL, MySQL's ^ is exponentiation to PostgreSQL, and SQLite has
+  # neither, so it gets the two operations XOR is made of.
+  def test_bitwise_xor_is_spelled_per_adapter
+    sql = User.select { :flags ^ 10 }.to_sql
+    case ADAPTER
+    when 'postgresql' then assert_sql(/SELECT \("users"."flags" # 10\)/, sql)
+    when 'mysql2' then assert_sql(/SELECT \("users"."flags" \^ 10\)/, sql)
+    else assert_sql(
+      /SELECT \(\("users"."flags" \| 10\) - \("users"."flags" & 10\)\)/, sql)
+    end
+  end
+
+  # Whatever the spelling, the answers agree.
+  def test_bitwise_execution
+    User.delete_all
+    User.create!(name: 'a', flags: 12)
+    assert_equal(8, User.select { (:flags & 10).as(:v) }.take.v.to_i)
+    assert_equal(14, User.select { (:flags | 10).as(:v) }.take.v.to_i)
+    assert_equal(6, User.select { (:flags ^ 10).as(:v) }.take.v.to_i)
+    assert_equal(48, User.select { (:flags << 2).as(:v) }.take.v.to_i)
+    assert_equal(6, User.select { (:flags >> 1).as(:v) }.take.v.to_i)
+    # MariaDB reads ~ back as the unsigned 64-bit number where the others give
+    # a negative one, so the assertion is on the bits rather than the value.
+    assert_equal(243, User.select { (~:flags & 255).as(:v) }.take.v.to_i)
+  end
+
+  # AND and OR are the conditions' own & and |, and an operand that is a
+  # condition means one of the two was meant.
+  def test_bitwise_refuses_a_condition
+    e = assert_raises(ArgumentError) { User.where { :flags & (:age == 1) } }
+    assert_match(/AND and OR/, e.message)
+  end
+
+  # MySQL and SQLite would take a boolean for the bit it is stored as and
+  # quietly answer as AND would; PostgreSQL has no such operator.
+  def test_bitwise_refuses_a_boolean_column
+    e = assert_raises(ArgumentError) { User.where { (:active & :active) > 0 }.to_sql }
+    assert_match(/true\?/, e.message)
+    assert_raises(ArgumentError) { User.select { ~:active }.to_sql }
+  end
+
+  def test_conditions_still_and_with_the_same_operators
+    assert_sql(/WHERE "users"."age" = 1 AND "users"."name" = 'a'/,
+      User.where { (:age == 1) & (:name == 'a') }.to_sql)
+  end
+
+  def test_bit_aggregates
+    skip_without_bit_aggregates
+    User.delete_all
+    User.create!([{name: 'a', flags: 12}, {name: 'b', flags: 10}, {name: 'c', flags: 3}])
+    assert_equal(0, User.select { bit_and(:flags).as(:v) }.take.v.to_i)
+    assert_equal(15, User.select { bit_or(:flags).as(:v) }.take.v.to_i)
+    assert_equal(5, User.select { bit_xor(:flags).as(:v) }.take.v.to_i)
+  end
+
+  # PostgreSQL counts the bits of a bit string rather than of a number, so the
+  # argument is cast there; bit(64) is what makes a negative answer alike.
+  def test_bit_count
+    if ADAPTER == 'sqlite3'
+      assert_raises(NotImplementedError) { User.select { bit_count(:flags) } }
+      return
+    end
+    User.delete_all
+    User.create!(name: 'a', flags: 12)
+    User.create!(name: 'b', flags: -1)
+    assert_equal([2, 64], User.select { bit_count(:flags).as(:v) }.order(:name).map {|u| u.v.to_i })
+    assert_sql(/BIT_COUNT\(CAST\("users"."flags" AS bit\(64\)\)\)/,
+      User.select { bit_count(:flags) }.to_sql) if ADAPTER == 'postgresql'
+  end
+
+  def test_bit_aggregates_are_unsupported_on_sqlite
+    if ADAPTER == 'sqlite3'
+      e = assert_raises(NotImplementedError) { User.select { bit_or(:flags) } }
+      assert_match(/bit_or/, e.message)
+    else
+      assert_sql(/BIT_OR\("users"."flags"\)/, User.select { bit_or(:flags) }.to_sql)
+    end
+  end
+
   def test_coalesce_function_with_literal
     assert_sql(/SELECT COALESCE\("users"."name", 'unknown'\)/,
       User.select { coalesce(:name, 'unknown') }.to_sql)

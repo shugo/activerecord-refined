@@ -439,7 +439,7 @@ Node.with(roots: Node.where { :parent_id.null? }).
 ### Aggregates and functions
 
 `count`, `sum`, `avg`, `min` and `max` are available as methods, as are the
-scalar functions below, with `fn` for anything else. Return an array to select
+bit aggregates and the scalar functions below, with `fn` for anything else. Return an array to select
 or order by multiple expressions.
 
 `filter` takes the aggregate over the rows a condition holds for, as a value
@@ -474,7 +474,8 @@ so a misspelling is a `NoMethodError` where you wrote it, and a name Ruby also
 answers to — `rand` — means the SQL one inside a block:
 
 ```
-abs  acos  asin  atan  atan2  cast  ceil  char_length  coalesce  concat
+abs  acos  asin  atan  atan2  bit_and  bit_count  bit_or  bit_xor  cast
+ceil  char_length  coalesce  concat
 cos  current_date  current_time  current_timestamp  date_trunc  degrees
 exp  extract  floor  format  greatest  least  length  ln  localtime
 localtimestamp  log  log10  log2  lower  ltrim  mod  now  nullif  pi
@@ -489,8 +490,8 @@ MySQL and `RANDOM` elsewhere, and `trunc` is `TRUNCATE` on MySQL, which
 insists on the second argument the others default to zero — SQLite's takes
 only the one. Where an adapter has no equivalent — `date_trunc` outside
 PostgreSQL, `now` and the `local*` pair on SQLite, `log2` on PostgreSQL,
-whose spelling is `log(2, x)` — the block raises `NotImplementedError`
-rather than leaving the database to reject the SQL.
+whose spelling is `log(2, x)`, the four `bit_*` on SQLite — the block raises
+`NotImplementedError` rather than leaving the database to reject the SQL.
 
 `format` is printf formatting, and raises on MySQL, where a function of the
 same name does something else entirely: it puts separators in a number, and
@@ -574,6 +575,54 @@ operators, so an expression groups the way it reads:
 Item.where { :price * :quantity > 1000 }
 Item.select { sum(:price * :quantity).as(:total) }
 ```
+
+`&`, `|`, `^`, `~`, `<<` and `>>` are SQL's bitwise operators. Between
+conditions `&` and `|` are AND and OR, and that is where they are defined,
+which leaves them free to mean here what SQL means by them:
+
+```ruby
+Post.where { :flags & 4 > 0 }
+# WHERE ("posts"."flags" & 4) > 0
+
+Post.select { (:flags | 4).as(:flags) }
+Post.select { (~:flags).as(:inverted) }
+```
+
+Each parenthesises itself, which is what keeps Ruby's grouping: PostgreSQL
+gives `&` and `|` the same precedence and reads `a | b & c` from the left,
+where Ruby reads the `&` first.
+
+A boolean column is refused rather than taken for the one bit it is stored as.
+MySQL and SQLite would quietly answer as `AND` would, PostgreSQL has no such
+operator at all, and one block meaning two things is worse than an
+`ArgumentError` saying that `true?` is what makes a boolean column a
+condition. A condition as an operand is refused for the same reason.
+
+XOR is the one the three do not share, and the one where guessing costs most:
+MySQL spells it `^`, which is exponentiation to PostgreSQL, and PostgreSQL
+spells it `#`, which is where a comment starts on MySQL — either way a wrong
+answer rather than an error. Each adapter gets its own, and SQLite, which has
+no XOR at all, gets the two operations it is made of, `(a | b) - (a & b)`.
+That names each operand twice, so keep them cheap.
+
+`bit_and`, `bit_or` and `bit_xor` are the aggregates of the first three, and
+`bit_count` counts the bits that are set. SQLite has none of the four.
+PostgreSQL counts the bits of a bit string rather than of a number, so the
+argument is cast there, to `bit(64)` because that is what makes a negative
+count as it does on MySQL:
+
+```ruby
+Post.group { :author_id }.select { bit_or(:flags).as(:flags) }
+# SELECT BIT_OR("posts"."flags") AS "flags" ... GROUP BY "posts"."author_id"
+
+Post.select { bit_count(:flags).as(:bits) }
+# MySQL:      BIT_COUNT("posts"."flags")
+# PostgreSQL: BIT_COUNT(CAST("posts"."flags" AS bit(64)))
+```
+
+`bit_xor` arrived in PostgreSQL 14. `~` is where the three disagree about the
+answer rather than the question: MySQL reads it back as the unsigned 64-bit
+number, the others as a negative one, and the bits are the same either way.
 
 One place asks for a value to be said out loud: the top of a select list.
 Everywhere else a bare literal is already a value — `where { :age > 18 }`,

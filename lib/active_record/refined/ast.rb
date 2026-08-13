@@ -264,6 +264,34 @@ module ActiveRecord
         def /(other)
           Arithmetic.new(self, :/, other)
         end
+
+        # SQL's bitwise operators.  & and | are AND and OR between conditions
+        # and are defined there, which is what leaves them free to mean here
+        # what SQL means by them.  Ruby's precedence puts all six above the
+        # comparisons, so `:flags & 4 > 0` groups the way it reads.
+        def &(other)
+          Bitwise.new(self, :&, other)
+        end
+
+        def |(other)
+          Bitwise.new(self, :|, other)
+        end
+
+        def ^(other)
+          Bitwise.new(self, :^, other)
+        end
+
+        def <<(other)
+          Bitwise.new(self, :<<, other)
+        end
+
+        def >>(other)
+          Bitwise.new(self, :>>, other)
+        end
+
+        def ~
+          BitwiseNot.new(self)
+        end
       end
 
       # Aggregate builders shared by symbols, qualified columns and
@@ -713,6 +741,108 @@ module ActiveRecord
         def to_arel(table, model)
           to_arel_operand(left, table, model).
             public_send(operator, to_arel_operand(right, table, model))
+        end
+      end
+
+      # What the bitwise operators refuse.  Both refusals are there because
+      # the same Ruby would otherwise mean different things per adapter: MySQL
+      # and SQLite take a boolean for the one bit it is stored as, so
+      # `published & active` would quietly be the AND it looks like, while
+      # PostgreSQL has no such operator and would say so.
+      module BitwiseOperands
+        private
+
+        def check_operand(operand, operator)
+          return operand unless operand.is_a?(Predicate)
+          raise ArgumentError,
+            "a condition cannot be an operand of #{operator}; " \
+            "& and | between conditions are AND and OR"
+        end
+
+        # Only the unqualified column can be checked, since that is the one
+        # the model is known to have.
+        def check_not_boolean(operand, operator, model)
+          return unless operand.is_a?(::Symbol)
+          return unless model.type_for_attribute(operand).type == :boolean
+          raise ArgumentError,
+            "#{operand.inspect} is a boolean column, which #{operator} does " \
+            "not take; #{operand.inspect}.true? is the condition"
+        end
+      end
+
+      # SQL's bitwise operators.  Each parenthesises itself, which is what
+      # keeps Ruby's grouping: PostgreSQL gives & and | the same precedence
+      # and reads a | b & c from the left, where Ruby reads the & first.
+      class Bitwise < Node
+        include Predications
+        include Arithmetics
+        include BitwiseOperands
+
+        NODES = {
+          :& => Arel::Nodes::BitwiseAnd,
+          :| => Arel::Nodes::BitwiseOr,
+          :<< => Arel::Nodes::BitwiseShiftLeft,
+          :>> => Arel::Nodes::BitwiseShiftRight,
+        }.freeze
+
+        attr_reader :left, :operator, :right
+
+        def initialize(left, operator, right)
+          @left = left
+          @operator = operator
+          @right = check_operand(right, operator)
+        end
+
+        def to_arel(table, model)
+          check_not_boolean(left, operator, model)
+          check_not_boolean(right, operator, model)
+          arel_left = to_arel_operand(left, table, model)
+          arel_right = to_arel_argument(right, table, model)
+          Arel::Nodes::Grouping.new(
+            if operator == :^
+              xor(arel_left, arel_right, model)
+            else
+              NODES.fetch(operator).new(arel_left, arel_right)
+            end)
+        end
+
+        private
+
+        # Arel has a node for XOR, but it writes ^ on every adapter, and ^ is
+        # exponentiation to PostgreSQL -- a wrong answer rather than an error.
+        # PostgreSQL's own spelling, #, is where a comment starts on MySQL, so
+        # it cannot be the portable one either.  SQLite has no XOR at all;
+        # (a | b) - (a & b) is it, at the cost of naming each operand twice.
+        def xor(left, right, model)
+          case AST.adapter_family(model)
+          when :postgresql then Arel::Nodes::InfixOperation.new('#', left, right)
+          when :mysql then Arel::Nodes::BitwiseXor.new(left, right)
+          else
+            Arel::Nodes::Subtraction.new(
+              Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseOr.new(left, right)),
+              Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseAnd.new(left, right)))
+          end
+        end
+      end
+
+      # ~, which every adapter has.  MySQL answers with the unsigned 64-bit
+      # number where the others answer with a negative one; the bits are the
+      # same, and only reading the value back tells them apart.
+      class BitwiseNot < Node
+        include Predications
+        include Arithmetics
+        include BitwiseOperands
+
+        attr_reader :operand
+
+        def initialize(operand)
+          @operand = check_operand(operand, :~)
+        end
+
+        def to_arel(table, model)
+          check_not_boolean(operand, :~, model)
+          Arel::Nodes::Grouping.new(
+            Arel::Nodes::BitwiseNot.new(to_arel_operand(operand, table, model)))
         end
       end
 

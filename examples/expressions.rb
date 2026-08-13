@@ -8,7 +8,13 @@ ActiveRecord::Migration.verbose = false
 
 class Setup < ActiveRecord::Migration[8.1]
   def up
-    create_table(:line_items) {|t| t.string :sku; t.string :category; t.integer :price; t.integer :quantity }
+    create_table(:line_items) do |t|
+      t.string :sku
+      t.string :category
+      t.integer :price
+      t.integer :quantity
+      t.integer :flags
+    end
   end
 end
 Setup.new.up
@@ -16,10 +22,10 @@ Setup.new.up
 class LineItem < ActiveRecord::Base
 end
 
-LineItem.create!(sku: 'A-1', category: 'tools',  price: 1200, quantity: 2)
-LineItem.create!(sku: 'A-2', category: 'tools',  price: 300,  quantity: 5)
-LineItem.create!(sku: 'B-1', category: 'paper',  price: 80,   quantity: 10)
-LineItem.create!(sku: 'C-1', category: nil,      price: 50,   quantity: 1)
+LineItem.create!(sku: 'A-1', category: 'tools',  price: 1200, quantity: 2,  flags: 12)
+LineItem.create!(sku: 'A-2', category: 'tools',  price: 300,  quantity: 5,  flags: 10)
+LineItem.create!(sku: 'B-1', category: 'paper',  price: 80,   quantity: 10, flags: 3)
+LineItem.create!(sku: 'C-1', category: nil,      price: 50,   quantity: 1,  flags: 4)
 
 def show(title, relation, rows = nil)
   puts "--- #{title} ---"
@@ -42,6 +48,30 @@ show('arithmetic in a select list, and aggregated',
 show('an aggregate over an expression',
   LineItem.select { sum(:price * :quantity).as(:total) },
   LineItem.select { sum(:price * :quantity).as(:total) }.first.total)
+
+# The bitwise operators.  & and | are AND and OR between conditions, which is
+# what leaves them free here.  Each expression parenthesises itself, so the
+# grouping is Ruby's rather than the adapter's.
+show('a bit test in a condition',
+  LineItem.where { :flags & 4 > 0 },
+  LineItem.where { :flags & 4 > 0 }.pluck(:sku))
+
+# XOR is the one the three adapters do not share.  SQLite has none, so it gets
+# the two operations XOR is made of; PostgreSQL would say #, MySQL ^.
+show('xor, spelled the way the adapter spells it',
+  LineItem.select { [:sku, (:flags ^ 10).as(:xored)] },
+  LineItem.select { [:sku, (:flags ^ 10).as(:xored)] }.map {|i| [i.sku, i.xored] })
+
+# A condition cannot be an operand, and neither can a boolean column: two of
+# the three adapters would quietly answer as AND does and the third has no
+# such operator, so the block refuses instead.
+begin
+  LineItem.where { :flags & (:price == 1) }
+rescue ArgumentError => e
+  puts '--- a condition is not an operand of & ---'
+  puts "  #{e.message}"
+  puts
+end
 
 # 2. Aggregates.  count takes :* for COUNT(*) and distinct: true for
 #    COUNT(DISTINCT ...); the rest are sum, avg, min and max.

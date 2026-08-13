@@ -39,6 +39,9 @@ ActiveRecord::Schema.define do
     t.integer :author_id
     t.string  :title
     t.boolean :published
+    # A bit field, for the bitwise operators: 1 comments open, 2 pinned,
+    # 4 featured.
+    t.integer :flags
     t.integer :likes
   end
 
@@ -98,14 +101,14 @@ carol = Author.create!(name: 'Carol', country: nil,  age: 52)
 dave  = Author.create!(name: 'Dave',  country: 'US', age: 31)
 Author.create!(name: 'Erin', country: nil, age: 17)
 
-p1 = Post.create!(author: alice, title: 'Ruby 4.1 is coming',    published: true,  likes: 120)
-p2 = Post.create!(author: alice, title: 'Refinements revisited', published: true,  likes: 80)
-p3 = Post.create!(author: bob,   title: 'YJIT internals',        published: false, likes: 30)
-p4 = Post.create!(author: dave,  title: 'A test post',           published: true,  likes: 5)
-Post.create!(author: carol, title: 'Patch review notes', published: true, likes: 42)
+p1 = Post.create!(author: alice, title: 'Ruby 4.1 is coming',    published: true,  likes: 120, flags: 5)
+p2 = Post.create!(author: alice, title: 'Refinements revisited', published: true,  likes: 80,  flags: 1)
+p3 = Post.create!(author: bob,   title: 'YJIT internals',        published: false, likes: 30,  flags: 3)
+p4 = Post.create!(author: dave,  title: 'A test post',           published: true,  likes: 5,   flags: 0)
+Post.create!(author: carol, title: 'Patch review notes', published: true, likes: 42, flags: 4)
 # Nobody has said either way about this one, which is what the truth tests
 # are there to tell apart from a plain false.
-Post.create!(author: bob, title: 'Pattern matching notes', published: nil, likes: 0)
+Post.create!(author: bob, title: 'Pattern matching notes', published: nil, likes: 0, flags: 6)
 
 Comment.create!(post: p1, body: 'Nice')
 Comment.create!(post: p1, body: 'Looking forward to it')

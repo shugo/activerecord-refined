@@ -82,6 +82,9 @@ module ActiveRecord
         # default it to zero; SQLite's trunc takes only the one.
         trunc: {mysql: 'TRUNCATE'},
         now: {sqlite: nil},
+        # The bit aggregates, which PostgreSQL and MySQL spell alike and
+        # SQLite has none of.  PostgreSQL gained bit_xor in 14.
+        bit_and: {sqlite: nil}, bit_or: {sqlite: nil}, bit_xor: {sqlite: nil},
         date_trunc: {sqlite: nil, mysql: nil},
         # Named for Kernel#rand, which it also takes back: a block calling
         # rand would otherwise get Ruby's and never reach the database.
@@ -208,6 +211,21 @@ module ActiveRecord
       def fn(name, *args)
         AST::Function.new(
           AST.check_name(name, AST::FUNCTION_NAME, "function name").to_s, args)
+      end
+
+      # BIT_COUNT.  MySQL counts the bits of a number; PostgreSQL counts those
+      # of a bit string, so the argument is cast, and to bit(64) because that
+      # is what makes a negative come back as MySQL has it -- 64 bits of two's
+      # complement rather than as many as the column happens to be wide.
+      def bit_count(expr)
+        case adapter_family
+        when :mysql then AST::Function.new('BIT_COUNT', [expr])
+        when :postgresql
+          AST::Function.new('BIT_COUNT', [AST::Cast.new(expr, 'bit(64)')])
+        else
+          raise NotImplementedError,
+            "bit_count has no equivalent on #{@model.connection_db_config.adapter}"
+        end
       end
 
       def exists?(relation)

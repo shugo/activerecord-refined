@@ -117,6 +117,12 @@ module SqlAssertions
     skip "#{ADAPTER} has no ANY or ALL" if ADAPTER == 'sqlite3'
   end
 
+  # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; SQLite has
+  # none of the three, nor BIT_COUNT.
+  def skip_without_bit_aggregates
+    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == 'sqlite3'
+  end
+
   def skip_without_array_columns
     skip "#{ADAPTER} has no array columns" unless ADAPTER == 'postgresql'
   end
@@ -189,6 +195,7 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
       t.string :name
       t.integer :age
       t.boolean :active
+      t.integer :flags
       t.string :tags, array: true if ADAPTER == 'postgresql'
     end
     create_table(:authors) {|t| t.string :name}
