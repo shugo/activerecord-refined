@@ -633,6 +633,25 @@ Post.where { cast(:meta.dig(:n), 'integer') > 6 }   # 'signed' on MySQL
 
 The type is the adapter's own name for it, here as everywhere `cast` is used.
 
+`bury` sets what `dig` reads: the last argument is the value and the rest are
+the path to it. The document comes back changed rather than being written
+anywhere, so `update_all` is what makes it stick:
+
+```ruby
+Post.update_all { { meta: :meta.bury(:author, :name, 'alice') } }
+# SET "meta" = jsonb_set("meta", '{author,name}', '"alice"')
+# ...          JSON_SET("meta", '$.author.name', 'alice')   elsewhere
+
+Post.update_all { { meta: :meta.bury(:tags, ['ruby', 'sql']) } }
+Post.update_all { { meta: :meta.bury(:copy, :meta.dig(:n)) } }
+```
+
+A whole document goes in as one — an object or an array rather than the string
+that spells it — which each adapter takes its own way round. `bury` is not a
+Ruby method; it is the name Ruby considered for the other end of `dig`, and
+SQL has no one name to borrow here, since PostgreSQL says `jsonb_set` where
+the others say `JSON_SET`.
+
 `dig_json` keeps the JSON, for a document to be dug into further or compared
 whole. `contains?` has no equivalent on SQLite and raises `NotImplementedError`
 there — later than the rest, since the adapter is only known when the SQL is

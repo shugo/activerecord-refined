@@ -1922,6 +1922,50 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Post.group { grouping_sets } }
   end
 
+  # bury sets what dig reads.  The document comes back changed rather than
+  # being written anywhere, so update_all is what makes it stick.
+  def buried(&block)
+    seed_docs
+    Doc.where { :name == 'one' }.update_all(&block)
+    value = Doc.find_by(name: 'one').meta
+    value.is_a?(String) ? JSON.parse(value) : value
+  end
+
+  def test_bury_a_nested_key
+    assert_equal('new', buried { { meta: :meta.bury(:a, :b, 'new') } }.dig('a', 'b'))
+  end
+
+  def test_bury_a_key_that_is_not_there_yet
+    assert_equal(9, buried { { meta: :meta.bury(:fresh, 9) } }['fresh'])
+  end
+
+  # A whole document, which each adapter takes its own way round.
+  def test_bury_an_object_and_an_array
+    assert_equal({ 'x' => 1 }, buried { { meta: :meta.bury(:obj, { 'x' => 1 }) } }['obj'])
+    assert_equal([1, 2], buried { { meta: :meta.bury(:arr, [1, 2]) } }['arr'])
+  end
+
+  def test_bury_an_array_index
+    assert_equal(%w[7 y], buried { { meta: :meta.bury(:tags, 0, '7') } }['tags'])
+  end
+
+  # The value can be read out of the document it is going into.
+  def test_bury_an_expression
+    assert_equal('5', buried { { meta: :meta.bury(:copy, :meta.dig(:n)) } }['copy'].to_s)
+  end
+
+  # It is an expression, so it does not have to be written anywhere.
+  def test_bury_in_a_select
+    seed_docs
+    value = Doc.where { :name == 'one' }.select { :meta.bury(:a, :b, 'x').as(:v) }.first.v
+    assert_equal('x', (value.is_a?(String) ? JSON.parse(value) : value).dig('a', 'b'))
+  end
+
+  def test_bury_needs_a_path
+    assert_raises(ArgumentError) { Doc.select { :meta.bury('v') } }
+    assert_raises(ArgumentError) { Doc.select { :meta.bury(1.5, 'v') } }
+  end
+
   def test_default_where_syntax
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

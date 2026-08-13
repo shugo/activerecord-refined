@@ -357,6 +357,18 @@ show Doc.select { [:name, :meta.dig(:author, :name).as(:author), :meta.dig(:tags
 show Doc.where { cast(:meta.dig(:stars), 'integer') > 6 }`,
       },
       {
+        title: 'bury',
+        slug: 'bury',
+        code: `# bury sets what dig reads: the last argument is the value, the rest are
+# the path to it.  The document comes back changed rather than being
+# written anywhere, so update_all is what makes it stick.
+show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }
+
+Doc.where { :name == 'first' }.update_all { { meta: :meta.bury(:author, :name, 'Erin') } }
+
+show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }`,
+      },
+      {
         title: 'key? and contains?',
         slug: 'key',
         code: `show Doc.where { :meta.key?(:author) }

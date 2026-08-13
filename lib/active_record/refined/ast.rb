@@ -203,6 +203,13 @@ module ActiveRecord
           JsonPath.new(self, path, as_json: true)
         end
 
+        # What dig reads, bury sets: the last argument is the value and the
+        # rest are the path to it.  The document comes back changed rather
+        # than being written anywhere, which update_all is for.
+        def bury(*path, value)
+          JsonSet.new(self, path, value)
+        end
+
         # Whether the document holds what is given, which SQL calls
         # containment.  SQLite has no equivalent.
         def contains?(value)
@@ -429,6 +436,40 @@ module ActiveRecord
         end
       end
 
+      # A path into a JSON document, spelled the two ways the adapters want it.
+      # Shared, because reading a value and setting one walk the same path.
+      module JsonSteps
+        def check_steps(path, called)
+          raise ArgumentError, "#{called} needs a key or an index" if path.empty?
+          path.each do |step|
+            next if step.is_a?(::Integer) || step.is_a?(::String) || step.is_a?(::Symbol)
+            raise ArgumentError, "a step is a key or an array index, not #{step.inspect}"
+          end
+          path
+        end
+
+        # PostgreSQL takes the steps as a text array, where every element is
+        # quoted so that a comma or a brace in a key is part of it.
+        def steps_array
+          "{#{path.map {|step| %("#{escape_step(step)}") }.join(',')}}"
+        end
+
+        # MySQL and SQLite take a path expression instead, where an integer is
+        # a subscript and a name that is not plain has to be quoted.
+        def dollar_path
+          path.inject(+'$') do |so_far, step|
+            next so_far << "[#{step}]" if step.is_a?(::Integer)
+            name = step.to_s
+            so_far << '.' << (name.match?(/\A[[:alpha:]_][[:alnum:]_]*\z/) ?
+                              name : %("#{escape_step(step)}"))
+          end
+        end
+
+        def escape_step(step)
+          step.to_s.gsub('\\', '\\\\').gsub('"', '\\"')
+        end
+      end
+
       # Reading inside a JSON document.  Every adapter can do it and no two
       # spell it alike: PostgreSQL walks an array of steps, SQLite has the
       # operators with a $ path, and MySQL has the functions -- which is what
@@ -441,19 +482,13 @@ module ActiveRecord
         include Predications
         include Arithmetics
         include Aggregations
+        include JsonSteps
 
         attr_reader :operand, :path, :as_json
 
         def initialize(operand, path, as_json: false)
-          if path.empty?
-            raise ArgumentError, "dig needs a key or an index to dig for"
-          end
-          path.each do |step|
-            next if step.is_a?(::Integer) || step.is_a?(::String) || step.is_a?(::Symbol)
-            raise ArgumentError, "a step is a key or an array index, not #{step.inspect}"
-          end
           @operand = operand
-          @path = path
+          @path = check_steps(path, 'dig')
           @as_json = as_json
         end
 
@@ -478,27 +513,61 @@ module ActiveRecord
           end
         end
 
-        private
+      end
 
-        # PostgreSQL takes the steps as a text array, where every element is
-        # quoted so that a comma or a brace in a key is part of it.
-        def steps_array
-          "{#{path.map {|step| %("#{escape(step)}") }.join(',')}}"
+      # Setting a value inside a JSON document, which is what bury does to what
+      # dig reads.  The document comes back changed rather than being written
+      # anywhere; update_all is what writes it.
+      class JsonSet < Node
+        include Predications
+        include JsonSteps
+
+        attr_reader :operand, :path, :value
+
+        def initialize(operand, path, value)
+          @operand = operand
+          @path = check_steps(path, 'bury')
+          @value = value
         end
 
-        # MySQL and SQLite take a path expression instead, where an integer is
-        # a subscript and a name that is not plain has to be quoted.
-        def dollar_path
-          path.inject(+'$') do |so_far, step|
-            next so_far << "[#{step}]" if step.is_a?(::Integer)
-            name = step.to_s
-            so_far << '.' << (name.match?(/\A[[:alpha:]_][[:alnum:]_]*\z/) ?
-                              name : %("#{escape(step)}"))
+        def to_arel(table, model)
+          document = to_arel_operand(operand, table, model)
+          if AST.adapter_family(model) == :postgresql
+            Arel::Nodes::NamedFunction.new(
+              'jsonb_set',
+              [document, Arel::Nodes.build_quoted(steps_array), postgresql_value(table, model)])
+          else
+            Arel::Nodes::NamedFunction.new(
+              'JSON_SET',
+              [document, Arel::Nodes.build_quoted(dollar_path), other_value(table, model)])
           end
         end
 
-        def escape(step)
-          step.to_s.gsub('\\', '\\\\').gsub('"', '\\"')
+        private
+
+        # jsonb_set takes jsonb, so an expression is turned into it and a Ruby
+        # value goes in as the JSON that says it -- '"x"' rather than 'x',
+        # which is not a document at all.
+        def postgresql_value(table, model)
+          return Arel::Nodes::NamedFunction.new(
+            'to_jsonb', [to_arel_operand(value, table, model)]) if expression?
+          Arel::Nodes.build_quoted(JSON.generate(value))
+        end
+
+        # The others take the value as it is, except a whole document, which
+        # they read out of a literal rather than take as a string.  MySQL casts
+        # to JSON where MariaDB, which answers to the same adapter, does not.
+        def other_value(table, model)
+          return to_arel_operand(value, table, model) if expression?
+          return Arel::Nodes.build_quoted(value) unless value.is_a?(::Hash) || value.is_a?(::Array)
+
+          Arel::Nodes::NamedFunction.new(
+            'JSON_EXTRACT',
+            [Arel::Nodes.build_quoted(JSON.generate(value)), Arel::Nodes.build_quoted('$')])
+        end
+
+        def expression?
+          value.is_a?(Node) || value.is_a?(::Symbol)
         end
       end
 
