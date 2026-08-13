@@ -364,6 +364,8 @@
     #sidebar button { padding-left: 0; padding-right: 0; }
     #examples-nav { border: 0; border-bottom: 1px solid var(--border); }
     #data-nav { border: 0; border-top: 1px solid var(--border); }
+
+    .keyboard-hint { display: none; }
   }
 </style>
 </head>
@@ -396,7 +398,7 @@
         <option value="sqlite3">SQLite</option>
         <option value="postgresql">PostgreSQL</option>
       </select>
-      <span class="hint">Ctrl/Cmd + Enter to run</span>
+      <span class="hint keyboard-hint">Ctrl/Cmd + Enter to run</span>
       <button class="run" id="run">Run</button>
     </div>
     <div id="editor"></div>
