@@ -31,6 +31,10 @@
        so in the dark theme the two part company. */
     --accent-solid: #b4433a;
     --accent-weak: #fdf2f1;
+    /* The sidebar's group headings.  Orange rather than a grey, which read as
+       black beside the entries under it; far enough round from the red for
+       the two not to look like one colour gone wrong. */
+    --heading: #b45309;
     --disabled: #b9c0c9;
     --code-bg: #1e232b;
     --code-fg: #e6e9ee;
@@ -51,6 +55,7 @@
       --accent-solid: #c0453b;
       --accent-weak: #2b1d1c;
       --disabled: #3a414c;
+      --heading: #f0a94a;
     }
   }
 
@@ -116,7 +121,7 @@
     font-size: .72rem;
     text-transform: uppercase;
     letter-spacing: .06em;
-    color: var(--muted);
+    color: var(--heading);
     margin: 1rem 1rem .35rem;
   }
   #sidebar button {
