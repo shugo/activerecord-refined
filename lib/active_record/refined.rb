@@ -262,7 +262,7 @@ module ActiveRecord
     module QueryMethods
       def where(opts = nil, *rest, &block)
         if block
-          super(evaluate_block(&block).to_arel(table))
+          super(evaluate_block(&block).to_arel(table, klass))
         else
           super
         end
@@ -280,7 +280,7 @@ module ActiveRecord
 
       def having(opts = nil, *rest, &block)
         if block
-          super(evaluate_block(&block).to_arel(table))
+          super(evaluate_block(&block).to_arel(table, klass))
         else
           super
         end
@@ -362,7 +362,7 @@ module ActiveRecord
 
       def to_arel_field(node)
         case node
-        when AST::Node then node.to_arel(table)
+        when AST::Node then node.to_arel(table, klass)
         when Symbol then table[node]
         else node
         end
@@ -377,7 +377,7 @@ module ActiveRecord
         ast = evaluate_block(&block)
         arel_table = Arel::Table.new(target_table)
         arel_table = arel_table.alias(alias_name) if alias_name
-        join_class.new(arel_table, Arel::Nodes::On.new(ast.to_arel(table)))
+        join_class.new(arel_table, Arel::Nodes::On.new(ast.to_arel(table, klass)))
       end
     end
 

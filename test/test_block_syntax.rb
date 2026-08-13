@@ -719,21 +719,21 @@ class TestBlockSyntax < Minitest::Test
   # literal depends on the column type, so assert on the Arel node instead.
   def test_equal_range_is_an_equality
     node = ActiveRecord::Refined::AST::Comparison.new(:period, :==, 18..65).
-      to_arel(User.arel_table)
+      to_arel(User.arel_table, User)
     assert_instance_of(Arel::Nodes::Equality, node)
     assert_equal(18..65, node.right.value)
   end
 
   def test_equal_array_is_an_equality
     node = ActiveRecord::Refined::AST::Comparison.new(:tags, :==, [1, 2, 3]).
-      to_arel(User.arel_table)
+      to_arel(User.arel_table, User)
     assert_instance_of(Arel::Nodes::Equality, node)
     assert_equal([1, 2, 3], node.right.value)
   end
 
   def test_not_equal_array_is_an_inequality
     node = ActiveRecord::Refined::AST::Comparison.new(:tags, :!=, [1, 2, 3]).
-      to_arel(User.arel_table)
+      to_arel(User.arel_table, User)
     assert_instance_of(Arel::Nodes::NotEqual, node)
     assert_equal([1, 2, 3], node.right.value)
   end

@@ -225,7 +225,12 @@ module ActiveRecord
       end
 
       class Node
-        def to_arel(table)
+        # The model travels with the table because some SQL cannot be written
+        # without knowing the adapter, and a node is built before anything
+        # knows which one it will be rendered for -- a symbol becomes a node
+        # inside a refinement, where there is no model to ask.  Most nodes
+        # never look at it and only pass it on.
+        def to_arel(table, model)
           raise ScriptError, "subclass must override this method"
         end
 
@@ -244,9 +249,9 @@ module ActiveRecord
         private
 
         # Resolves an operand denoting a column or an expression.
-        def to_arel_operand(operand, table)
+        def to_arel_operand(operand, table, model)
           case operand
-          when Node then operand.to_arel(table)
+          when Node then operand.to_arel(table, model)
           when :* then Arel.star
           when Symbol then table[operand]
           else operand
@@ -255,9 +260,9 @@ module ActiveRecord
 
         # Resolves a function argument: a column or an expression as above,
         # anything else a value to be quoted.
-        def to_arel_argument(arg, table)
+        def to_arel_argument(arg, table, model)
           case arg
-          when Node, Symbol then to_arel_operand(arg, table)
+          when Node, Symbol then to_arel_operand(arg, table, model)
           else Arel::Nodes.build_quoted(arg)
           end
         end
@@ -295,7 +300,7 @@ module ActiveRecord
           @value = value
         end
 
-        def to_arel(_table)
+        def to_arel(_table, _model)
           Arel::Nodes.build_quoted(value)
         end
       end
@@ -338,16 +343,16 @@ module ActiveRecord
           Case.new(operand, whens, Case.argument(:else, value, block))
         end
 
-        def to_arel(table)
+        def to_arel(table, model)
           raise ArgumentError, "case needs a when before it means anything" if whens.empty?
 
-          node = operand ? Arel::Nodes::Case.new(to_arel_operand(operand, table))
+          node = operand ? Arel::Nodes::Case.new(to_arel_operand(operand, table, model))
                          : Arel::Nodes::Case.new
           whens.each do |condition, result|
-            node.when(to_arel_argument(condition, table)).
-              then(to_arel_argument(result, table))
+            node.when(to_arel_argument(condition, table, model)).
+              then(to_arel_argument(result, table, model))
           end
-          node.else(to_arel_argument(default, table)) unless default.equal?(NOTHING)
+          node.else(to_arel_argument(default, table, model)) unless default.equal?(NOTHING)
           node
         end
 
@@ -378,7 +383,7 @@ module ActiveRecord
                      @kase.default)
           end
 
-          def to_arel(_table)
+          def to_arel(_table, _model)
             raise ArgumentError, "when needs a matching then"
           end
         end
@@ -396,7 +401,7 @@ module ActiveRecord
           @column_name = column_name
         end
 
-        def to_arel(_table)
+        def to_arel(_table, _model)
           Arel::Table.new(table_name)[column_name]
         end
       end
@@ -417,9 +422,9 @@ module ActiveRecord
           @right = right
         end
 
-        def to_arel(table)
-          to_arel_operand(left, table).
-            public_send(operator, to_arel_operand(right, table))
+        def to_arel(table, model)
+          to_arel_operand(left, table, model).
+            public_send(operator, to_arel_operand(right, table, model))
         end
       end
 
@@ -465,17 +470,17 @@ module ActiveRecord
           Over.new(function, partitions, orders, framing(:range, bounds))
         end
 
-        def to_arel(table)
+        def to_arel(table, model)
           window = Arel::Nodes::Window.new
-          partitions.each {|expr| window.partition(to_arel_operand(expr, table)) }
-          orders.each {|expr| window.order(to_arel_operand(expr, table)) }
+          partitions.each {|expr| window.partition(to_arel_operand(expr, table, model)) }
+          orders.each {|expr| window.order(to_arel_operand(expr, table, model)) }
           frame_arel(window) if frame
 
           # A window-only function refuses to build on its own; here is where
           # it is asked for the call itself.
           arel_function =
-            function.is_a?(WindowFunction) ? function.call_arel(table)
-                                           : function.to_arel(table)
+            function.is_a?(WindowFunction) ? function.call_arel(table, model)
+                                           : function.to_arel(table, model)
           Arel::Nodes::Over.new(arel_function, window)
         end
 
@@ -538,8 +543,8 @@ module ActiveRecord
           @distinct = distinct
         end
 
-        def to_arel(table)
-          arel_operand = to_arel_operand(operand, table)
+        def to_arel(table, model)
+          arel_operand = to_arel_operand(operand, table, model)
           if function == :count
             arel_operand.count(distinct)
           else
@@ -556,8 +561,8 @@ module ActiveRecord
           @alias_name = AST.check_name(alias_name, ALIAS_NAME, "column alias")
         end
 
-        def to_arel(table)
-          to_arel_operand(operand, table).as(alias_name.to_s)
+        def to_arel(table, model)
+          to_arel_operand(operand, table, model).as(alias_name.to_s)
         end
       end
 
@@ -580,8 +585,8 @@ module ActiveRecord
           Ordering.new(operand, direction, :nulls_last)
         end
 
-        def to_arel(table)
-          ordering = to_arel_operand(operand, table).public_send(direction)
+        def to_arel(table, model)
+          ordering = to_arel_operand(operand, table, model).public_send(direction)
           nulls ? ordering.public_send(nulls) : ordering
         end
       end
@@ -598,8 +603,8 @@ module ActiveRecord
           @args = args
         end
 
-        def to_arel(table)
-          arel_args = args.map {|arg| to_arel_argument(arg, table) }
+        def to_arel(table, model)
+          arel_args = args.map {|arg| to_arel_argument(arg, table, model) }
           Arel::Nodes::NamedFunction.new(name, arel_args)
         end
       end
@@ -610,7 +615,7 @@ module ActiveRecord
       class WindowFunction < Function
         alias_method :call_arel, :to_arel
 
-        def to_arel(_table)
+        def to_arel(_table, _model)
           raise ArgumentError, "#{name.downcase} is a window function; it needs over"
         end
       end
@@ -629,8 +634,8 @@ module ActiveRecord
           @operand = operand
         end
 
-        def to_arel(table)
-          Arel::Nodes::Extract.new(to_arel_argument(operand, table), field.to_s)
+        def to_arel(table, model)
+          Arel::Nodes::Extract.new(to_arel_argument(operand, table, model), field.to_s)
         end
       end
 
@@ -649,10 +654,10 @@ module ActiveRecord
           @sql_type = AST.check_name(sql_type, TYPE_NAME, "SQL type")
         end
 
-        def to_arel(table)
+        def to_arel(table, model)
           Arel::Nodes::NamedFunction.new(
             "CAST",
-            [Arel::Nodes::As.new(to_arel_argument(operand, table),
+            [Arel::Nodes::As.new(to_arel_argument(operand, table, model),
                                  Arel::Nodes::SqlLiteral.new(sql_type.to_s))])
         end
       end
@@ -678,7 +683,7 @@ module ActiveRecord
           @precision = precision
         end
 
-        def to_arel(_table)
+        def to_arel(_table, _model)
           Arel::Nodes::SqlLiteral.new(
             precision ? "#{name}(#{precision})" : name)
         end
@@ -701,11 +706,11 @@ module ActiveRecord
           @value = value
         end
 
-        def to_arel(table)
-          arel_column = to_arel_operand(column, table)
+        def to_arel(table, model)
+          arel_column = to_arel_operand(column, table, model)
           arel_value =
             case value
-            when Node then value.to_arel(table)
+            when Node then value.to_arel(table, model)
             when ActiveRecord::Relation then scalar_subquery(value)
             else value
             end
@@ -737,8 +742,8 @@ module ActiveRecord
           @negated = negated
         end
 
-        def to_arel(table)
-          arel_operand = to_arel_operand(operand, table)
+        def to_arel(table, model)
+          arel_operand = to_arel_operand(operand, table, model)
           if values.is_a?(Range)
             arel_operand.public_send(negated ? :not_between : :between, values)
           else
@@ -778,7 +783,7 @@ module ActiveRecord
           @relation = relation
         end
 
-        def to_arel(_table)
+        def to_arel(_table, _model)
           subquery = relation
           if subquery.eager_loading?
             subquery = subquery.send(:apply_join_dependency)
@@ -815,10 +820,10 @@ module ActiveRecord
           @negated = negated
         end
 
-        def to_arel(table)
+        def to_arel(table, model)
           # Arel matches case-insensitively unless told otherwise, which is
           # what picks ILIKE over LIKE on PostgreSQL.
-          to_arel_operand(operand, table).
+          to_arel_operand(operand, table, model).
             public_send(negated ? :does_not_match : :matches,
                         pattern, escape, case_sensitive)
         end
@@ -836,9 +841,9 @@ module ActiveRecord
           @negated = negated
         end
 
-        def to_arel(table)
-          arel_operand = to_arel_operand(operand, table)
-          arel_value = value.is_a?(Node) ? value.to_arel(table) : value
+        def to_arel(table, model)
+          arel_operand = to_arel_operand(operand, table, model)
+          arel_value = value.is_a?(Node) ? value.to_arel(table, model) : value
           if negated
             arel_operand.is_distinct_from(arel_value)
           else
@@ -874,8 +879,8 @@ module ActiveRecord
           @elements = elements
         end
 
-        def to_arel(table)
-          arel_operand = to_arel_operand(operand, table)
+        def to_arel(table, model)
+          arel_operand = to_arel_operand(operand, table, model)
           quoted = Arel::Nodes.build_quoted(array_literal)
           case operator
           when :"@>" then Arel::Nodes::Contains.new(arel_operand, quoted)
@@ -913,8 +918,8 @@ module ActiveRecord
           @negated = negated
         end
 
-        def to_arel(table)
-          arel_operand = to_arel_operand(operand, table)
+        def to_arel(table, model)
+          arel_operand = to_arel_operand(operand, table, model)
           if negated
             arel_operand.does_not_match_regexp(pattern)
           else
@@ -946,8 +951,8 @@ module ActiveRecord
           @right = right
         end
 
-        def to_arel(table)
-          left.to_arel(table).and(right.to_arel(table))
+        def to_arel(table, model)
+          left.to_arel(table, model).and(right.to_arel(table, model))
         end
       end
 
@@ -959,8 +964,8 @@ module ActiveRecord
           @right = right
         end
 
-        def to_arel(table)
-          left.to_arel(table).or(right.to_arel(table))
+        def to_arel(table, model)
+          left.to_arel(table, model).or(right.to_arel(table, model))
         end
       end
 
@@ -971,8 +976,8 @@ module ActiveRecord
           @operand = operand
         end
 
-        def to_arel(table)
-          Arel::Nodes::Not.new(operand.to_arel(table))
+        def to_arel(table, model)
+          Arel::Nodes::Not.new(operand.to_arel(table, model))
         end
       end
     end
