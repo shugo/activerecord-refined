@@ -1551,6 +1551,84 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/at least one column/, e.message)
   end
 
+  # Reading inside a JSON document, by the name of what Hash does.  No two
+  # adapters spell it alike, so what the tests assert is the value that comes
+  # back rather than the SQL.
+  def seed_docs
+    Doc.delete_all
+    Doc.create!(name: 'one',
+                meta: json_document({ 'a' => { 'b' => 'deep' }, 'n' => 5,
+                                      'tags' => %w[x y], 'odd key' => 1 }))
+    Doc.create!(name: 'two', meta: json_document({ 'n' => 9 }))
+  end
+
+  def test_dig_a_key
+    seed_docs
+    assert_equal(%w[5 9], Doc.order(:name).select { :meta.dig(:n).as(:v) }.map(&:v))
+  end
+
+  def test_dig_a_path
+    seed_docs
+    assert_equal(['deep', nil],
+      Doc.order(:name).select { :meta.dig(:a, :b).as(:v) }.map(&:v))
+  end
+
+  def test_dig_an_array_index
+    seed_docs
+    assert_equal(['x', nil],
+      Doc.order(:name).select { :meta.dig(:tags, 0).as(:v) }.map(&:v))
+  end
+
+  # A key that is not a plain name travels as itself rather than being refused.
+  def test_dig_a_key_that_needs_quoting
+    seed_docs
+    assert_equal(['1', nil],
+      Doc.order(:name).select { :meta.dig(:'odd key').as(:v) }.map(&:v))
+  end
+
+  # dig gives text on every adapter -- SQLite's ->> would otherwise give the
+  # value with its type -- so a number is compared through a cast.
+  def test_dig_is_text_everywhere
+    seed_docs
+    assert_equal(['one'], Doc.where { :meta.dig(:n) == '5' }.pluck(:name))
+    assert_equal(['two'], Doc.where { cast(:meta.dig(:n), 'integer') > 6 }.pluck(:name))
+  end
+
+  def test_dig_json_keeps_the_json
+    seed_docs
+    value = Doc.where { :name == 'one' }.select { :meta.dig_json(:tags).as(:v) }.first.v
+    assert_equal(%w[x y], value.is_a?(String) ? JSON.parse(value) : value)
+  end
+
+  def test_dig_from_a_qualified_column
+    seed_docs
+    assert_equal(['one'], Doc.where { :docs[:meta].dig(:a, :b) == 'deep' }.pluck(:name))
+  end
+
+  def test_has_key
+    seed_docs
+    assert_equal(['one'], Doc.where { :meta.has_key?(:tags) }.pluck(:name))
+    assert_equal(%w[one two], Doc.where { :meta.has_key?(:n) }.order(:name).pluck(:name))
+  end
+
+  def test_contains
+    skip_without_json_containment
+    seed_docs
+    assert_equal(['one'], Doc.where { :meta.contains?(n: 5) }.pluck(:name))
+    assert_equal([], Doc.where { :meta.contains?(n: 1) }.pluck(:name))
+  end
+
+  def test_contains_says_where_it_cannot_go
+    skip "#{ADAPTER} has JSON containment" unless ADAPTER == 'sqlite3'
+    assert_raises(NotImplementedError) { Doc.where { :meta.contains?(n: 5) }.to_sql }
+  end
+
+  def test_dig_needs_a_path
+    assert_raises(ArgumentError) { Doc.select { :meta.dig } }
+    e = assert_raises(ArgumentError) { Doc.select { :meta.dig(1.5) } }
+    assert_match(/key or an array index/, e.message)
+  end
+
   def test_default_where_syntax
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

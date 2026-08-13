@@ -1,3 +1,6 @@
+# JSON.generate, for the document a containment test is given.
+require 'json'
+
 module ActiveRecord
   module Refined
     module AST
@@ -12,6 +15,22 @@ module ActiveRecord
       # A SQL type as cast writes it: words, at most parenthesized with
       # lengths -- double precision, decimal(10,2).
       TYPE_NAME = /\A[[:alpha:]_][[:alnum:]_ ]*(\(\d+(, ?\d+)?\))?\z/
+
+      # Which family of spellings an adapter belongs to.  MariaDB answers to
+      # the mysql2 adapter and is counted with MySQL, though the two part
+      # company over JSON.  An adapter nobody has classified keeps the
+      # standard spellings and is left to say for itself what it cannot do.
+      ADAPTER_FAMILIES = {
+        'sqlite3' => :sqlite,
+        'postgresql' => :postgresql,
+        'postgis' => :postgresql,
+        'mysql2' => :mysql,
+        'trilogy' => :mysql,
+      }.freeze
+
+      def self.adapter_family(model)
+        ADAPTER_FAMILIES[model.connection_db_config.adapter] || :unknown
+      end
 
       def self.check_name(name, pattern, what)
         return name if pattern.match?(name.to_s)
@@ -174,6 +193,30 @@ module ActiveRecord
 
         def intersect?(elements)
           ArrayPredicate.new(self, :"&&", ArrayPredicate.elements(elements, "intersect?"))
+        end
+
+        # Reading inside a JSON document, by the name of what Hash does.  A
+        # string or symbol steps into an object, an integer into an array, and
+        # what comes back is the value rather than the JSON, since that is what
+        # a comparison wants.  dig_json keeps it JSON, for a document to be dug
+        # into further or compared whole.
+        def dig(*path)
+          JsonPath.new(self, path)
+        end
+
+        def dig_json(*path)
+          JsonPath.new(self, path, as_json: true)
+        end
+
+        # Whether the document holds what is given, which SQL calls
+        # containment.  SQLite has no equivalent.
+        def contains?(value)
+          JsonContains.new(self, value)
+        end
+
+        # Whether the key is there at all, as Hash#has_key? asks.
+        def has_key?(key)
+          JsonHasKey.new(self, key)
         end
       end
 
@@ -385,6 +428,130 @@ module ActiveRecord
 
           def to_arel(_table, _model)
             raise ArgumentError, "when needs a matching then"
+          end
+        end
+      end
+
+      # Reading inside a JSON document.  Every adapter can do it and no two
+      # spell it alike: PostgreSQL walks an array of steps, SQLite has the
+      # operators with a $ path, and MySQL has the functions -- which is what
+      # this uses for that family, since MariaDB answers to the same adapter
+      # and has no -> at all.
+      #
+      # The path is turned into a string either way, so a key with a space or
+      # a quote in it travels as itself rather than having to be refused.
+      class JsonPath < Node
+        include Predications
+        include Arithmetics
+        include Aggregations
+
+        attr_reader :operand, :path, :as_json
+
+        def initialize(operand, path, as_json: false)
+          if path.empty?
+            raise ArgumentError, "dig needs a key or an index to dig for"
+          end
+          path.each do |step|
+            next if step.is_a?(::Integer) || step.is_a?(::String) || step.is_a?(::Symbol)
+            raise ArgumentError, "a step is a key or an array index, not #{step.inspect}"
+          end
+          @operand = operand
+          @path = path
+          @as_json = as_json
+        end
+
+        def to_arel(table, model)
+          document = to_arel_operand(operand, table, model)
+          case AST.adapter_family(model)
+          when :postgresql
+            Arel::Nodes::InfixOperation.new(
+              as_json ? :"#>" : :"#>>", document, Arel::Nodes.build_quoted(steps_array))
+          when :mysql
+            extracted = Arel::Nodes::NamedFunction.new(
+              'JSON_EXTRACT', [document, Arel::Nodes.build_quoted(dollar_path)])
+            as_json ? extracted : Arel::Nodes::NamedFunction.new('JSON_UNQUOTE', [extracted])
+          else
+            extracted = Arel::Nodes::InfixOperation.new(
+              as_json ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
+            # SQLite's ->> gives back the value with its type, where the other
+            # two give text.  Cast so that `dig(:n) == '5'` means the same
+            # thing everywhere, and a number wants a cast everywhere too.
+            as_json ? extracted : Arel::Nodes::NamedFunction.new(
+              'CAST', [Arel::Nodes::As.new(extracted, Arel::Nodes::SqlLiteral.new('text'))])
+          end
+        end
+
+        private
+
+        # PostgreSQL takes the steps as a text array, where every element is
+        # quoted so that a comma or a brace in a key is part of it.
+        def steps_array
+          "{#{path.map {|step| %("#{escape(step)}") }.join(',')}}"
+        end
+
+        # MySQL and SQLite take a path expression instead, where an integer is
+        # a subscript and a name that is not plain has to be quoted.
+        def dollar_path
+          path.inject(+'$') do |so_far, step|
+            next so_far << "[#{step}]" if step.is_a?(::Integer)
+            name = step.to_s
+            so_far << '.' << (name.match?(/\A[[:alpha:]_][[:alnum:]_]*\z/) ?
+                              name : %("#{escape(step)}"))
+          end
+        end
+
+        def escape(step)
+          step.to_s.gsub('\\', '\\\\').gsub('"', '\\"')
+        end
+      end
+
+      # JSON containment: whether the document holds what is given.
+      class JsonContains < Predicate
+        attr_reader :operand, :value
+
+        def initialize(operand, value)
+          @operand = operand
+          @value = value
+        end
+
+        def to_arel(table, model)
+          document = to_arel_operand(operand, table, model)
+          json = Arel::Nodes.build_quoted(JSON.generate(value))
+          case AST.adapter_family(model)
+          when :postgresql then Arel::Nodes::Contains.new(document, json)
+          when :mysql
+            Arel::Nodes::NamedFunction.new('JSON_CONTAINS', [document, json])
+          else
+            # Later than the others, since the adapter is only known here.
+            raise NotImplementedError,
+              "contains? has no equivalent on #{model.connection_db_config.adapter}"
+          end
+        end
+      end
+
+      # Whether a key is in the document.  PostgreSQL has an operator for it,
+      # ?, which is also what a bind parameter looks like to several drivers;
+      # the function it is shorthand for says the same thing and survives.
+      class JsonHasKey < Predicate
+        attr_reader :operand, :key
+
+        def initialize(operand, key)
+          @operand = operand
+          @key = key
+        end
+
+        def to_arel(table, model)
+          document = to_arel_operand(operand, table, model)
+          name = Arel::Nodes.build_quoted(key.to_s)
+          path = Arel::Nodes.build_quoted("$.#{key}")
+          case AST.adapter_family(model)
+          when :postgresql
+            Arel::Nodes::NamedFunction.new('jsonb_exists', [document, name])
+          when :mysql
+            Arel::Nodes::NamedFunction.new(
+              'JSON_CONTAINS_PATH', [document, Arel::Nodes.build_quoted('one'), path])
+          else
+            Arel::Nodes::NamedFunction.new('json_type', [document, path]).not_eq(nil)
           end
         end
       end

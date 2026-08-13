@@ -93,14 +93,6 @@ module ActiveRecord
         format: {mysql: nil},
       }.freeze
 
-      ADAPTER_FAMILIES = {
-        'sqlite3' => :sqlite,
-        'postgresql' => :postgresql,
-        'postgis' => :postgresql,
-        'mysql2' => :mysql,
-        'trilogy' => :mysql,
-      }.freeze
-
       SCALAR_FUNCTIONS.each_key do |name|
         define_method(name) do |*args|
           AST::Function.new(function_name(name, SCALAR_FUNCTIONS), args)
@@ -251,11 +243,8 @@ module ActiveRecord
                 "#{name} has no equivalent on #{@model.connection_db_config.adapter}")
       end
 
-      # An adapter nobody has classified keeps the standard spellings, and is
-      # left to say for itself what it cannot do.
       def adapter_family
-        @adapter_family ||=
-          ADAPTER_FAMILIES[@model.connection_db_config.adapter] || :unknown
+        @adapter_family ||= AST.adapter_family(@model)
       end
     end
 

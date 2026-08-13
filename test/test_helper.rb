@@ -6,6 +6,7 @@ Bundler.require
 
 require 'active_record'
 require 'etc'
+require 'json'
 
 # Which database to generate SQL for.  The tests only build queries, so any
 # server reachable without further setup will do; the devcontainer runs
@@ -68,6 +69,16 @@ module SqlAssertions
     ADAPTER == 'mysql2' ? {} : {unique_by: :page}
   end
 
+  # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, SQLite neither.
+  def skip_without_json_containment
+    skip "#{ADAPTER} has no JSON containment" if ADAPTER == 'sqlite3'
+  end
+
+  # Only MariaDB needs this, and it is what the mysql2 adapter reaches here.
+  def json_document(hash)
+    ADAPTER == 'mysql2' ? JSON.generate(hash) : hash
+  end
+
   def skip_without_array_columns
     skip "#{ADAPTER} has no array columns" unless ADAPTER == 'postgresql'
   end
@@ -124,6 +135,12 @@ end
 class Tally < ActiveRecord::Base
 end
 
+# For the JSON tests.  MariaDB answers to the mysql2 adapter and stores json as
+# a checked longtext, which ActiveRecord does not serialise into, so the tests
+# hand it the document as text.
+class Doc < ActiveRecord::Base
+end
+
 class CreateAllTables < ActiveRecord::Migration[8.1]
   def up
     drop_table(:users, if_exists: true)
@@ -131,6 +148,7 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
     drop_table(:posts, if_exists: true)
     drop_table(:nodes, if_exists: true)
     drop_table(:tallies, if_exists: true)
+    drop_table(:docs, if_exists: true)
     create_table(:users) do |t|
       t.string :name
       t.integer :age
@@ -143,6 +161,10 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
       t.string :page
       t.integer :hits
       t.index :page, unique: true
+    end
+    create_table(:docs) do |t|
+      t.string :name
+      ADAPTER == 'postgresql' ? t.jsonb(:meta) : t.json(:meta)
     end
   end
 end

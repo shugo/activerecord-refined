@@ -62,6 +62,11 @@ ActiveRecord::Schema.define do
     t.string  :name
     t.integer :parent_id
   end
+
+  create_table :docs do |t|
+    t.string :name
+    t.json   :meta
+  end
 end
 
 class Author < ActiveRecord::Base
@@ -82,6 +87,7 @@ end
 class Employee < ActiveRecord::Base; end
 class Item < ActiveRecord::Base; end
 class Node < ActiveRecord::Base; end
+class Doc < ActiveRecord::Base; end
 
 # The ages are spread so that every example that filters on one has something
 # to show: Erin is the only one under 18, Carol the only one over 50, and the
@@ -123,6 +129,9 @@ Node.create!(name: 'sibling',    parent_id: root.id)
 
 other = Node.create!(name: 'other root',  parent_id: nil)
 Node.create!(name: 'other child', parent_id: other.id)
+
+Doc.create!(name: 'first',  meta: { 'author' => { 'name' => 'Alice' }, 'tags' => %w[ruby sql], 'stars' => 5 })
+Doc.create!(name: 'second', meta: { 'author' => { 'name' => 'Bob' }, 'tags' => %w[ruby], 'stars' => 12 })
 
 # Set the SQL apart from the rows printed under it.  The page reads the escape
 # and colours the text; a terminal running check-examples does the same.

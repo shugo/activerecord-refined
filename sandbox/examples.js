@@ -313,6 +313,32 @@ Author.select { row_number.as(:r) }`,
   },
 
   {
+    group: 'JSON',
+    items: [
+      {
+        title: 'dig',
+        slug: 'dig',
+        code: `# dig reads inside a JSON document, by the name of what Hash does.  A
+# string or symbol steps into an object, an integer into an array.
+show Doc.select { [:name, :meta.dig(:author, :name).as(:author), :meta.dig(:tags, 0).as(:first_tag)] }
+
+# dig gives text on every adapter, so a number is compared through a cast.
+show Doc.where { cast(:meta.dig(:stars), 'integer') > 6 }`,
+      },
+      {
+        title: 'has_key? and contains?',
+        slug: 'has-key',
+        code: `show Doc.where { :meta.has_key?(:author) }
+
+# No two adapters spell any of this alike; the block is the same on all
+# three.  Containment is the exception -- SQLite has none, so this page
+# cannot run it.
+Doc.where { :meta.contains?(stars: 5) }`,
+      },
+    ],
+  },
+
+  {
     group: 'Writing',
     items: [
       {
