@@ -63,9 +63,12 @@ vendored under `pglite/` unmodified: it subclasses `PostgreSQLAdapter` and
 swaps only the connection for an object that calls out to JS, so the SQL
 ActiveRecord builds and the results it reads are its own. `pglite.rb` beside it
 adds what this needs on top — the array types, the array encoder and decoder
-the pg stub does without, the registration Rails 7.2 and later want in place of
-the `*_connection` hook, and the translation of a failure into
-`StatementInvalid`, which is what `show` is written to catch.
+the pg stub does without, the quoting of every identifier rather than only the
+ones that would otherwise be read wrongly (PostgreSQL folds an unquoted one to
+lower case, so an alias asked for as `Author` came back as `author`), the
+registration Rails 7.2 and later want in place of the `*_connection` hook, and
+the translation of a failure into `StatementInvalid`, which is what `show` is
+written to catch.
 
 The gem itself needs one thing: `pglite` in `ADAPTER_FAMILIES`. Without it the
 adapter is one nobody has classified and the block syntax falls back to the

@@ -8,6 +8,17 @@
 require 'active_record/connection_adapters/pglite_adapter'
 
 module PG
+  class Connection
+    # The stub quotes an identifier only where it would otherwise be read
+    # wrongly; the pg gem quotes every one, which is not the same thing at
+    # all, since PostgreSQL folds an unquoted identifier to lower case.  An
+    # alias asked for as Author came back as author -- and a name that comes
+    # back changed is a column the block cannot read the row by.
+    def self.quote_ident(name)
+      '"' + name.to_s.gsub('"', '""') + '"'
+    end
+  end
+
   # PostgreSQL::OID::Array hands the literal to the pg gem to write and read,
   # so an array column needs these two even though every other type is cast by
   # ActiveRecord itself.  Only the text format is here: that is all the adapter
