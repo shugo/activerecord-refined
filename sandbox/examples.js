@@ -313,6 +313,34 @@ Author.select { row_number.as(:r) }`,
   },
 
   {
+    group: 'Writing',
+    items: [
+      {
+        title: 'update_all',
+        slug: 'update-all',
+        code: `# update_all's hash reads a symbol as the value it is.  The block reads it
+# as the column it names, which is what lets the new value be worked out
+# from the old.
+show Post.where { :published == true }
+
+Post.where { :published == true }.update_all { { likes: :likes + 1 } }
+show Post.where { :published == true }`,
+      },
+      {
+        title: 'upsert_all',
+        slug: 'upsert-all',
+        code: `# The block says what happens to a row that is already there.
+# excluded is the row that could not be inserted.  PostgreSQL and SQLite
+# name it; MySQL spells the same thing VALUES(column).
+Author.upsert_all([{ id: 1, name: 'Alice', country: 'JP', age: 38 }],
+                  unique_by: :id) { { age: :age + excluded(:age) } }
+
+show Author.where { :name == 'Alice' }`,
+      },
+    ],
+  },
+
+  {
     group: 'Common table expressions',
     items: [
       {

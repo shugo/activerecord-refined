@@ -62,6 +62,12 @@ module SqlAssertions
     skip "#{ADAPTER} has no regexp operator" unless REGEXP_OPERATORS.key?(ADAPTER)
   end
 
+  # upsert_all wants to be told which unique index it is upserting against,
+  # except on MySQL, which does not accept being told.
+  def upsert_target
+    ADAPTER == 'mysql2' ? {} : {unique_by: :page}
+  end
+
   def skip_without_array_columns
     skip "#{ADAPTER} has no array columns" unless ADAPTER == 'postgresql'
   end
@@ -114,12 +120,17 @@ end
 class Node < ActiveRecord::Base
 end
 
+# For the writing statements, which need something to conflict with.
+class Tally < ActiveRecord::Base
+end
+
 class CreateAllTables < ActiveRecord::Migration[8.1]
   def up
     drop_table(:users, if_exists: true)
     drop_table(:authors, if_exists: true)
     drop_table(:posts, if_exists: true)
     drop_table(:nodes, if_exists: true)
+    drop_table(:tallies, if_exists: true)
     create_table(:users) do |t|
       t.string :name
       t.integer :age
@@ -128,6 +139,11 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
     create_table(:authors) {|t| t.string :name}
     create_table(:posts) {|t| t.string :title; t.integer :author_id}
     create_table(:nodes) {|t| t.string :name; t.integer :parent_id}
+    create_table(:tallies) do |t|
+      t.string :page
+      t.integer :hits
+      t.index :page, unique: true
+    end
   end
 end
 ActiveRecord::Migration.verbose = false

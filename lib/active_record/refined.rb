@@ -213,6 +213,16 @@ module ActiveRecord
         AST::Value.new(literal)
       end
 
+      # The row an upsert could not insert, for the block upsert_all takes.
+      # PostgreSQL and SQLite give it a name; MySQL spells the same thing
+      # VALUES(column), which takes the column bare.
+      def excluded(column)
+        return AST::Column.new(:excluded, column) unless adapter_family == :mysql
+
+        quoted = @model.with_connection {|c| c.quote_column_name(column) }
+        AST::Function.new('VALUES', [Arel::Nodes::SqlLiteral.new(quoted)])
+      end
+
       # CASE.  `case` is a keyword, so Ruby only reaches this one through the
       # receiver -- `self.case` -- which is why the two shapes have shorthands
       # that do not need it: `:age.when(...)` for the form with an operand, and
@@ -368,6 +378,65 @@ module ActiveRecord
         arel_table = Arel::Table.new(target_table)
         arel_table = arel_table.alias(alias_name) if alias_name
         join_class.new(arel_table, Arel::Nodes::On.new(ast.to_arel(table)))
+      end
+    end
+
+    # The writing statements, which live on Relation rather than in
+    # QueryMethods.  What a block adds here is the one thing their arguments
+    # cannot carry: a value worked out from the row rather than given.
+    module Writes
+      # `update_all(likes: :likes)` sets the column to the symbol; the block
+      # reads a symbol as the column it names, as every other block here does,
+      # which is what lets the new value be built from the old:
+      #
+      #   Post.where { ... }.update_all { { likes: :likes + 1 } }
+      def update_all(updates = nil, &block)
+        return super(updates) unless block
+        if updates
+          raise ArgumentError, "update_all takes updates or a block, not both"
+        end
+        result = evaluate_block(&block)
+        unless result.is_a?(::Hash)
+          raise ArgumentError, "the block gives update_all a hash of column => value"
+        end
+        super(result.transform_values {|value| to_arel_field(value) })
+      end
+
+      # upsert_all's on_duplicate takes SQL text and nothing else, so this is
+      # the one place the DSL writes the SQL out itself rather than handing
+      # Arel a tree.  `excluded` is the row that could not be inserted:
+      #
+      #   Post.upsert_all(rows, unique_by: :title) {
+      #     { likes: :likes + excluded(:likes) }
+      #   }
+      def upsert_all(attributes, **options, &block)
+        return super(attributes, **options) unless block
+        if options.key?(:on_duplicate)
+          raise ArgumentError, "upsert_all takes on_duplicate: or a block, not both"
+        end
+        result = evaluate_block(&block)
+        unless result.is_a?(::Hash)
+          raise ArgumentError, "the block gives upsert_all a hash of column => value"
+        end
+        if result.empty?
+          raise ArgumentError, "the block gives upsert_all at least one column to set"
+        end
+        super(attributes, on_duplicate: Arel.sql(set_clause(result)), **options)
+      end
+
+      private
+
+      # The left of each assignment is the column being written, which is bare
+      # -- the statement is already about one table -- and the right is the
+      # expression, compiled here because a string is what on_duplicate reads.
+      def set_clause(updates)
+        klass.with_connection do |connection|
+          updates.map do |column, value|
+            expression = connection.visitor.compile(
+              to_arel_field(value), Arel::Collectors::SQLString.new)
+            "#{connection.quote_column_name(column)}=#{expression}"
+          end.join(', ')
+        end
       end
     end
   end

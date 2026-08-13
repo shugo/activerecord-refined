@@ -1467,6 +1467,90 @@ class TestBlockSyntax < Minitest::Test
     assert_sql(/HAVING SUM\("users"."age"\) > 100/, sql)
   end
 
+  # update_all's hash reads a symbol as the value it is; the block reads it as
+  # the column it names, which is what lets the new value be built from the old.
+  def test_update_all_from_the_column
+    Tally.delete_all
+    Tally.create!(page: '/a', hits: 1)
+    Tally.create!(page: '/b', hits: 2)
+    Tally.update_all { { hits: :hits + 1 } }
+    assert_equal([2, 3], Tally.order(:page).pluck(:hits))
+  end
+
+  def test_update_all_takes_any_expression
+    Tally.delete_all
+    Tally.create!(page: '/a', hits: 5)
+    Tally.update_all { { hits: case_when { :hits > 4 }.then(0).else(:hits), page: upper(:page) } }
+    assert_equal([['/A', 0]], Tally.pluck(:page, :hits))
+  end
+
+  def test_update_all_within_a_scope
+    Tally.delete_all
+    Tally.create!(page: '/a', hits: 1)
+    Tally.create!(page: '/b', hits: 1)
+    Tally.where { :page == '/a' }.update_all { { hits: 9 } }
+    assert_equal([9, 1], Tally.order(:page).pluck(:hits))
+  end
+
+  def test_update_all_without_a_block_is_unchanged
+    Tally.delete_all
+    Tally.create!(page: '/a', hits: 1)
+    Tally.update_all(hits: 4)
+    assert_equal([4], Tally.pluck(:hits))
+  end
+
+  def test_update_all_takes_updates_or_a_block
+    assert_raises(ArgumentError) { Tally.update_all({hits: 1}) { { hits: 2 } } }
+    e = assert_raises(ArgumentError) { Tally.update_all { :hits + 1 } }
+    assert_match(/hash of column/, e.message)
+  end
+
+  # on_duplicate takes SQL text and nothing else, so the block is compiled to
+  # some.  `excluded` is the row that could not be inserted.
+  def test_upsert_all_adds_to_what_is_there
+    Tally.delete_all
+    Tally.upsert_all([{page: '/a', hits: 1}], **upsert_target)
+    Tally.upsert_all([{page: '/a', hits: 10}], **upsert_target) {
+      { hits: :hits + excluded(:hits) }
+    }
+    assert_equal([11], Tally.pluck(:hits))
+  end
+
+  def test_upsert_all_inserts_when_there_is_no_conflict
+    Tally.delete_all
+    Tally.upsert_all([{page: '/new', hits: 3}], **upsert_target) {
+      { hits: :hits + excluded(:hits) }
+    }
+    assert_equal([3], Tally.pluck(:hits))
+  end
+
+  def test_upsert_all_takes_any_expression
+    Tally.delete_all
+    Tally.upsert_all([{page: '/a', hits: 7}], **upsert_target)
+    Tally.upsert_all([{page: '/a', hits: 2}], **upsert_target) {
+      { hits: greatest(:hits, excluded(:hits)) }
+    }
+    assert_equal([7], Tally.pluck(:hits))
+  end
+
+  def test_upsert_all_without_a_block_is_unchanged
+    Tally.delete_all
+    Tally.upsert_all([{page: '/a', hits: 1}], **upsert_target)
+    Tally.upsert_all([{page: '/a', hits: 6}], **upsert_target)
+    assert_equal([6], Tally.pluck(:hits))
+  end
+
+  def test_upsert_all_takes_on_duplicate_or_a_block
+    assert_raises(ArgumentError) do
+      Tally.upsert_all([{page: '/a', hits: 1}],
+                       on_duplicate: Arel.sql('hits = 1'), **upsert_target) { { hits: 2 } }
+    end
+    e = assert_raises(ArgumentError) do
+      Tally.upsert_all([{page: '/a', hits: 1}], **upsert_target) { {} }
+    end
+    assert_match(/at least one column/, e.message)
+  end
+
   def test_default_where_syntax
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)
