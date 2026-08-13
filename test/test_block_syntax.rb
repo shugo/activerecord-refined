@@ -1665,6 +1665,68 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/key or an array index/, e.message)
   end
 
+  # FILTER takes the aggregate over the rows a condition holds for.  MySQL has
+  # no such clause, so what is asserted across adapters is the number that
+  # comes back rather than the SQL.
+  def seed_for_filter
+    User.delete_all
+    User.create!(name: 'a', age: 10)
+    User.create!(name: 'a', age: 20)
+    User.create!(name: 'b', age: 100)
+  end
+
+  def aggregate(&block)
+    User.select(&block).to_a.first.v
+  end
+
+  def test_filter_a_count
+    seed_for_filter
+    assert_equal(2, aggregate { count(:*).filter { :age < 50 }.as(:v) }.to_i)
+  end
+
+  def test_filter_takes_a_value_as_well_as_a_block
+    seed_for_filter
+    assert_equal(2, aggregate { count(:*).filter(:age < 50).as(:v) }.to_i)
+  end
+
+  def test_filter_a_sum_and_an_average
+    seed_for_filter
+    assert_equal(30, aggregate { sum(:age).filter { :age < 50 }.as(:v) }.to_i)
+    assert_equal(15, aggregate { avg(:age).filter { :age < 50 }.as(:v) }.to_i)
+  end
+
+  def test_filter_a_distinct_count
+    seed_for_filter
+    assert_equal(1, aggregate { count(:name, distinct: true).filter { :age < 50 }.as(:v) }.to_i)
+  end
+
+  def test_filter_on_an_aggregate_from_a_symbol
+    seed_for_filter
+    assert_equal(30, aggregate { :age.sum.filter { :age < 50 }.as(:v) }.to_i)
+  end
+
+  def test_filter_is_a_clause_where_there_is_one
+    skip "#{ADAPTER} has no FILTER" if ADAPTER == 'mysql2'
+    assert_sql(/COUNT\(\*\) FILTER \(WHERE "users"."age" < 50\)/,
+      User.select { count(:*).filter { :age < 50 } }.to_sql)
+  end
+
+  # Where there is not, the same rows are reached through a case: an aggregate
+  # passes over a NULL, so a row the condition misses is a row it does not see.
+  def test_filter_becomes_a_case_where_there_is_no_clause
+    skip "#{ADAPTER} has FILTER" unless ADAPTER == 'mysql2'
+    assert_sql(/COUNT\(CASE WHEN "users"."age" < 50 THEN 1 END\)/,
+      User.select { count(:*).filter { :age < 50 } }.to_sql)
+    assert_sql(/SUM\(CASE WHEN "users"."age" < 50 THEN "users"."age" END\)/,
+      User.select { sum(:age).filter { :age < 50 } }.to_sql)
+  end
+
+  def test_filter_needs_a_value_or_a_block
+    assert_raises(ArgumentError) { User.select { count(:*).filter } }
+    e = assert_raises(ArgumentError) { User.select { count(:*).filter(1) { 2 } } }
+    assert_match(/not both/, e.message)
+  end
+
   def test_default_where_syntax
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

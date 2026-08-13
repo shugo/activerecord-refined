@@ -693,9 +693,9 @@ module ActiveRecord
         include Arithmetics
         include Windowing
 
-        attr_reader :operand, :function, :distinct
+        attr_reader :operand, :function, :distinct, :condition
 
-        def initialize(operand, function, distinct: false)
+        def initialize(operand, function, distinct: false, condition: nil)
           if distinct && function != :count
             raise ArgumentError, "#{function} does not take distinct"
           end
@@ -705,10 +705,35 @@ module ActiveRecord
           @operand = operand
           @function = function
           @distinct = distinct
+          @condition = condition
+        end
+
+        # FILTER (WHERE ...): the aggregate is taken over the rows the
+        # condition holds for.  A value or a block, as `when` takes them.
+        def filter(condition = nil, &block)
+          Aggregate.new(operand, function, distinct: distinct,
+                        condition: Case.argument(:filter, condition, block))
         end
 
         def to_arel(table, model)
-          arel_operand = to_arel_operand(operand, table, model)
+          return aggregate(operand, table, model) unless condition
+
+          # MySQL has no FILTER clause.  An aggregate passes over a NULL, so
+          # the case that yields nothing for the rows the condition misses is
+          # the same aggregate over the same rows -- count(*) has no operand to
+          # keep, and counts a 1 instead.
+          if AST.adapter_family(model) == :mysql
+            kept = Case.new.when(condition).then(operand == :* ? 1 : operand)
+            return aggregate(kept, table, model)
+          end
+
+          aggregate(operand, table, model).filter(condition.to_arel(table, model))
+        end
+
+        private
+
+        def aggregate(over, table, model)
+          arel_operand = to_arel_operand(over, table, model)
           if function == :count
             arel_operand.count(distinct)
           else

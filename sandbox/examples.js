@@ -238,6 +238,22 @@ show Employee.joins(:employees, as: :managers) {
 sql Post.select { count(:author_id, distinct: true) }`,
       },
       {
+        title: 'FILTER',
+        slug: 'filter',
+        code: `# filter takes the aggregate over the rows a condition holds for.
+show Author.select {
+  [
+    count(:*).as(:authors),
+    count(:*).filter { :age < 50 }.as(:under_50),
+    avg(:age).filter { :country == 'JP' }.as(:jp_average),
+  ]
+}
+
+# MySQL has no FILTER clause and gets the case that means the same thing.
+# This page is on SQLite, which has one.
+sql Author.select { count(:*).filter { :age < 50 } }`,
+      },
+      {
         title: 'Scalar functions',
         slug: 'functions',
         code: `show Author.select { [:name, upper(:name).as(:upper_name), length(:name).as(:len)] }

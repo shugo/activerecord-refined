@@ -326,6 +326,23 @@ Node.with(roots: Node.where { :parent_id.null? }).
 scalar functions below, with `fn` for anything else. Return an array to select
 or order by multiple expressions.
 
+`filter` takes the aggregate over the rows a condition holds for, as a value
+or a block:
+
+```ruby
+Author.select { count(:*).filter { :age < 50 }.as(:young) }
+# COUNT(*) FILTER (WHERE "age" < 50) AS "young"
+
+Author.select {
+  [count(:*).as(:all), sum(:age).filter { :country == 'JP' }.as(:jp_years)]
+}
+```
+
+MySQL has no `FILTER` clause, and gets the case that means the same thing —
+`COUNT(CASE WHEN "age" < 50 THEN 1 END)`. An aggregate passes over a NULL, so
+a row the condition misses is a row it does not see, and the number that comes
+back is the same on all three.
+
 Pass `:*` to `count` for `COUNT(*)`, and `distinct: true` for
 `COUNT(DISTINCT ...)`:
 

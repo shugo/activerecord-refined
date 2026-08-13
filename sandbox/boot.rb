@@ -193,8 +193,9 @@ def format_sql(sql)
   out = +''
   # One entry per open parenthesis: whether a clause was broken inside it,
   # which decides whether its `)` deserves a line of its own or is closing
-  # something like COUNT(*), and whether it is a window, whose ORDER BY names
-  # the window rather than the statement and is left where it is.
+  # something like COUNT(*), and whether what it follows makes it a clause of
+  # its own -- a window's ORDER BY and a filter's WHERE belong to the
+  # parentheses they are in rather than to the statement.
   open = []
   newline = lambda do
     out.rstrip!
@@ -205,7 +206,7 @@ def format_sql(sql)
   while i < sql.length
     case masked[i]
     when '('
-      open.push([false, masked[0...i].rstrip.end_with?('OVER')])
+      open.push([false, masked[0...i].rstrip.end_with?('OVER', 'FILTER')])
       out << sql[i]
       i += 1
     when ')'
