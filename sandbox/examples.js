@@ -57,7 +57,10 @@ Author.where { :country == nil }`,
 # itself NULL there rather than false.  So it is the negations that tell
 # the two apart: not_true? has that row and !(== true) does not.
 show Post.where { :published.not_true? }
-show Post.where { !(:published == true) }`,
+show Post.where { !(:published == true) }
+
+# false? and not_false? are the other two.
+show Post.where { :published.false? }`,
       },
       {
         title: 'Looking for NULL',
@@ -533,6 +536,14 @@ Author.left_outer_joins(top_post, as: :top, lateral: true).
 # and MySQL have both; SQLite has neither, and the gem says so rather
 # than leaving SQLite's parser to.
 sql Author.where { :age > any(Author.where { :country == 'JP' }.select(:age)) }`,
+      },
+      {
+        title: 'The bit aggregates',
+        slug: 'bit-aggregates',
+        code: `# bit_and, bit_or and bit_xor aggregate the bitwise operators over a
+# group, and bit_count counts the bits that are set.  PostgreSQL and
+# MySQL have all four; SQLite has none, so this says so instead.
+Post.select { [bit_and(:flags).as(:common), bit_or(:flags).as(:any)] }`,
       },
       {
         title: 'Array column operators',

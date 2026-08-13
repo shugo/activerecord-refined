@@ -64,8 +64,20 @@ show('distinct_from? keeps NULLs, != drops them',
     Account.where { :country != 'JP' }.pluck(:login),
   ])
 
-# The truth tests answer for a NULL row where a comparison against the literal
-# does not, so it is negating them that tells the two apart: not_true? has the
+# A boolean column has true? and false?, which become IS TRUE and IS FALSE,
+# and the negation of each.  All four are spelled and answered the same way by
+# every adapter, NULL included.
+show('the four truth tests',
+  Account.where { :verified.false? },
+  [
+    Account.where { :verified.true? }.pluck(:login),
+    Account.where { :verified.false? }.pluck(:login),
+    Account.where { :verified.not_true? }.pluck(:login),
+    Account.where { :verified.not_false? }.pluck(:login),
+  ])
+
+# They answer for a NULL row where a comparison against the literal does not,
+# so it is negating them that tells the two apart: not_true? has the
 # unverified accounts and the one never asked, !(== true) only the former.
 show('not_true? keeps the NULLs that != TRUE drops',
   Account.where { :verified.not_true? },

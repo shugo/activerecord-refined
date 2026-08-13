@@ -80,6 +80,42 @@ show('COUNT(*) and COUNT(DISTINCT ...)',
   LineItem.select { [count(:*).as(:rows), count(:category, distinct: true).as(:categories)] }.
     map {|i| [i.rows, i.categories] })
 
+# filter takes the aggregate over the rows a condition holds for.  SQLite and
+# PostgreSQL have the FILTER clause; MySQL gets the CASE that means the same,
+# since an aggregate passes over the NULL a missed row leaves.
+show('two aggregates over different rows of the same query',
+  LineItem.select {
+    [count(:*).as(:all), sum(:price).filter { :category == 'tools' }.as(:tools)]
+  },
+  LineItem.select {
+    [count(:*).as(:all), sum(:price).filter { :category == 'tools' }.as(:tools)]
+  }.map {|i| [i.all, i.tools] })
+
+# CASE has two shapes: an operand to compare each when against, or a condition
+# on every when.  case is a Ruby keyword, so the method behind both is only
+# reachable through the receiver -- self.case -- and each shape has a shorthand
+# that does not need it.
+show('a CASE with an operand, through the shorthand',
+  LineItem.select { [:sku, :category.when('tools').then('hardware').else('other').as(:kind)] },
+  LineItem.select { [:sku, :category.when('tools').then('hardware').else('other').as(:kind)] }.
+    map {|i| [i.sku, i.kind] })
+
+show('a CASE where each when carries its own condition',
+  LineItem.select {
+    [:sku, case_when { :price >= 1000 }.then('dear').when { :price >= 100 }.
+      then('middling').else('cheap').as(:band)]
+  },
+  LineItem.select {
+    [:sku, case_when { :price >= 1000 }.then('dear').when { :price >= 100 }.
+      then('middling').else('cheap').as(:band)]
+  }.map {|i| [i.sku, i.band] })
+
+# It is an expression like any other, so it goes inside an aggregate too.
+show('counting with a CASE',
+  LineItem.select { sum(case_when { :price >= 100 }.then(1).else(0)).as(:dear_ones) },
+  LineItem.select { sum(case_when { :price >= 100 }.then(1).else(0)).as(:dear_ones) }.
+    map {|i| i.dear_ones })
+
 # 3. Functions.  Seven scalar ones have methods of their own; fn reaches
 #    anything else, emitting the name as written.
 show('built-in functions and the fn escape hatch',
