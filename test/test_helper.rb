@@ -84,6 +84,12 @@ module SqlAssertions
     mariadb? ? JSON.generate(hash) : hash
   end
 
+  # How each adapter spells a cast to a whole number: MySQL casts to SIGNED
+  # and has no integer at all, PostgreSQL the other way about, SQLite either.
+  def integer_type
+    ADAPTER == 'mysql2' ? 'signed' : 'integer'
+  end
+
   def mariadb?
     ADAPTER == 'mysql2' && ActiveRecord::Base.connection.mariadb?
   end

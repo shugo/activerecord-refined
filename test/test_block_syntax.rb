@@ -1627,7 +1627,8 @@ class TestBlockSyntax < Minitest::Test
   def test_dig_is_text_everywhere
     seed_docs
     assert_equal(['one'], Doc.where { :meta.dig(:n) == '5' }.pluck(:name))
-    assert_equal(['two'], Doc.where { cast(:meta.dig(:n), 'integer') > 6 }.pluck(:name))
+    type = integer_type
+    assert_equal(['two'], Doc.where { cast(:meta.dig(:n), type) > 6 }.pluck(:name))
   end
 
   def test_dig_json_keeps_the_json

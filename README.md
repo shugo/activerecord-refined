@@ -547,8 +547,10 @@ a number is compared through a `cast` on all three:
 
 ```ruby
 Post.where { :meta.dig(:n) == '5' }
-Post.where { cast(:meta.dig(:n), 'integer') > 6 }
+Post.where { cast(:meta.dig(:n), 'integer') > 6 }   # 'signed' on MySQL
 ```
+
+The type is the adapter's own name for it, here as everywhere `cast` is used.
 
 `dig_json` keeps the JSON, for a document to be dug into further or compared
 whole. `contains?` has no equivalent on SQLite and raises `NotImplementedError`
