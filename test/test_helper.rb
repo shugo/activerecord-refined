@@ -188,6 +188,7 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
     create_table(:users) do |t|
       t.string :name
       t.integer :age
+      t.boolean :active
       t.string :tags, array: true if ADAPTER == 'postgresql'
     end
     create_table(:authors) {|t| t.string :name}

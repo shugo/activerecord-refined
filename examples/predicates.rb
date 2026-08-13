@@ -8,7 +8,12 @@ ActiveRecord::Migration.verbose = false
 
 class Setup < ActiveRecord::Migration[8.1]
   def up
-    create_table(:accounts) {|t| t.string :login; t.string :country; t.integer :age }
+    create_table(:accounts) do |t|
+      t.string :login
+      t.string :country
+      t.integer :age
+      t.boolean :verified
+    end
   end
 end
 Setup.new.up
@@ -16,11 +21,11 @@ Setup.new.up
 class Account < ActiveRecord::Base
 end
 
-Account.create!(login: 'alice',     country: 'JP', age: 60)
-Account.create!(login: 'bob',       country: 'JP', age: 50)
-Account.create!(login: 'carol',     country: 'US', age: 45)
+Account.create!(login: 'alice',     country: 'JP', age: 60, verified: true)
+Account.create!(login: 'bob',       country: 'JP', age: 50, verified: false)
+Account.create!(login: 'carol',     country: 'US', age: 45, verified: true)
 Account.create!(login: '100%_pure', country: nil,  age: 30)
-Account.create!(login: '1002000',   country: 'US', age: 25)
+Account.create!(login: '1002000',   country: 'US', age: 25, verified: false)
 
 def show(title, relation, rows)
   puts "--- #{title} ---"
@@ -57,6 +62,16 @@ show('distinct_from? keeps NULLs, != drops them',
   [
     Account.where { :country.distinct_from?('JP') }.pluck(:login),
     Account.where { :country != 'JP' }.pluck(:login),
+  ])
+
+# The truth tests answer for a NULL row where a comparison against the literal
+# does not, so it is negating them that tells the two apart: not_true? has the
+# unverified accounts and the one never asked, !(== true) only the former.
+show('not_true? keeps the NULLs that != TRUE drops',
+  Account.where { :verified.not_true? },
+  [
+    Account.where { :verified.not_true? }.pluck(:login),
+    Account.where { !(:verified == true) }.pluck(:login),
   ])
 
 # 3. Text.  like? takes a pattern; start_with?, end_with? and include? take

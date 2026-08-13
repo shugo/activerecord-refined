@@ -49,6 +49,17 @@ show Author.where { :country == 'JP' }`,
 Author.where { :country == nil }`,
       },
       {
+        title: 'IS TRUE and IS FALSE',
+        slug: 'is-true',
+        code: `show Post.where { :published.true? }
+
+# Nobody has said either way about the last post, and published = TRUE is
+# itself NULL there rather than false.  So it is the negations that tell
+# the two apart: not_true? has that row and !(== true) does not.
+show Post.where { :published.not_true? }
+show Post.where { !(:published == true) }`,
+      },
+      {
         title: 'Looking for NULL',
         slug: 'null',
         code: `show Author.where { :country.null? }

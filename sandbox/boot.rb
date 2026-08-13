@@ -103,6 +103,9 @@ p2 = Post.create!(author: alice, title: 'Refinements revisited', published: true
 p3 = Post.create!(author: bob,   title: 'YJIT internals',        published: false, likes: 30)
 p4 = Post.create!(author: dave,  title: 'A test post',           published: true,  likes: 5)
 Post.create!(author: carol, title: 'Patch review notes', published: true, likes: 42)
+# Nobody has said either way about this one, which is what the truth tests
+# are there to tell apart from a plain false.
+Post.create!(author: bob, title: 'Pattern matching notes', published: nil, likes: 0)
 
 Comment.create!(post: p1, body: 'Nice')
 Comment.create!(post: p1, body: 'Looking forward to it')

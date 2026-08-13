@@ -550,14 +550,16 @@ class TestBlockSyntax < Minitest::Test
   # if there were one.
   def test_the_negations_match_what_bang_selects
     User.delete_all
-    User.create!(name: 'alice', age: 60)
-    User.create!(name: 'bob', age: 20)
+    User.create!(name: 'alice', age: 60, active: true)
+    User.create!(name: 'bob', age: 20, active: false)
     User.create!(name: nil, age: 40)
     [
       [-> { :name.not_null? },          -> { !:name.null? }],
       [-> { :age.not_in?([20, 30]) },   -> { !:age.in?([20, 30]) }],
       [-> { :age.not_between?(20, 30) }, -> { !:age.between?(20, 30) }],
       [-> { :name.not_like?('a%') },    -> { !:name.like?('a%') }],
+      [-> { :active.not_true? },        -> { !:active.true? }],
+      [-> { :active.not_false? },       -> { !:active.false? }],
     ].each do |direct, negated|
       assert_equal(User.where(&negated).pluck(:id).sort,
                    User.where(&direct).pluck(:id).sort,
@@ -573,6 +575,44 @@ class TestBlockSyntax < Minitest::Test
   def test_not_equal_nil_is_rejected
     e = assert_raises(ArgumentError) { User.where { :name != nil } }
     assert_match(/null\?/, e.message)
+  end
+
+  def test_is_true
+    assert_sql(/WHERE "users"."active" IS TRUE/, User.where { :active.true? }.to_sql)
+  end
+
+  def test_is_not_true
+    assert_sql(/WHERE "users"."active" IS NOT TRUE/, User.where { :active.not_true? }.to_sql)
+  end
+
+  def test_is_false
+    assert_sql(/WHERE "users"."active" IS FALSE/, User.where { :active.false? }.to_sql)
+  end
+
+  def test_is_not_false
+    assert_sql(/WHERE "users"."active" IS NOT FALSE/, User.where { :active.not_false? }.to_sql)
+  end
+
+  # The four are spelled and answered the same way by every adapter, NULL
+  # included, which is what makes them worth having over = TRUE.
+  def test_truth_values_execution
+    User.delete_all
+    User.create!([{name: 'yes', active: true}, {name: 'no', active: false},
+                  {name: 'unset', active: nil}])
+    order = ->(relation) { relation.order(:name).pluck(:name) }
+    assert_equal(['yes'], order.(User.where { :active.true? }))
+    assert_equal(%w[no unset], order.(User.where { :active.not_true? }))
+    assert_equal(['no'], order.(User.where { :active.false? }))
+    assert_equal(%w[unset yes], order.(User.where { :active.not_false? }))
+  end
+
+  # Where the difference from a comparison against the literal shows: = TRUE
+  # is NULL for a NULL row, and negating it leaves that row out.
+  def test_not_true_keeps_the_nulls_equality_drops
+    User.delete_all
+    User.create!([{name: 'no', active: false}, {name: 'unset', active: nil}])
+    assert_equal(%w[no unset], User.where { :active.not_true? }.order(:name).pluck(:name))
+    assert_equal(['no'], User.where { !(:active == true) }.order(:name).pluck(:name))
   end
 
   def test_in

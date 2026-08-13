@@ -105,6 +105,23 @@ select the same rows, NULLs included. `not_between?` is the one whose SQL
 looks unlike its name — Arel writes it as the two comparisons, `age < 20 OR
 age > 40`, which is again the same rows.
 
+A boolean column has `true?` and `false?`, which become SQL's `IS TRUE` and
+`IS FALSE`, and the two negations to go with them:
+
+```ruby
+Post.where { :published.true? }         # IS TRUE
+Post.where { :published.not_true? }     # IS NOT TRUE
+Post.where { :published.false? }        # IS FALSE
+Post.where { :published.not_false? }    # IS NOT FALSE
+```
+
+`published = TRUE` selects the same rows as `published IS TRUE`, so the
+difference is in the negation: `published = TRUE` is itself NULL for a row
+where the column is, and a NULL predicate selects nothing, while `IS TRUE`
+answers false there. `not_true?` is therefore "false or never set" and
+`!(:published == true)` only "false". Every adapter spells all four the same
+way and answers them alike.
+
 `in?` also takes a relation as a subquery. Without an explicit select list the
 subquery selects the relation's primary key, the same way ActiveRecord's own
 `where(id: relation)` does:

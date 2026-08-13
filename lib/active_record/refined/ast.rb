@@ -89,6 +89,27 @@ module ActiveRecord
           Comparison.new(self, :!=, nil)
         end
 
+        # IS TRUE and IS FALSE differ from a comparison against the literal in
+        # what they make of NULL: `flag = TRUE` is itself NULL there, and a
+        # NULL predicate selects nothing, while these two answer false.  So the
+        # difference shows in the negations: `not_true?` keeps the NULL rows
+        # that `!(:flag == true)` drops.
+        def true?
+          TruthValue.new(self, true)
+        end
+
+        def not_true?
+          TruthValue.new(self, true, negated: true)
+        end
+
+        def false?
+          TruthValue.new(self, false)
+        end
+
+        def not_false?
+          TruthValue.new(self, false, negated: true)
+        end
+
         def in?(values)
           In.new(self, values)
         end
@@ -1041,6 +1062,24 @@ module ActiveRecord
           end
           relation = relation.send(:apply_join_dependency) if relation.eager_loading?
           relation.arel
+        end
+      end
+
+      # IS TRUE, IS FALSE and their negations, which every adapter spells the
+      # same way and answers alike, NULL included.
+      class TruthValue < Predicate
+        attr_reader :operand, :value, :negated
+
+        def initialize(operand, value, negated: false)
+          @operand = operand
+          @value = value
+          @negated = negated
+        end
+
+        def to_arel(table, model)
+          literal = value ? Arel::Nodes::True.new : Arel::Nodes::False.new
+          Arel::Nodes::InfixOperation.new(negated ? 'IS NOT' : 'IS',
+            to_arel_operand(operand, table, model), literal)
         end
       end
 
