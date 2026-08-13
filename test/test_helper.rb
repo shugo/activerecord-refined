@@ -94,6 +94,12 @@ module SqlAssertions
     ADAPTER == 'mysql2' && ActiveRecord::Base.connection.mariadb?
   end
 
+  # GROUPING SETS, ROLLUP and CUBE are PostgreSQL's; MySQL has only WITH
+  # ROLLUP, which is a different clause, and SQLite has none.
+  def skip_without_grouping_sets
+    skip "#{ADAPTER} has no GROUPING SETS" unless ADAPTER == 'postgresql'
+  end
+
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
   def skip_without_lateral
     return if ADAPTER == 'postgresql'

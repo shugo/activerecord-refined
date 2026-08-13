@@ -553,6 +553,40 @@ module ActiveRecord
         end
       end
 
+      # GROUP BY GROUPING SETS / ROLLUP / CUBE: several groupings asked for at
+      # once, the totals of each coming back beside the rows.  PostgreSQL has
+      # all three; the block raises for the others before it gets this far.
+      #
+      # Each set is a list of its own, so grouping_sets takes lists and rollup
+      # and cube take the columns themselves.
+      class GroupingSets < Node
+        KINDS = {
+          grouping_sets: Arel::Nodes::GroupingSet,
+          rollup: Arel::Nodes::RollUp,
+          cube: Arel::Nodes::Cube,
+        }.freeze
+
+        attr_reader :kind, :sets
+
+        def initialize(kind, sets)
+          raise ArgumentError, "#{kind} needs something to group by" if sets.empty?
+          @kind = kind
+          @sets = sets
+        end
+
+        def to_arel(table, model)
+          KINDS.fetch(kind).new(
+            if kind == :grouping_sets
+              sets.map do |set|
+                Arel::Nodes::GroupingElement.new(
+                  Array(set).map {|column| to_arel_operand(column, table, model) })
+              end
+            else
+              sets.map {|column| to_arel_operand(column, table, model) }
+            end)
+        end
+      end
+
       class Column < Node
         include Predications
         include Arithmetics

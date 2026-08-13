@@ -148,6 +148,26 @@ module ActiveRecord
         node
       end
 
+      # GROUP BY GROUPING SETS / ROLLUP / CUBE, which PostgreSQL has and the
+      # others do not -- MySQL's WITH ROLLUP says one of the three and says it
+      # somewhere else in the clause.  Arel has the nodes and writes them for
+      # PostgreSQL alone, so what it would raise elsewhere says nothing; this
+      # says it here, as extract does, while the block is being read.
+      #
+      #   Sale.group { grouping_sets([:region], [:product], []) }
+      #   Sale.group { rollup(:region, :product) }
+      def grouping_sets(*sets)
+        grouping(:grouping_sets, sets)
+      end
+
+      def rollup(*columns)
+        grouping(:rollup, columns)
+      end
+
+      def cube(*columns)
+        grouping(:cube, columns)
+      end
+
       # CAST(expr AS type).  The type is the adapter's own name for it,
       # checked for shape by the node; whether it exists is the database's to
       # say.
@@ -234,6 +254,15 @@ module ActiveRecord
       end
 
       private
+
+      def grouping(kind, sets)
+        node = AST::GroupingSets.new(kind, sets)
+        unless adapter_family == :postgresql
+          raise NotImplementedError,
+            "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
+        end
+        node
+      end
 
       def function_name(name, functions)
         spellings = functions.fetch(name)

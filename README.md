@@ -286,6 +286,28 @@ The subquery is named after the model's own table for the reason `from_cte`
 is: ActiveRecord goes on qualifying columns with that name, so `where` needs
 to find it.
 
+### Grouping several ways at once
+
+`grouping_sets`, `rollup` and `cube` ask for more than one grouping in a
+single query, the totals of each coming back beside the rows. Each set is a
+list of its own, and an empty one is the grand total:
+
+```ruby
+Sale.group { grouping_sets([:region], [:product], []) }.
+  select { [:region, :product, sum(:amount).as(:total)] }
+# GROUP BY GROUPING SETS( ( "region" ), ( "product" ), (  ) )
+
+Sale.group { rollup(:region, :product) }   # GROUP BY ROLLUP( "region", "product" )
+Sale.group { cube(:region, :product) }     # GROUP BY CUBE( "region", "product" )
+```
+
+A row that a set did not group by comes back with NULL there, which is also
+what a real NULL looks like; `fn(:grouping, :region)` tells the two apart.
+
+These are PostgreSQL's. SQLite has none of them, and MySQL has only `WITH
+ROLLUP`, which says one of the three and says it elsewhere in the clause, so
+the block raises `NotImplementedError` on both.
+
 ### Lateral joins
 
 `lateral: true` joins a relation rather than a table, and lets it see the row

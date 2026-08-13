@@ -409,6 +409,21 @@ show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
   },
 
   {
+    group: 'Grouping several ways',
+    items: [
+      {
+        title: 'grouping_sets, rollup and cube',
+        slug: 'grouping-sets',
+        code: `# More than one grouping in a single query, the totals of each coming
+# back beside the rows.  An empty set is the grand total.  These are
+# PostgreSQL's; this page is SQLite, so it says so rather than running.
+Post.group { grouping_sets([:author_id], [:published], []) }.
+  select { [:author_id, :published, count(:*).as(:posts)] }`,
+      },
+    ],
+  },
+
+  {
     group: 'Lateral joins',
     items: [
       {

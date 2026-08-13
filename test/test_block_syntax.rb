@@ -1865,6 +1865,63 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/lateral join has no equivalent/, e.message)
   end
 
+  # Several groupings asked for at once, the totals of each coming back beside
+  # the rows.  What is asserted is the rows, since the point is which totals
+  # arrive rather than how the clause is spelled.
+  def seed_for_grouping
+    Post.delete_all
+    Author.delete_all
+    a = Author.create!(name: 'a')
+    b = Author.create!(name: 'b')
+    Post.create!(author_id: a.id, title: 'x')
+    Post.create!(author_id: a.id, title: 'y')
+    Post.create!(author_id: b.id, title: 'x')
+  end
+
+  def grouped(&block)
+    Post.group(&block).select { [:author_id, :title, count(:*).as(:n)] }.
+      map {|r| [r.author_id, r.title, r.n.to_i] }.sort_by(&:to_s)
+  end
+
+  def test_grouping_sets
+    skip_without_grouping_sets
+    seed_for_grouping
+    rows = grouped { grouping_sets([:author_id], [:title], []) }
+    assert_equal(3, rows.count {|_, title, _| title.nil? })      # by author
+    assert_includes(rows, [nil, 'x', 2])                          # by title
+    assert_includes(rows, [nil, nil, 3])                          # the whole
+  end
+
+  def test_rollup
+    skip_without_grouping_sets
+    seed_for_grouping
+    rows = grouped { rollup(:author_id, :title) }
+    assert_includes(rows, [nil, nil, 3])
+    assert_sql(/GROUP BY ROLLUP\( "posts"."author_id", "posts"."title" \)/,
+      Post.group { rollup(:author_id, :title) }.to_sql)
+  end
+
+  def test_cube
+    skip_without_grouping_sets
+    seed_for_grouping
+    assert_sql(/GROUP BY CUBE\( "posts"."author_id", "posts"."title" \)/,
+      Post.group { cube(:author_id, :title) }.to_sql)
+    # Every combination: by both, by each, and the whole.
+    assert_equal(8, Post.group { cube(:author_id, :title) }.select { count(:*).as(:n) }.to_a.size)
+  end
+
+  def test_grouping_sets_say_where_they_cannot_go
+    skip 'PostgreSQL has them' if ADAPTER == 'postgresql'
+    assert_raises(NotImplementedError) { Post.group { grouping_sets([:title]) } }
+    assert_raises(NotImplementedError) { Post.group { rollup(:title) } }
+    assert_raises(NotImplementedError) { Post.group { cube(:title) } }
+  end
+
+  def test_grouping_sets_need_something_to_group_by
+    assert_raises(ArgumentError) { Post.group { rollup } }
+    assert_raises(ArgumentError) { Post.group { grouping_sets } }
+  end
+
   def test_default_where_syntax
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)
