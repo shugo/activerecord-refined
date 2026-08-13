@@ -214,8 +214,10 @@ module ActiveRecord
           JsonContains.new(self, value)
         end
 
-        # Whether the key is there at all, as Hash#has_key? asks.
-        def has_key?(key)
+        # Whether the key is there at all, as Hash#key? asks.  Hash has
+        # has_key? too; one name is enough, and this is the one Ruby's own
+        # style prefers.
+        def key?(key)
           JsonHasKey.new(self, key)
         end
       end

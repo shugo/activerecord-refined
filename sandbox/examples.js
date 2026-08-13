@@ -326,9 +326,9 @@ show Doc.select { [:name, :meta.dig(:author, :name).as(:author), :meta.dig(:tags
 show Doc.where { cast(:meta.dig(:stars), 'integer') > 6 }`,
       },
       {
-        title: 'has_key? and contains?',
-        slug: 'has-key',
-        code: `show Doc.where { :meta.has_key?(:author) }
+        title: 'key? and contains?',
+        slug: 'key',
+        code: `show Doc.where { :meta.key?(:author) }
 
 # No two adapters spell any of this alike; the block is the same on all
 # three.  Containment is the exception -- SQLite has none, so this page

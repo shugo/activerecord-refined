@@ -1605,10 +1605,10 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(['one'], Doc.where { :docs[:meta].dig(:a, :b) == 'deep' }.pluck(:name))
   end
 
-  def test_has_key
+  def test_key
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.has_key?(:tags) }.pluck(:name))
-    assert_equal(%w[one two], Doc.where { :meta.has_key?(:n) }.order(:name).pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.key?(:tags) }.pluck(:name))
+    assert_equal(%w[one two], Doc.where { :meta.key?(:n) }.order(:name).pluck(:name))
   end
 
   def test_contains

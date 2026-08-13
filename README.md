@@ -487,7 +487,7 @@ or symbol steps into an object, an integer into an array:
 ```ruby
 Post.where { :meta.dig(:author, :name) == 'alice' }
 Post.select { :meta.dig(:tags, 0).as(:first_tag) }
-Post.where { :meta.has_key?(:draft) }
+Post.where { :meta.key?(:draft) }
 Post.where { :meta.contains?(status: 'open') }
 ```
 
@@ -498,7 +498,7 @@ three:
 | --- | --- | --- | --- |
 | `dig(:a, :b)` | `#>> '{a,b}'` | `->> '$.a.b'` | `JSON_UNQUOTE(JSON_EXTRACT(…, '$.a.b'))` |
 | `dig_json(:a)` | `#> '{a}'` | `-> '$.a'` | `JSON_EXTRACT(…, '$.a')` |
-| `has_key?(:a)` | `jsonb_exists(…, 'a')` | `json_type(…, '$.a') IS NOT NULL` | `JSON_CONTAINS_PATH(…, 'one', '$.a')` |
+| `key?(:a)` | `jsonb_exists(…, 'a')` | `json_type(…, '$.a') IS NOT NULL` | `JSON_CONTAINS_PATH(…, 'one', '$.a')` |
 | `contains?(…)` | `@>` | — | `JSON_CONTAINS` |
 
 MariaDB answers to the `mysql2` adapter and has none of `->` or `->>`, so the
@@ -516,7 +516,7 @@ Post.where { cast(:meta.dig(:n), 'integer') > 6 }
 `dig_json` keeps the JSON, for a document to be dug into further or compared
 whole. `contains?` has no equivalent on SQLite and raises `NotImplementedError`
 there — later than the rest, since the adapter is only known when the SQL is
-built. On PostgreSQL, `contains?` and `has_key?` want a `jsonb` column; the
+built. On PostgreSQL, `contains?` and `key?` want a `jsonb` column; the
 `json` type carries neither operator.
 
 A key that is not a plain name travels as itself rather than being refused:
