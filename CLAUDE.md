@@ -62,6 +62,11 @@ rake test:all                # all three in turn
 
 - Run all three before reporting anything about the DSL.  The skips are
   adapter-specific and intended; PostgreSQL skips nothing.
+- `ADAPTER=mysql2` here reaches MariaDB, and CI reaches `mysql:8`.  A green
+  run locally is not a green mysql job: the two differ over JSON, where
+  MariaDB's json column is a checked longtext that ActiveRecord will not
+  serialise a hash into and MySQL's is a type of its own that wants one.
+  `connection.mariadb?` tells them apart.
 - Never assert an adapter's own spelling.  `greatest` is `MAX` on SQLite and
   the apostrophe in a quoted string is escaped three different ways, so a
   regexp that passes on SQLite can fail on the other two.  Assert something

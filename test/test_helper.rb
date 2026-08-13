@@ -74,9 +74,18 @@ module SqlAssertions
     skip "#{ADAPTER} has no JSON containment" if ADAPTER == 'sqlite3'
   end
 
-  # Only MariaDB needs this, and it is what the mysql2 adapter reaches here.
+  # MariaDB's json is a checked longtext, which ActiveRecord sees as a string
+  # and does not serialise a hash into -- what would go in is Ruby's inspect,
+  # which the check refuses.  MySQL's json is a type of its own and takes the
+  # hash; handing that one a string would store the document as a JSON string
+  # rather than as the object, and every path would find nothing.  Both answer
+  # to the mysql2 adapter, so the two have to be told apart.
   def json_document(hash)
-    ADAPTER == 'mysql2' ? JSON.generate(hash) : hash
+    mariadb? ? JSON.generate(hash) : hash
+  end
+
+  def mariadb?
+    ADAPTER == 'mysql2' && ActiveRecord::Base.connection.mariadb?
   end
 
   def skip_without_array_columns
@@ -135,9 +144,7 @@ end
 class Tally < ActiveRecord::Base
 end
 
-# For the JSON tests.  MariaDB answers to the mysql2 adapter and stores json as
-# a checked longtext, which ActiveRecord does not serialise into, so the tests
-# hand it the document as text.
+# For the JSON tests; see json_document for how the two MySQLs differ.
 class Doc < ActiveRecord::Base
 end
 
