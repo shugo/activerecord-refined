@@ -995,33 +995,29 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(['child'], q.pluck(:name))
   end
 
-  def test_select_aggregate
-    assert_sql(/SELECT SUM\("users"."age"\)/,
-      User.select { :age.sum }.to_sql)
+  def test_select_sum
+    assert_sql(/SELECT SUM\("users"."age"\)/, User.select { sum(:age) }.to_sql)
   end
 
-  def test_select_aggregate_qualified
+  def test_select_aggregate_of_qualified_column
     assert_sql(/SELECT COUNT\("users"."id"\)/,
-      User.select { :users[:id].count }.to_sql)
+      User.select { count(:users[:id]) }.to_sql)
   end
 
-  def test_select_average
-    assert_sql(/SELECT AVG\("users"."age"\)/,
-      User.select { :age.average }.to_sql)
+  def test_select_max_and_min
+    assert_sql(/SELECT MAX\("users"."age"\)/, User.select { max(:age) }.to_sql)
+    assert_sql(/SELECT MIN\("users"."age"\)/, User.select { min(:age) }.to_sql)
   end
 
-  def test_select_maximum
-    assert_sql(/SELECT MAX\("users"."age"\)/,
-      User.select { :age.maximum }.to_sql)
-  end
-
-  def test_select_minimum
-    assert_sql(/SELECT MIN\("users"."age"\)/,
-      User.select { :age.minimum }.to_sql)
+  # An aggregate is written as a call, the way SQL writes it; a column has no
+  # method of its own for one.
+  def test_aggregates_have_no_postfix_form
+    assert_raises(NoMethodError) { User.select { :age.sum } }
+    assert_raises(NoMethodError) { User.select { :age.average } }
   end
 
   def test_having_aggregate
-    sql = User.group(:name).having { :age.sum > 100 }.to_sql
+    sql = User.group(:name).having { sum(:age) > 100 }.to_sql
     assert_sql(/GROUP BY "users"."name"/, sql)
     assert_sql(/HAVING SUM\("users"."age"\) > 100/, sql)
   end
@@ -1051,9 +1047,9 @@ class TestBlockSyntax < Minitest::Test
       User.select { count(:name, distinct: true) }.to_sql)
   end
 
-  def test_count_distinct_as_method
+  def test_count_distinct_aliased
     assert_sql(/SELECT COUNT\(DISTINCT "users"."name"\) AS "n"/,
-      User.select { :name.count(distinct: true).as(:n) }.to_sql)
+      User.select { count(:name, distinct: true).as(:n) }.to_sql)
   end
 
   def test_count_distinct_in_having
@@ -1109,11 +1105,6 @@ class TestBlockSyntax < Minitest::Test
     sql = User.group(:name).having { sum(:age) > 100 }.to_sql
     assert_sql(/GROUP BY "users"."name"/, sql)
     assert_sql(/HAVING SUM\("users"."age"\) > 100/, sql)
-  end
-
-  def test_function_and_method_syntax_match
-    assert_equal User.select { :age.average }.to_sql,
-      User.select { avg(:age) }.to_sql
   end
 
   def test_upper_function
@@ -1480,11 +1471,6 @@ class TestBlockSyntax < Minitest::Test
       User.select { sum(:age * 2) }.to_sql)
   end
 
-  def test_aggregate_on_arithmetic
-    assert_sql(/SELECT SUM\(\("users"."age" \+ 1\)\) AS "s"/,
-      User.select { (:age + 1).sum.as(:s) }.to_sql)
-  end
-
   # Arel groups + and - but not * and /, which is how SQL precedence works
   # out anyway.
   def test_arithmetic_on_qualified_column
@@ -1618,7 +1604,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_aggregate_in
     assert_sql(/HAVING SUM\("users"."age"\) BETWEEN 1 AND 10/,
-      User.group(:name).having { :age.sum.in?(1..10) }.to_sql)
+      User.group(:name).having { sum(:age).in?(1..10) }.to_sql)
   end
 
   def test_nested_function
@@ -1932,11 +1918,6 @@ class TestBlockSyntax < Minitest::Test
   def test_filter_a_distinct_count
     seed_for_filter
     assert_equal(1, aggregate { count(:name, distinct: true).filter { :age < 50 }.as(:v) }.to_i)
-  end
-
-  def test_filter_on_an_aggregate_from_a_symbol
-    seed_for_filter
-    assert_equal(30, aggregate { :age.sum.filter { :age < 50 }.as(:v) }.to_i)
   end
 
   def test_filter_is_a_clause_where_there_is_one

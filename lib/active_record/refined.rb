@@ -4,7 +4,6 @@ module ActiveRecord
       refine Symbol do
         import_methods AST::Predications
         import_methods AST::Arithmetics
-        import_methods AST::Aggregations
 
         def as(alias_name, quote: true)
           AST::As.new(self, alias_name, quote: quote)

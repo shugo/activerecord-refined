@@ -294,32 +294,6 @@ module ActiveRecord
         end
       end
 
-      # Aggregate builders shared by symbols, qualified columns and
-      # expressions.  Imported into the Symbol refinement like Predications,
-      # so every method must be defined with def.
-      module Aggregations
-        # DISTINCT is Arel's only aggregate modifier, and only for count.
-        def count(distinct: false)
-          Aggregate.new(self, :count, distinct: distinct)
-        end
-
-        def sum
-          Aggregate.new(self, :sum)
-        end
-
-        def average
-          Aggregate.new(self, :average)
-        end
-
-        def maximum
-          Aggregate.new(self, :maximum)
-        end
-
-        def minimum
-          Aggregate.new(self, :minimum)
-        end
-      end
-
       class Node
         # The model travels with the table because some SQL cannot be written
         # without knowing the adapter, and a node is built before anything
@@ -388,7 +362,6 @@ module ActiveRecord
       class Value < Node
         include Predications
         include Arithmetics
-        include Aggregations
 
         attr_reader :value
 
@@ -410,7 +383,6 @@ module ActiveRecord
       class Case < Node
         include Predications
         include Arithmetics
-        include Aggregations
 
         # Having no ELSE is not the same as an ELSE of nil, and nil is what an
         # omitted argument looks like, so the absence needs a value of its own.
@@ -530,7 +502,6 @@ module ActiveRecord
       class JsonPath < Node
         include Predications
         include Arithmetics
-        include Aggregations
         include JsonSteps
 
         attr_reader :operand, :path, :as_json
@@ -708,7 +679,6 @@ module ActiveRecord
       class Column < Node
         include Predications
         include Arithmetics
-        include Aggregations
 
         attr_reader :table_name, :column_name
 
@@ -728,7 +698,6 @@ module ActiveRecord
       class Arithmetic < Node
         include Predications
         include Arithmetics
-        include Aggregations
 
         attr_reader :left, :operator, :right
 
