@@ -48,8 +48,21 @@ jobs:
           bundler-cache: true
       - run: bundle exec rake test
 
+  # Both answer to the mysql2 adapter and they do not agree: MariaDB's json
+  # column is a checked longtext where MySQL's is a type of its own, and
+  # MariaDB casts to integer where MySQL knows only signed.  Each has passed
+  # while the other failed, so both run.
   mysql:
+    name: mysql (${{ matrix.image }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: mysql:8
+            health: mysqladmin ping -proot
+          - image: mariadb:11
+            health: healthcheck.sh --connect --innodb_initialized
     env:
       ADAPTER: mysql2
       # The suite creates its own database, which MYSQL_USER would not be
@@ -58,13 +71,13 @@ jobs:
       DB_PASSWORD: root
     services:
       mysql:
-        image: mysql:8
+        image: ${{ matrix.image }}
         env:
           MYSQL_ROOT_PASSWORD: root
         ports:
           - 3306:3306
         options: >-
-          --health-cmd "mysqladmin ping -proot"
+          --health-cmd "${{ matrix.health }}"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
