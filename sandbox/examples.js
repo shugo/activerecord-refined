@@ -155,14 +155,6 @@ sql Post.where { :title.include?('100%') }`,
         code: `# Variadic, like String#start_with?.  Matching any one of them is enough.
 show Author.where { :name.start_with?('A', 'B') }`,
       },
-      {
-        title: 'Regexps are not available on SQLite',
-        slug: 'regexp',
-        code: `# REGEXP on MySQL, ~ on PostgreSQL.  SQLite has no operator of its
-# own, so no SQL can be built for this -- unlike the checks the block
-# makes as you write it, this one comes from Arel at to_sql.
-sql Author.where { :name =~ '^A' }`,
-      },
     ],
   },
 
@@ -498,6 +490,19 @@ show forest.where { :root_id == root.id }`,
   {
     group: 'PostgreSQL only',
     items: [
+      {
+        title: 'Regular expressions',
+        slug: 'regexp',
+        code: `# =~ and !~ become ~ and !~ on PostgreSQL, REGEXP on MySQL.  SQLite has
+# no regexp operator of its own, and the refusal comes from Arel as the
+# SQL is written rather than from the block as it is read.
+show Author.where { :name =~ '^A' }
+
+# A Regexp literal reads more naturally, and !~ is the negative.  Only
+# the source of it crosses over: the database has its own dialect and
+# no notion of Ruby's flags, so a literal carrying one is refused.
+show Post.where { :title !~ /notes$/ }`,
+      },
       {
         title: 'distinct_on',
         slug: 'distinct-on',
