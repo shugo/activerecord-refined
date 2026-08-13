@@ -111,6 +111,12 @@ module SqlAssertions
     skip "#{ADAPTER} has no DISTINCT ON" unless ADAPTER == 'postgresql'
   end
 
+  # ANY and ALL over a subquery are PostgreSQL's and MySQL's alike; SQLite
+  # has neither quantifier.
+  def skip_without_quantifiers
+    skip "#{ADAPTER} has no ANY or ALL" if ADAPTER == 'sqlite3'
+  end
+
   def skip_without_array_columns
     skip "#{ADAPTER} has no array columns" unless ADAPTER == 'postgresql'
   end

@@ -499,6 +499,15 @@ Author.left_outer_joins(top_post, as: :top, lateral: true).
   select { [:name, :top[:title].as(:top_post)] }`,
       },
       {
+        title: 'any and all',
+        slug: 'quantifiers',
+        code: `# ANY and ALL quantify a comparison over a subquery: > any is greater
+# than the smallest row it returns, >= all than every one.  PostgreSQL
+# and MySQL have both; SQLite has neither, and the gem says so rather
+# than leaving SQLite's parser to.
+sql Author.where { :age > any(Author.where { :country == 'JP' }.select(:age)) }`,
+      },
+      {
         title: 'Array column operators',
         slug: 'arrays',
         code: `# member?, superset?, subset? and intersect? become PostgreSQL's array

@@ -668,6 +668,66 @@ class TestBlockSyntax < Minitest::Test
       Author.where { !:id.in?(Post.select(:author_id)) }.to_sql)
   end
 
+  def test_any_subquery
+    skip_without_quantifiers
+    assert_sql(
+      /WHERE "users"."age" > ANY\(SELECT "users"."age" FROM "users" WHERE "users"."name" = 'alice'\)/,
+      User.where { :age > any(User.where(name: 'alice').select(:age)) }.to_sql)
+  end
+
+  def test_all_subquery
+    skip_without_quantifiers
+    assert_sql(/WHERE "users"."age" >= ALL\(SELECT "users"."age" FROM "users"\)/,
+      User.where { :age >= all(User.select(:age)) }.to_sql)
+  end
+
+  # The same default in? has, since both take the relation for a set of rows.
+  def test_quantifier_selects_primary_key_by_default
+    skip_without_quantifiers
+    assert_sql(/WHERE "authors"."id" > ANY\(SELECT "posts"."id" FROM "posts"\)/,
+      Author.where { :id > any(Post.all) }.to_sql)
+  end
+
+  # A list is what in? takes; ANY of one is what a plain comparison says.
+  def test_quantifier_without_a_relation_is_rejected
+    skip_without_quantifiers
+    e = assert_raises(ArgumentError) { User.where { :age > any([20, 30]) } }
+    assert_match(/relation/, e.message)
+  end
+
+  def test_quantifier_is_unsupported_on_sqlite
+    if ADAPTER == 'sqlite3'
+      e = assert_raises(NotImplementedError) { User.where { :age > any(User.select(:age)) } }
+      assert_match(/ANY/, e.message)
+    else
+      assert_sql(/> ANY\(SELECT/, User.where { :age > any(User.select(:age)) }.to_sql)
+    end
+  end
+
+  # ANY is satisfied by one row of the subquery and ALL by every row, so the
+  # two pick out the ends of the range the subquery covers.
+  def test_quantifier_execution
+    skip_without_quantifiers
+    User.delete_all
+    User.create!([{name: 'young', age: 20}, {name: 'middle', age: 40},
+                  {name: 'old', age: 60}])
+    ages = -> { User.select(:age) }
+    assert_equal(%w[middle old], User.where { :age > any(ages.call) }.order(:age).pluck(:name))
+    assert_equal(['old'], User.where { :age >= all(ages.call) }.pluck(:name))
+    assert_equal(['young'], User.where { :age <= all(ages.call) }.pluck(:name))
+  end
+
+  # = ANY is IN and != ALL is NOT IN, which is worth a test because it is the
+  # part of the quantifiers the gem already had another spelling for.
+  def test_quantifier_equality_execution
+    skip_without_quantifiers
+    User.delete_all
+    User.create!([{name: 'young', age: 20}, {name: 'old', age: 60}])
+    young = -> { User.where(name: 'young').select(:age) }
+    assert_equal(['young'], User.where { :age == any(young.call) }.pluck(:name))
+    assert_equal(['old'], User.where { :age != all(young.call) }.pluck(:name))
+  end
+
   # The subquery correlates with the outer table through qualified columns,
   # and its own where block goes through the DSL too.
   def test_exists

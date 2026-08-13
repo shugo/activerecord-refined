@@ -1044,9 +1044,32 @@ module ActiveRecord
         end
       end
 
+      # A relation standing for a set of values, which is what IN and the
+      # quantifiers each take.  The treatment is ActiveRecord's own
+      # RelationHandler's: without an explicit select list the subquery
+      # selects the model's primary key.
+      module SetSubquery
+        private
+
+        def set_subquery(relation, spelling)
+          relation = relation.send(:apply_join_dependency) if relation.eager_loading?
+          if relation.select_values.empty?
+            model = relation.model
+            if model.composite_primary_key?
+              raise ArgumentError,
+                "Cannot map composite primary key #{model.primary_key} to #{spelling}"
+            end
+            relation = relation.select(relation.table[model.primary_key])
+          end
+          relation.arel
+        end
+      end
+
       # IN for a list of values, BETWEEN for a range, IN (SELECT ...) for a
       # relation.
       class In < Predicate
+        include SetSubquery
+
         attr_reader :operand, :values, :negated
 
         def initialize(operand, values, negated: false)
@@ -1060,29 +1083,34 @@ module ActiveRecord
           if values.is_a?(Range)
             arel_operand.public_send(negated ? :not_between : :between, values)
           else
-            arg = values.is_a?(ActiveRecord::Relation) ? subquery(values) : values
+            arg = values.is_a?(ActiveRecord::Relation) ? set_subquery(values, 'IN') : values
             arel_operand.public_send(negated ? :not_in : :in, arg)
           end
         end
+      end
 
-        private
+      # ANY and ALL, which stand on the right of a comparison and say how many
+      # of the subquery's rows have to satisfy it.  Where a scalar subquery
+      # has to return one row, these take as many as come.
+      class Quantified < Node
+        include SetSubquery
 
-        # The same treatment ActiveRecord's own RelationHandler gives a
-        # relation used as a value: without an explicit select list the
-        # subquery selects the model's primary key.
-        def subquery(relation)
-          if relation.eager_loading?
-            relation = relation.send(:apply_join_dependency)
+        attr_reader :kind, :relation
+
+        def initialize(kind, relation)
+          unless relation.is_a?(ActiveRecord::Relation)
+            raise ArgumentError,
+              "#{kind} takes a relation as its subquery; a list is what in? takes"
           end
-          if relation.select_values.empty?
-            model = relation.model
-            if model.composite_primary_key?
-              raise ArgumentError,
-                "Cannot map composite primary key #{model.primary_key} to IN"
-            end
-            relation = relation.select(relation.table[model.primary_key])
-          end
-          relation.arel
+          @kind = kind
+          @relation = relation
+        end
+
+        # The subquery goes in as its own AST rather than as the manager,
+        # which would parenthesise it a second time -- and to PostgreSQL
+        # `ANY ((SELECT ...))` is ANY of one scalar, which it refuses.
+        def to_arel(_table, _model)
+          Arel::Nodes::NamedFunction.new(kind, [set_subquery(relation, kind).ast])
         end
       end
 

@@ -123,6 +123,24 @@ Author.where { :age >= Author.select { avg(:age) } }
 # "authors"."age" >= (SELECT AVG("authors"."age") FROM "authors")
 ```
 
+`any` and `all` quantify that comparison instead, which is what lifts the
+one-row rule: `> any` asks whether the subquery holds a smaller value anywhere,
+`>= all` whether it holds a larger one nowhere.
+
+```ruby
+Author.where { :age > any(Author.where(country: 'JP').select(:age)) }
+# "authors"."age" > ANY(SELECT "authors"."age" FROM "authors" WHERE ...)
+
+Author.where { :age >= all(Author.select(:age)) }
+# "authors"."age" >= ALL(SELECT "authors"."age" FROM "authors")
+```
+
+The select list follows `in?`'s rule rather than the scalar one: without an
+explicit select the subquery selects the primary key. `== any` is what `IN`
+says and `!= all` what `NOT IN` says, so what the quantifiers add is the four
+comparisons `IN` has no spelling for. SQLite has neither quantifier, and says
+so with `NotImplementedError` rather than leaving its parser to.
+
 `exists?` takes a relation and becomes `EXISTS (SELECT ...)`. Correlate the
 subquery with the outer table through qualified columns — its `where` block
 goes through the DSL like any other:

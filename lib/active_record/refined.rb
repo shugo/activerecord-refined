@@ -214,6 +214,22 @@ module ActiveRecord
         AST::Exists.new(relation)
       end
 
+      # ANY and ALL quantify a comparison over a subquery, which is what a
+      # scalar subquery cannot do: it has to return the one row.
+      #
+      #   Post.where { :likes > any(Post.published.select(:likes)) }
+      #   Post.where { :likes >= all(Post.select(:likes)) }
+      #
+      # `== any` is IN and `!= all` is NOT IN, so what these add is the four
+      # comparisons IN has no spelling for.
+      def any(relation)
+        quantified('ANY', relation)
+      end
+
+      def all(relation)
+        quantified('ALL', relation)
+      end
+
       # A literal where an expression is expected, quoted like any other value:
       #
       #   select { [:id, value(0).as(:depth)] }
@@ -254,6 +270,16 @@ module ActiveRecord
       end
 
       private
+
+      # SQLite is the one adapter with no quantifier at all, and what it says
+      # when it meets one is a syntax error at the SELECT.
+      def quantified(kind, relation)
+        if adapter_family == :sqlite
+          raise NotImplementedError,
+            "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
+        end
+        AST::Quantified.new(kind, relation)
+      end
 
       def grouping(kind, sets)
         node = AST::GroupingSets.new(kind, sets)
