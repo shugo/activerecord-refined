@@ -238,7 +238,7 @@ show Employee.joins(:employees, as: :managers) {
 sql Post.select { count(:author_id, distinct: true) }`,
       },
       {
-        title: 'FILTER',
+        title: 'filter',
         slug: 'filter',
         code: `# filter takes the aggregate over the rows a condition holds for.
 show Author.select {
