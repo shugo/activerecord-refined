@@ -402,13 +402,29 @@ def cell_value(value)
   case value
   when nil, true, false, String, Integer, Float then value
   when Hash, Array then JSON.generate(value)
+  when BigDecimal then decimal(value)
   else value.to_s
   end
+end
+
+# BigDecimal's own way of writing itself is 0.1e3 where the number is 100.0.
+# An average is where this turns up: numeric on PostgreSQL and so a decimal,
+# where SQLite gives back a float and prints as one.  The same query should
+# not look like two different answers.
+def decimal(value)
+  value.to_s('F')
 end
 
 def table_named(table)
   tables.find { |t| t == table.to_s } or
     raise ArgumentError, "no such table: #{table} (#{tables.join(', ')})"
+end
+
+# Inspected, so that a string is in quotes and a NULL reads as nil rather than
+# as an empty column -- telling the two apart is half of what the DSL is
+# about.  A decimal is the exception: see above.
+def shown(value)
+  value.is_a?(BigDecimal) ? decimal(value) : value.inspect
 end
 
 def print_result(result)
@@ -418,15 +434,15 @@ def print_result(result)
   end
 
   columns = result.columns
-  rows = cast_rows(result)
+  rows = cast_rows(result).map { |row| row.map {|value| shown(value) } }
   widths = columns.each_with_index.map do |column, i|
-    [column.length, *rows.map { |row| row[i].inspect.length }].max
+    [column.length, *rows.map { |row| row[i].length }].max
   end
 
   puts columns.each_with_index.map { |c, i| c.ljust(widths[i]) }.join('  ')
   puts widths.map { |w| '-' * w }.join('  ')
   rows.each do |row|
-    puts row.each_with_index.map { |v, i| v.inspect.ljust(widths[i]) }.join('  ')
+    puts row.each_with_index.map { |v, i| v.ljust(widths[i]) }.join('  ')
   end
   puts
   puts "#{rows.size} row(s)"
