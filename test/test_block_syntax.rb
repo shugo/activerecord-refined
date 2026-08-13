@@ -450,6 +450,96 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/follows a when/, e.message)
   end
 
+  # A window is built by chaining, the way Arel's own is.
+  def test_over_with_no_window
+    assert_sql(/SELECT AVG\("users"."age"\) OVER \(\) AS v/,
+      User.select { avg(:age).over.as(:v) }.to_sql)
+  end
+
+  def test_over_partition_and_order
+    assert_sql(
+      /AVG\("users"."age"\) OVER \(PARTITION BY "users"."name" ORDER BY "users"."age" DESC\)/,
+      User.select { avg(:age).over.partition(:name).order(:age.desc).as(:v) }.to_sql)
+  end
+
+  def test_over_takes_several_expressions
+    assert_sql(/PARTITION BY "users"."name", "users"."age"/,
+      User.select { count(:*).over.partition(:name, :age).as(:v) }.to_sql)
+  end
+
+  # The window-only functions, which the adapters that have them at all spell
+  # the same way.
+  def test_window_functions
+    assert_sql(/ROW_NUMBER\(\) OVER \(ORDER BY "users"."age"\)/,
+      User.select { row_number.over.order(:age).as(:v) }.to_sql)
+    assert_sql(/RANK\(\) OVER/, User.select { rank.over.order(:age).as(:v) }.to_sql)
+    assert_sql(/NTILE\(2\) OVER/, User.select { ntile(2).over.order(:age).as(:v) }.to_sql)
+    assert_sql(/LAG\("users"."age", 1\) OVER/,
+      User.select { lag(:age).over.order(:age).as(:v) }.to_sql)
+    assert_sql(/LAG\("users"."age", 2, 0\) OVER/,
+      User.select { lag(:age, 2, 0).over.order(:age).as(:v) }.to_sql)
+  end
+
+  # A frame is a range of rows counted from the current one: negative before
+  # it, positive after, 0 the row itself, an open end for unbounded.
+  def test_window_frames
+    assert_sql(/ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW/,
+      User.select { sum(:age).over.order(:age).rows(..0).as(:v) }.to_sql)
+    assert_sql(/ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING/,
+      User.select { sum(:age).over.order(:age).rows(-1..1).as(:v) }.to_sql)
+    assert_sql(/ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING/,
+      User.select { sum(:age).over.order(:age).rows(0..).as(:v) }.to_sql)
+    assert_sql(/RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW/,
+      User.select { sum(:age).over.order(:age).range(..0).as(:v) }.to_sql)
+  end
+
+  def test_over_is_an_expression_like_any_other
+    assert_sql(/\(RANK\(\) OVER \(ORDER BY "users"."age"\) \+ 1\) AS v/,
+      User.select { (rank.over.order(:age) + 1).as(:v) }.to_sql)
+  end
+
+  def test_window_execution
+    User.delete_all
+    User.create!(name: 'a', age: 20)
+    User.create!(name: 'b', age: 30)
+    User.create!(name: 'c', age: 40)
+    assert_equal([1, 2, 3],
+      User.select { row_number.over.order(:age).as(:v) }.map {|u| u.v.to_i })
+    assert_equal([20, 50, 90],
+      User.select { sum(:age).over.order(:age).rows(..0).as(:v) }.map {|u| u.v.to_i })
+  end
+
+  # One window finished two ways: the methods return new nodes.
+  def test_a_window_is_not_added_to_in_place
+    sql = User.select {
+      started = sum(:age).over.order(:age)
+      [started.partition(:name).as(:a), started.as(:b)]
+    }.to_sql
+    assert_sql(/PARTITION BY "users"."name" ORDER BY "users"."age"\) AS a/, sql)
+    assert_sql(/SUM\("users"."age"\) OVER \(ORDER BY "users"."age"\) AS b/, sql)
+  end
+
+  def test_a_window_function_needs_over
+    e = assert_raises(ArgumentError) { User.select { row_number.as(:v) }.to_sql }
+    assert_match(/needs over/, e.message)
+  end
+
+  def test_a_window_has_one_frame
+    assert_raises(ArgumentError) { User.select { sum(:age).over.rows(..0).range(..0) } }
+  end
+
+  def test_a_frame_is_a_range_of_rows
+    assert_raises(ArgumentError) { User.select { sum(:age).over.rows(3) } }
+    assert_raises(ArgumentError) { User.select { sum(:age).over.rows('a'..'b') } }
+    e = assert_raises(ArgumentError) { User.select { sum(:age).over.rows(-2...0) } }
+    assert_match(/ends on a row/, e.message)
+  end
+
+  def test_partition_needs_an_expression
+    assert_raises(ArgumentError) { User.select { sum(:age).over.partition } }
+    assert_raises(ArgumentError) { User.select { sum(:age).over.order } }
+  end
+
   def test_case_needs_a_when
     e = assert_raises(ArgumentError) { User.select { self.case(:age).else(1) }.to_sql }
     assert_match(/needs a when/, e.message)

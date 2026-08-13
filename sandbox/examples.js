@@ -260,6 +260,28 @@ sql Post.select { fn(:hex, :id).as(:h) }
 Post.select { fn(:'evil"; DROP TABLE posts; --', 1) }`,
       },
       {
+        title: 'Window functions',
+        slug: 'over',
+        code: `# over gives a function a window.  It is built by chaining, the way Arel's
+# own is: partition, order, and a frame.
+show Author.select {
+  [
+    :name,
+    :country,
+    avg(:age).over.partition(:country).as(:country_average),
+    row_number.over.partition(:country).order(:age.desc).as(:rank),
+  ]
+}
+
+# A frame is a range of rows counted from the current one: negative before
+# it, positive after, 0 the row itself, an open end for unbounded.  ..0 is
+# what a running total wants.
+show Post.select { [:title, :likes, sum(:likes).over.order(:id).rows(..0).as(:running)] }
+
+# row_number and its kind say nothing without a window, and say so.
+Author.select { row_number.as(:r) }`,
+      },
+      {
         title: 'Ordering, and where NULLs go',
         slug: 'order',
         code: `show Author.order { :country.asc.nulls_last }.select { [:name, :country] }`,

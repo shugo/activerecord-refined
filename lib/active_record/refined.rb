@@ -163,6 +163,32 @@ module ActiveRecord
         AST::Cast.new(expr, type)
       end
 
+      # The functions that only mean anything with a window.  Every adapter
+      # that has window functions at all spells these the same -- PostgreSQL,
+      # MySQL 8, SQLite 3.25 -- so unlike the scalar functions there is nothing
+      # here to translate.  Each says so if `over` never arrives.
+      %i[row_number rank dense_rank percent_rank cume_dist].each do |name|
+        define_method(name) { AST::WindowFunction.new(name.to_s.upcase, []) }
+      end
+
+      %i[ntile first_value last_value].each do |name|
+        define_method(name) {|arg| AST::WindowFunction.new(name.to_s.upcase, [arg]) }
+      end
+
+      def nth_value(expr, nth)
+        AST::WindowFunction.new('NTH_VALUE', [expr, nth])
+      end
+
+      # The offset is written out rather than left to default, so that a
+      # default value cannot end up where the offset belongs.
+      def lag(expr, offset = 1, default = nil)
+        AST::WindowFunction.new('LAG', default.nil? ? [expr, offset] : [expr, offset, default])
+      end
+
+      def lead(expr, offset = 1, default = nil)
+        AST::WindowFunction.new('LEAD', default.nil? ? [expr, offset] : [expr, offset, default])
+      end
+
       # Escape hatch for functions without a method of their own.  The name is
       # emitted as written, so a case-sensitive one can be spelled exactly,
       # and for that reason it has to be a plain name, optionally qualified by

@@ -423,9 +423,106 @@ module ActiveRecord
         end
       end
 
+      # OVER, on the two things that can carry a window: an aggregate, and a
+      # function.
+      module Windowing
+        def over
+          Over.new(self)
+        end
+      end
+
+      # A function with a window.  The window is built by chaining, the way
+      # Arel's own is, and each method returns a new node rather than adding to
+      # this one, so a window can be finished more than one way.
+      class Over < Node
+        include Predications
+        include Arithmetics
+
+        attr_reader :function, :partitions, :orders, :frame
+
+        def initialize(function, partitions = [], orders = [], frame = nil)
+          @function = function
+          @partitions = partitions
+          @orders = orders
+          @frame = frame
+        end
+
+        def partition(*exprs)
+          raise ArgumentError, "partition needs an expression" if exprs.empty?
+          Over.new(function, partitions + exprs, orders, frame)
+        end
+
+        def order(*exprs)
+          raise ArgumentError, "order needs an expression" if exprs.empty?
+          Over.new(function, partitions, orders + exprs, frame)
+        end
+
+        def rows(bounds)
+          Over.new(function, partitions, orders, framing(:rows, bounds))
+        end
+
+        def range(bounds)
+          Over.new(function, partitions, orders, framing(:range, bounds))
+        end
+
+        def to_arel(table)
+          window = Arel::Nodes::Window.new
+          partitions.each {|expr| window.partition(to_arel_operand(expr, table)) }
+          orders.each {|expr| window.order(to_arel_operand(expr, table)) }
+          frame_arel(window) if frame
+
+          # A window-only function refuses to build on its own; here is where
+          # it is asked for the call itself.
+          arel_function =
+            function.is_a?(WindowFunction) ? function.call_arel(table)
+                                           : function.to_arel(table)
+          Arel::Nodes::Over.new(arel_function, window)
+        end
+
+        private
+
+        # The frame is a range of rows counted from the current one: negative
+        # before it, positive after, 0 the row itself, and an open end for
+        # unbounded.  `rows(..0)` is what a running total wants.
+        def framing(kind, bounds)
+          raise ArgumentError, "a window has one frame" if frame
+          unless bounds.is_a?(::Range)
+            raise ArgumentError, "#{kind} takes a range of rows, as in rows(..0)"
+          end
+          if bounds.exclude_end?
+            raise ArgumentError, "a frame ends on a row rather than before one; use .."
+          end
+          [bounds.begin, bounds.end].each do |bound|
+            next if bound.nil? || bound.is_a?(::Integer)
+            raise ArgumentError,
+              "a frame bound is a number of rows, or nothing for unbounded"
+          end
+          [kind, bounds.begin, bounds.end]
+        end
+
+        # Arel wants the keyword itself on the left of the BETWEEN, which is
+        # what window.rows with no argument hands back.
+        def frame_arel(window)
+          kind, from, to = frame
+          window.frame(
+            Arel::Nodes::Between.new(
+              window.public_send(kind),
+              Arel::Nodes::And.new([bound(from, Arel::Nodes::Preceding.new),
+                                    bound(to, Arel::Nodes::Following.new)])))
+        end
+
+        def bound(rows, unbounded)
+          return unbounded if rows.nil?
+          return Arel::Nodes::CurrentRow.new if rows.zero?
+          rows.negative? ? Arel::Nodes::Preceding.new(-rows)
+                         : Arel::Nodes::Following.new(rows)
+        end
+      end
+
       class Aggregate < Node
         include Predications
         include Arithmetics
+        include Windowing
 
         attr_reader :operand, :function, :distinct
 
@@ -492,6 +589,7 @@ module ActiveRecord
       class Function < Node
         include Predications
         include Arithmetics
+        include Windowing
 
         attr_reader :name, :args
 
@@ -503,6 +601,17 @@ module ActiveRecord
         def to_arel(table)
           arel_args = args.map {|arg| to_arel_argument(arg, table) }
           Arel::Nodes::NamedFunction.new(name, arel_args)
+        end
+      end
+
+      # ROW_NUMBER and its kind: functions that say nothing without a window.
+      # On its own this refuses rather than reaching the database as an error
+      # there; over asks it for call_arel instead.
+      class WindowFunction < Function
+        alias_method :call_arel, :to_arel
+
+        def to_arel(_table)
+          raise ArgumentError, "#{name.downcase} is a window function; it needs over"
         end
       end
 

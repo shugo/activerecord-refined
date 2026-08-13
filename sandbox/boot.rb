@@ -182,31 +182,33 @@ end
 def format_sql(sql)
   masked = mask_quoted(sql)
   out = +''
-  # One entry per open parenthesis, saying whether a clause was broken inside
-  # it: that is what decides whether its `)` deserves a line of its own or is
-  # closing something like COUNT(*).
-  broken = []
+  # One entry per open parenthesis: whether a clause was broken inside it,
+  # which decides whether its `)` deserves a line of its own or is closing
+  # something like COUNT(*), and whether it is a window, whose ORDER BY names
+  # the window rather than the statement and is left where it is.
+  open = []
   newline = lambda do
     out.rstrip!
-    out << "\n" << '  ' * broken.size unless out.empty?
+    out << "\n" << '  ' * open.size unless out.empty?
   end
 
   i = 0
   while i < sql.length
     case masked[i]
     when '('
-      broken.push(false)
+      open.push([false, masked[0...i].rstrip.end_with?('OVER')])
       out << sql[i]
       i += 1
     when ')'
-      newline.call if broken.pop
+      newline.call if open.pop.first
       out << sql[i]
       i += 1
     else
       # Only at the start of a word: FROM in far_from_here is not a clause.
       at_word_start = i.zero? || masked[i - 1] =~ /[\s(,]/
-      if at_word_start && (m = CLAUSE_AT.match(masked, i))
-        broken[-1] = true unless broken.empty?
+      if at_word_start && (m = CLAUSE_AT.match(masked, i)) &&
+         open.none? {|_, window| window }
+        open[-1][0] = true unless open.empty?
         newline.call
         out << sql[i, m[0].length]
         i += m[0].length
