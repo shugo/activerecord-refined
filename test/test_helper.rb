@@ -94,6 +94,11 @@ module SqlAssertions
     ADAPTER == 'mysql2' && ActiveRecord::Base.connection.mariadb?
   end
 
+  # DISTINCT ON is PostgreSQL's; Arel refuses to write it for the others.
+  def skip_without_distinct_on
+    skip "#{ADAPTER} has no DISTINCT ON" unless ADAPTER == 'postgresql'
+  end
+
   def skip_without_array_columns
     skip "#{ADAPTER} has no array columns" unless ADAPTER == 'postgresql'
   end

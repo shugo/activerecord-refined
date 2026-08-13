@@ -259,6 +259,33 @@ Employee.joins(:employees, as: :managers) { :managers[:id] == :employees[:manage
 #   INNER JOIN "employees" "managers" ON "managers"."id" = "employees"."manager_id"
 ```
 
+### Keeping one row per group
+
+`distinct_on` is PostgreSQL's `DISTINCT ON`: the first row of each group the
+order brings up.
+
+```ruby
+Post.distinct_on { :author_id }.order { [:author_id, :likes.desc] }
+# SELECT DISTINCT ON ( "author_id" ) "posts".* FROM "posts"
+#   ORDER BY "author_id", "likes" DESC
+```
+
+Arel carries the node and refuses to write it for the others, the way it does
+a regexp, so it raises `NotImplementedError` on SQLite and MySQL. The shape
+that runs everywhere is a `row_number` window in a subquery, which says the
+same thing at more length:
+
+```ruby
+ranked = Post.select {
+  [:author_id, :likes, row_number.over.partition(:author_id).order(:likes.desc).as(:rn)]
+}
+Post.from(ranked, :posts).where { :rn == 1 }
+```
+
+The subquery is named after the model's own table for the reason `from_cte`
+is: ActiveRecord goes on qualifying columns with that name, so `where` needs
+to find it.
+
 ### Common table expressions
 
 ActiveRecord's `with` and `with_recursive` need nothing from this gem: a CTE

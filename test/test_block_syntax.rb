@@ -1728,6 +1728,56 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/not both/, e.message)
   end
 
+  # DISTINCT ON keeps the first row of each group the order brings up.
+  def seed_for_distinct_on
+    Author.delete_all
+    Author.create!(name: 'a')
+    Author.create!(name: 'a')
+    Author.create!(name: 'b')
+  end
+
+  def test_distinct_on
+    skip_without_distinct_on
+    seed_for_distinct_on
+    assert_sql(/SELECT DISTINCT ON \( "authors"."name" \)/,
+      Author.distinct_on { :name }.to_sql)
+    assert_equal(%w[a b], Author.distinct_on { :name }.order { :name }.pluck(:name))
+  end
+
+  def test_distinct_on_takes_columns_as_well_as_a_block
+    skip_without_distinct_on
+    assert_equal(Author.distinct_on { :name }.to_sql, Author.distinct_on(:name).to_sql)
+  end
+
+  def test_distinct_on_takes_several
+    skip_without_distinct_on
+    assert_sql(/DISTINCT ON \( "authors"."id", "authors"."name" \)/,
+      Author.distinct_on { [:id, :name] }.to_sql)
+  end
+
+  def test_distinct_on_takes_an_expression
+    skip_without_distinct_on
+    assert_sql(/DISTINCT ON \( UPPER\("authors"."name"\) \)/,
+      Author.distinct_on { upper(:name) }.to_sql)
+  end
+
+  # Arel carries the node and refuses to write it elsewhere, as it does a
+  # regexp, so the gem has nothing of its own to say.
+  def test_distinct_on_says_where_it_cannot_go
+    skip "#{ADAPTER} has DISTINCT ON" if ADAPTER == 'postgresql'
+    assert_raises(NotImplementedError) { Author.distinct_on { :name }.to_sql }
+  end
+
+  def test_distinct_on_needs_a_column
+    assert_raises(ArgumentError) { Author.distinct_on }
+  end
+
+  def test_distinct_on_spawns
+    refute_match(/DISTINCT ON/, Author.all.to_sql)
+    Author.distinct_on { :name }
+    refute_match(/DISTINCT ON/, Author.all.to_sql)
+  end
+
   def test_default_where_syntax
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
       User.where(name: 'Ruby', age: 19).to_sql)

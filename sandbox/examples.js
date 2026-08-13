@@ -383,6 +383,32 @@ show Author.where { :name == 'Alice' }`,
   },
 
   {
+    group: 'One row per group',
+    items: [
+      {
+        title: 'distinct_on',
+        slug: 'distinct-on',
+        code: `# distinct_on is PostgreSQL's DISTINCT ON: the first row of each group
+# the order brings up.  Arel refuses to write it for the others, so this
+# page -- which is SQLite -- cannot run it.
+sql Author.distinct_on { :country }.order { [:country, :age.desc] }`,
+      },
+      {
+        title: 'The portable shape',
+        slug: 'row-number-per-group',
+        code: `# A row_number window in a subquery says the same thing and runs
+# everywhere.  The subquery is named after the model's own table for the
+# reason from_cte is: ActiveRecord goes on qualifying columns with it.
+ranked = Author.select {
+  [:name, :country, :age, row_number.over.partition(:country).order(:age.desc).as(:rn)]
+}
+
+show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
+      },
+    ],
+  },
+
+  {
     group: 'Common table expressions',
     items: [
       {

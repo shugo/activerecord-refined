@@ -322,6 +322,39 @@ module ActiveRecord
         from(name, as: klass.table_name)
       end
 
+      # DISTINCT ON (...), which keeps the first row of each group the order
+      # brings up.  PostgreSQL has it and the others do not; Arel carries the
+      # node and refuses to write it elsewhere, the way it does a regexp, so
+      # there is nothing for this to check:
+      #
+      #   Post.distinct_on { :author }.order { [:author, :likes.desc] }
+      #
+      # The portable shape is a row_number window in a subquery, which the
+      # README shows.
+      def distinct_on(*columns, &block)
+        spawn.distinct_on!(*columns, &block)
+      end
+
+      def distinct_on!(*columns, &block)
+        columns = Array(evaluate_block(&block)) if block
+        if columns.empty?
+          raise ArgumentError, "distinct_on needs a column or an expression"
+        end
+        self.distinct_on_values += columns
+        self
+      end
+
+      # ActiveRecord generates these for the values it knows about; this one
+      # is ours, and lives in the same place so that it survives a spawn.
+      def distinct_on_values
+        @values.fetch(:distinct_on, ActiveRecord::QueryMethods::FROZEN_EMPTY_ARRAY)
+      end
+
+      def distinct_on_values=(columns)
+        assert_modifiable!
+        @values[:distinct_on] = columns
+      end
+
       # `as` names the table within the query, which is what makes a self
       # join expressible: joins(:employees, as: :managers) { ... }.
       def joins(*args, as: nil, &block)
@@ -343,6 +376,14 @@ module ActiveRecord
       end
 
       private
+
+      def build_arel(...)
+        arel = super
+        unless distinct_on_values.empty?
+          arel.distinct_on(distinct_on_values.map {|column| to_arel_field(column) })
+        end
+        arel
+      end
 
       def evaluate_block(&block)
         refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
