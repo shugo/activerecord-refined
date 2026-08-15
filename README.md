@@ -747,7 +747,27 @@ SQL has no one name to borrow here, since PostgreSQL says `jsonb_set` where
 the others say `JSON_SET`.
 
 `dig_json` keeps the JSON, for a document to be dug into further or compared
-whole. `contains?` has no equivalent on SQLite and raises `NotImplementedError`
+whole — so the JSON operations read what it gives, which is the same question
+asked of a part of the document rather than of all of it:
+
+```ruby
+Post.where { :meta.dig_json(:author).key?(:email) }
+Post.where { :meta.dig_json(:author).dig(:name) == 'alice' }
+Post.update_all { { meta: :meta.dig_json(:author).bury(:name, 'alice') } }
+```
+
+Containment reads it too, on the adapters that have containment at all:
+
+```ruby
+Post.where { :meta.dig_json(:tags).contains?(['ruby']) }
+```
+
+Asking the same of `dig` raises `ArgumentError`: what it gives is text, and
+reading text back as a document is where the adapters part company — SQLite
+parses it, MySQL takes it as written, and PostgreSQL has no such function for
+text at all.
+
+`contains?` has no equivalent on SQLite and raises `NotImplementedError`
 there — later than the rest, since the adapter is only known when the SQL is
 built. On PostgreSQL, `contains?` and `key?` want a `jsonb` column; the
 `json` type carries neither operator.

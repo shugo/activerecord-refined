@@ -1890,6 +1890,38 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Doc.where { :meta.dig_json(:n) == 5 } }
   end
 
+  # What dig_json gives is a document, so the JSON operations read it: the
+  # same question asked of a part rather than of the whole.
+  def test_the_json_operations_read_what_dig_json_kept
+    seed_docs
+    assert_equal(['one'], Doc.where { :meta.dig_json(:a).key?(:b) }.pluck(:name))
+    assert_equal(%w[one two], Doc.where { :meta.dig_json(:n).not_null? }.order(:name).pluck(:name))
+    assert_equal(['one'],
+      Doc.where { :meta.dig_json(:a).dig(:b) == 'deep' }.pluck(:name))
+    value = Doc.where { :name == 'one' }.
+      select { :meta.dig_json(:a).bury(:b, 'x').as(:v) }.first.v
+    assert_equal('x', (value.is_a?(String) ? JSON.parse(value) : value)['b'])
+  end
+
+  def test_containment_reads_what_dig_json_kept
+    skip_without_json_containment
+    seed_docs
+    assert_equal(['one'], Doc.where { :meta.dig_json(:tags).contains?(['x']) }.pluck(:name))
+    assert_equal([], Doc.where { :meta.dig_json(:tags).contains?(['z']) }.pluck(:name))
+  end
+
+  # Reading text back as a document is where the adapters part company:
+  # SQLite parses it, MySQL takes it as written, PostgreSQL has no such
+  # function for text at all.
+  def test_the_json_operations_are_refused_on_a_dug_value
+    e = assert_raises(ArgumentError) { Doc.where { :meta.dig(:a).key?(:b) } }
+    assert_match(/dig_json keeps it/, e.message)
+    assert_raises(ArgumentError) { Doc.where { :meta.dig(:a).contains?(b: 1) } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).dig(:b) } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).dig_json(:b) } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).bury(:b, 'x') } }
+  end
+
   def test_dig_from_a_qualified_column
     seed_docs
     assert_equal(['one'], Doc.where { :docs[:meta].dig(:a, :b) == 'deep' }.pluck(:name))

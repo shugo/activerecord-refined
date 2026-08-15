@@ -401,10 +401,15 @@ show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }`,
         slug: 'key',
         code: `show Doc.where { :meta.key?(:author) }
 
+# What dig_json keeps is a document, so these read it too: the same
+# question asked of a part rather than of the whole.
+show Doc.where { :meta.dig_json(:author).key?(:name) }
+
 # No two adapters spell any of this alike; the block is the same on all
 # three.  Containment is the exception -- SQLite has none, so this page
-# cannot run it.
-Doc.where { :meta.contains?(stars: 5) }`,
+# cannot run it unless the database above is PostgreSQL.
+show Doc.where { :meta.contains?(stars: 5) }
+show Doc.where { :meta.dig_json(:tags).contains?(['sql']) }`,
       },
     ],
   },

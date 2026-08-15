@@ -558,11 +558,30 @@ module ActiveRecord
         end
       end
 
+      # The JSON operations read a document, and what dig_json gives is one:
+      # `dig_json(:author).key?(:email)` and `dig_json(:tags).contains?(...)`
+      # are the same question asked of a part of it, and the adapters answer
+      # them alike.  What dig gives is text, and reading that as a document
+      # again is where they part company: SQLite parses it back and MySQL
+      # takes it as written, where PostgreSQL has no such function for text.
+      module JsonDocument
+        %i[dig dig_json key? contains? bury].each do |name|
+          define_method(name) do |*args|
+            unless as_json
+              raise ArgumentError,
+                "dig gives text, and #{name} reads JSON; dig_json keeps it"
+            end
+            super(*args)
+          end
+        end
+      end
+
       class JsonPath < Node
         include Predications
         include Arithmetics
         include JsonSteps
         include JsonComparable
+        include JsonDocument
 
         attr_reader :operand, :path, :as_json
 
