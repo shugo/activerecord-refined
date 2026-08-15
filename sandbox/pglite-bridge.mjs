@@ -49,7 +49,11 @@ function rawParsers(types) {
 
 // query() takes one statement; the schema arrives as several at once, and
 // exec() is the one that takes those.  Told apart the way wasmify-rails tells
-// them apart, by a statement keyword following a semicolon.
+// them apart, by a statement keyword following a semicolon -- which is a guess
+// about text, and a statement carrying a literal such as '; select' answers to
+// it as well.  exec() takes no parameters, so that guess is only made when
+// there are none to lose; a bound statement that took this path came back as
+// "there is no parameter $1".
 const SEVERAL = /;\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|TRUNCATE|WITH|EXPLAIN|ANALYZE|VACUUM|GRANT|REVOKE|BEGIN|COMMIT|ROLLBACK)/i;
 
 class Interface {
@@ -63,7 +67,9 @@ class Interface {
   }
 
   async query(sql, params) {
-    if (SEVERAL.test(sql)) return (await this.db.exec(sql, this.options))[0];
+    if (!params?.length && SEVERAL.test(sql)) {
+      return (await this.db.exec(sql, this.options))[0];
+    }
     return await this.db.query(sql, params, this.options);
   }
 }
