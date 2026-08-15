@@ -503,10 +503,66 @@ module ActiveRecord
       #
       # The path is turned into a string either way, so a key with a space or
       # a quote in it travels as itself rather than having to be refused.
+      # What a dug value may be compared with.  dig gives text on every
+      # adapter, and what a text value compared with a number means is a
+      # question the three answer three ways: `dig(:n) == 5` is true on
+      # SQLite, an error on PostgreSQL and true on MySQL, while
+      # `dig(:flag) == true` is true, an error, and false.  cast is what says
+      # which type was meant, and then all three agree.
+      #
+      # dig_json is refused the other way about: the JSON for a string carries
+      # its quotes, so `dig_json(:name) == 'alice'` is false on SQLite, an
+      # error on PostgreSQL and true on MySQL.  dig is the one that gives the
+      # value.
+      #
+      # A string against dig, and anything the block itself built -- a column,
+      # a function, another dug value -- go through untouched.
+      module JsonComparable
+        %i[== != < <= > >=].each do |operator|
+          define_method(operator) do |other|
+            check_comparable(other)
+            super(other)
+          end
+        end
+
+        def in?(values) = super(check_each(values))
+        def not_in?(values) = super(check_each(values))
+        def between?(min, max) = super(*check_each([min, max]))
+        def not_between?(min, max) = super(*check_each([min, max]))
+
+        private
+
+        # nil is left to the comparison itself, which says to use null?, and
+        # so is anything the block built rather than wrote as a literal.
+        def check_comparable(other)
+          return if other.nil? || other.is_a?(Node) || other.is_a?(::Symbol) ||
+                    other.is_a?(Arel::Nodes::Node) ||
+                    other.is_a?(Arel::Attributes::Attribute) ||
+                    other.is_a?(ActiveRecord::Relation)
+          return if other.is_a?(::String) && !as_json
+
+          raise ArgumentError, as_json ?
+            "dig_json gives JSON, and comparing it with #{other.inspect} " \
+            "means something different on every adapter; dig gives the value" :
+            "dig gives text, and comparing it with #{other.inspect} means " \
+            "something different on every adapter; cast it to the type meant"
+        end
+
+        def check_each(values)
+          case values
+          when ActiveRecord::Relation then values
+          when ::Range then [values.begin, values.end].each {|v| check_comparable(v) }
+          else values.each {|value| check_comparable(value) }
+          end
+          values
+        end
+      end
+
       class JsonPath < Node
         include Predications
         include Arithmetics
         include JsonSteps
+        include JsonComparable
 
         attr_reader :operand, :path, :as_json
 

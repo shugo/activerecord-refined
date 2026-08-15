@@ -717,6 +717,16 @@ Post.where { cast(:meta.dig(:n), 'integer') > 6 }   # 'signed' on MySQL
 
 The type is the adapter's own name for it, here as everywhere `cast` is used.
 
+Comparing a dug value with anything but a string raises `ArgumentError` rather
+than being left to the adapters, which answer it three ways: `dig(:n) == 5` is
+true on SQLite, an error on PostgreSQL and true on MySQL, and
+`dig(:flag) == true` is true, an error and false. `cast` is what says which
+type was meant, and then all three agree. `dig_json` is refused the other way
+about — the JSON for a string carries its quotes, so `dig_json(:name) ==
+'alice'` is false, an error and true — and `dig` is the one that gives the
+value. A column, a function or another dug value on the right goes through
+untouched; only a Ruby literal is refused.
+
 `bury` sets what `dig` reads: the last argument is the value and the rest are
 the path to it. The document comes back changed rather than being written
 anywhere, so `update_all` is what makes it stick:

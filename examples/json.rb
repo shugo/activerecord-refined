@@ -48,8 +48,24 @@ show('dig in a condition',
   Document.where { :meta.dig(:author, :country) == 'JP' },
   Document.where { :meta.dig(:author, :country) == 'JP' }.pluck(:name))
 
+# A dug value is text, so a number goes through a cast.  Comparing it with
+# one instead is refused rather than left to the adapters, which answer that
+# three ways: true here, an error on PostgreSQL, true on MySQL.
+show('a number wants a cast',
+  Document.where { cast(:meta.dig(:views), 'integer') > 100 },
+  Document.where { cast(:meta.dig(:views), 'integer') > 100 }.pluck(:name))
+
+begin
+  Document.where { :meta.dig(:views) > 100 }
+rescue ArgumentError => e
+  puts '--- and without one it says so ---'
+  puts "  #{e.message}"
+  puts
+end
+
 # dig_json keeps the JSON, for a part of the document to be dug into further
-# or compared whole.  The quotes around the string are the sign of it.
+# or compared whole.  The quotes around the string are the sign of it -- and
+# the reason a Ruby value is refused on this side too.
 show('dig_json keeps the JSON',
   Document.select { [:name, :meta.dig_json(:author).as(:author)] },
   Document.select { [:name, :meta.dig_json(:author).as(:author)] }.

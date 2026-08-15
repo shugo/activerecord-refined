@@ -377,7 +377,12 @@ show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
 show Doc.select { [:name, :meta.dig(:author, :name).as(:author), :meta.dig(:tags, 0).as(:first_tag)] }
 
 # dig gives text on every adapter, so a number is compared through a cast.
-show Doc.where { cast(:meta.dig(:stars), 'integer') > 6 }`,
+show Doc.where { cast(:meta.dig(:stars), 'integer') > 6 }
+
+# Comparing it with a number instead is refused: the three adapters
+# answer that three ways -- true here, an error on PostgreSQL, true on
+# MySQL -- and cast is what says which type was meant.
+show Doc.where { :meta.dig(:stars) > 6 }`,
       },
       {
         title: 'bury',

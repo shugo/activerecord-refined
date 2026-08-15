@@ -1856,6 +1856,40 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(%w[x y], value.is_a?(String) ? JSON.parse(value) : value)
   end
 
+  # What text compared with a number means is a question the three adapters
+  # answer three ways -- `dig(:n) == 5` is true on SQLite, an error on
+  # PostgreSQL and true on MySQL, and `dig(:flag) == true` is true, an error
+  # and false -- so the comparison is refused rather than left to them.
+  def test_dig_refuses_a_comparison_with_anything_but_text
+    e = assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) == 5 } }
+    assert_match(/cast/, e.message)
+    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) != 5 } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) > 6 } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig(:flag) == true } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n).in?([1, 2]) } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n).between?(1, 9) } }
+  end
+
+  # A string is what a dug value compares to; so is anything the block built
+  # rather than wrote as a literal, since that is nobody's guess to make.
+  def test_dig_compares_with_text_and_with_expressions
+    seed_docs
+    assert_equal(['one'], Doc.where { :meta.dig(:n) == '5' }.pluck(:name))
+    assert_equal([], Doc.where { :meta.dig(:n) == :name }.pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig(:n) == upper('5') }.pluck(:name))
+    type = integer_type
+    assert_equal(['one'], Doc.where { cast(:meta.dig(:n), type) == 5 }.pluck(:name))
+  end
+
+  # The JSON for a string carries its quotes, so the same comparison is
+  # refused the other way about: false on SQLite, an error on PostgreSQL and
+  # true on MySQL.
+  def test_dig_json_refuses_a_comparison_with_a_ruby_value
+    e = assert_raises(ArgumentError) { Doc.where { :meta.dig_json(:a) == 'deep' } }
+    assert_match(/dig gives the value/, e.message)
+    assert_raises(ArgumentError) { Doc.where { :meta.dig_json(:n) == 5 } }
+  end
+
   def test_dig_from_a_qualified_column
     seed_docs
     assert_equal(['one'], Doc.where { :docs[:meta].dig(:a, :b) == 'deep' }.pluck(:name))
