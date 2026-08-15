@@ -14,36 +14,17 @@
 // comes out of to_s as nothing ActiveRecord can parse.  Parsing every type as
 // itself hands over the text PostgreSQL wrote, which is what the pg gem would
 // have handed over and what ActiveRecord's own casting expects.
-// The array types have to be named: PGlite parses an array whether or not
-// there is a parser registered for its type, and what it hands over then is a
-// JS array, which reaches Ruby through to_s as its elements joined by commas
-// -- {a,"b,c"} and {a,b,c} both arriving as "a,b,c".  Written out rather than
-// worked out from the element types, since PostgreSQL's array OIDs follow no
-// rule.  Anything not listed comes back as the JS value PGlite made of it,
-// which for a type ActiveRecord has no column of is no worse than the text.
-const ARRAY_OIDS = [
-  199,   // json[]
-  1000,  // boolean[]
-  1005,  // smallint[]
-  1007,  // integer[]
-  1009,  // text[]
-  1014,  // character[]
-  1015,  // character varying[]
-  1016,  // bigint[]
-  1021,  // real[]
-  1022,  // double precision[]
-  1028,  // oid[]
-  1115,  // timestamp[]
-  1182,  // date[]
-  1183,  // time[]
-  1185,  // timestamptz[]
-  1231,  // numeric[]
-  2951,  // uuid[]
-  3807,  // jsonb[]
-];
+// The array types have to be named as well: PGlite parses an array whether or
+// not there is a parser registered for its type, and what it hands over then
+// is a JS array, which reaches Ruby through to_s as its elements joined by
+// commas -- {a,"b,c"} and {a,b,c} both arriving as "a,b,c".  Which OIDs those
+// are is asked of the database rather than listed here, PostgreSQL's array
+// OIDs following no rule that could be worked out from the element types.
+const ARRAY_OIDS = "SELECT oid FROM pg_type WHERE typcategory = 'A'";
 
-function rawParsers(types) {
-  const oids = [...Object.keys(types.parsers), ...ARRAY_OIDS];
+async function rawParsers(db, types) {
+  const arrays = await db.query(ARRAY_OIDS);
+  const oids = [...Object.keys(types.parsers), ...arrays.rows.map((row) => row.oid)];
   return Object.fromEntries(oids.map((oid) => [oid, (value) => value]));
 }
 
@@ -86,7 +67,7 @@ export function createBridge({ PGlite, types }) {
       // No dataDir, so the database lives in memory and goes when the page
       // does -- the same bargain as the SQLite one beside it.
       const db = await PGlite.create();
-      const iface = new Interface(db, `pglite_${database}`, rawParsers(types));
+      const iface = new Interface(db, `pglite_${database}`, await rawParsers(db, types));
       globalThis[iface.identifier] = this.interfaces[database] = iface;
       return iface.identifier;
     },

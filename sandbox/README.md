@@ -88,12 +88,19 @@ is read back in the local zone, and jsonb as an object that comes out of `to_s`
 as nothing ActiveRecord can parse. Parsing every type as itself hands over the
 text PostgreSQL wrote, which is what the pg gem would have handed over.
 
-The array types have to be named for this one by one, and named on each call:
-PGlite parses an array whether or not a parser is registered for its type, and
-only the options of the call itself are consulted for them — the ones
-`PGlite.create` was given are not. What arrives when this is missed is a JS
-array, which reaches Ruby through `to_s` as its elements joined by commas, so
-`{a,"b,c"}` and `{a,b,c}` both come out as `a,b,c`.
+The array types have to be named as well, and named on each call: PGlite parses
+an array whether or not a parser is registered for its type, and only the
+options of the call itself are consulted for them — the ones `PGlite.create`
+was given are not. What arrives when this is missed is a JS array, which
+reaches Ruby through `to_s` as its elements joined by commas, so `{a,"b,c"}`
+and `{a,b,c}` both come out as `a,b,c`.
+
+Which OIDs those are is asked of the database rather than listed, PostgreSQL's
+array OIDs following no rule that could be worked out from the element types:
+
+```sql
+SELECT oid FROM pg_type WHERE typcategory = 'A'
+```
 
 A result read through the connection rather than through a model is not cast by
 anyone, and with the parsers off it is text all the way down, so `show` and the
