@@ -1920,6 +1920,7 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).dig(:b) } }
     assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).dig_json(:b) } }
     assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).bury(:b, 'x') } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).except(:b) } }
   end
 
   def test_dig_from_a_qualified_column
@@ -2215,6 +2216,44 @@ class TestBlockSyntax < Minitest::Test
   def test_bury_needs_a_path
     assert_raises(ArgumentError) { Doc.select { :meta.bury('v') } }
     assert_raises(ArgumentError) { Doc.select { :meta.bury(1.5, 'v') } }
+  end
+
+  # except takes keys out, by the name of what Hash does.  PostgreSQL
+  # subtracts them where the others remove a path apiece, and what comes back
+  # is the same document on all three.
+  def test_except_a_key
+    assert_equal({ 'a' => { 'b' => 'deep' }, 'tags' => %w[x y], 'odd key' => 1 },
+      buried { { meta: :meta.except(:n) } })
+  end
+
+  def test_except_several_keys
+    assert_equal({ 'a' => { 'b' => 'deep' } },
+      buried { { meta: :meta.except(:n, :tags, :'odd key') } })
+  end
+
+  # A key that is not there is not an error, as Hash#except has none for it.
+  def test_except_a_key_that_is_not_there
+    assert_equal(5, buried { { meta: :meta.except(:nothing) } }['n'])
+  end
+
+  # The document a bury gives back is one to take keys out of.
+  def test_except_after_bury
+    document = buried { { meta: :meta.bury(:fresh, 9).except(:n) } }
+    assert_equal(9, document['fresh'])
+    assert_nil(document['n'])
+  end
+
+  def test_except_in_a_select
+    seed_docs
+    value = Doc.where { :name == 'one' }.select { :meta.except(:n).as(:v) }.first.v
+    assert_nil((value.is_a?(String) ? JSON.parse(value) : value)['n'])
+  end
+
+  # An index is not what the name says anywhere, and a path is bury's.
+  def test_except_takes_keys
+    assert_raises(ArgumentError) { Doc.select { :meta.except } }
+    e = assert_raises(ArgumentError) { Doc.select { :meta.except(0) } }
+    assert_match(/keys of the document/, e.message)
   end
 
   def test_default_where_syntax

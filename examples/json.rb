@@ -108,3 +108,15 @@ rescue ArgumentError => e
   puts "  #{e.message}"
   puts
 end
+
+# 4. Taking keys out again, as Hash#except does: keys of the document rather
+#    than a path, however many of them, and a key that is not there is no
+#    error.  The document comes back changed, so it chains with bury.
+show('the expression except builds',
+  Document.select { [:name, :meta.except(:views, :draft).as(:trimmed)] })
+
+Document.where { :name == 'guide' }.
+  update_all { {meta: :meta.bury(:author, :country, 'JP').except(:tags, :views)} }
+puts '--- buried and excepted in one statement ---'
+puts "  #{Document.find_by(name: 'guide').meta.inspect}"
+puts

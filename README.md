@@ -746,6 +746,25 @@ Ruby method; it is the name Ruby considered for the other end of `dig`, and
 SQL has no one name to borrow here, since PostgreSQL says `jsonb_set` where
 the others say `JSON_SET`.
 
+`except` takes keys out again, and takes them as `Hash#except` does — keys of
+the document, however many, rather than a path, which is `bury`'s way of
+reaching further in. It gives back the document changed, so it chains with
+`bury` and goes where `bury` goes:
+
+```ruby
+Post.update_all { { meta: :meta.except(:draft) } }
+# SET "meta" = "meta" - CAST('{"draft"}' AS text[])
+# ...          JSON_REMOVE("meta", '$.draft')   elsewhere
+
+Post.update_all { { meta: :meta.bury(:author, :name, 'alice').except(:tmp) } }
+```
+
+A key that is not there is not an error, as it is not to `Hash#except`. The
+cast is not decoration: `jsonb` has three subtractions — a key, an array of
+keys, an element by index — and an array literal written without a type is
+read as the first of them, so `"meta" - '{draft}'` takes out the key spelled
+`{draft}`, which is nothing, and says nothing about it.
+
 `dig_json` keeps the JSON, for a document to be dug into further or compared
 whole — so the JSON operations read what it gives, which is the same question
 asked of a part of the document rather than of all of it:

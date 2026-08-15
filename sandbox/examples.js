@@ -385,7 +385,7 @@ show Doc.where { cast(:meta.dig(:stars), 'integer') > 6 }
 show Doc.where { :meta.dig(:stars) > 6 }`,
       },
       {
-        title: 'bury',
+        title: 'bury and except',
         slug: 'bury',
         code: `# bury sets what dig reads: the last argument is the value, the rest are
 # the path to it.  The document comes back changed rather than being
@@ -394,7 +394,15 @@ show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }
 
 Doc.where { :name == 'first' }.update_all { { meta: :meta.bury(:author, :name, 'Erin') } }
 
-show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }`,
+show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }
+
+# except takes keys out again, as Hash#except does -- keys of the
+# document, however many, rather than a path.  It gives back a document
+# too, so the two chain into one statement.
+Doc.where { :name == 'second' }.
+  update_all { { meta: :meta.bury(:stars, 99).except(:tags) } }
+
+show Doc.where { :name == 'second' }`,
       },
       {
         title: 'key? and contains?',

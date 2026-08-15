@@ -228,6 +228,13 @@ module ActiveRecord
           JsonPath.new(self, path, as_json: true)
         end
 
+        # Keys taken out of a JSON document, by the name of what Hash does,
+        # and taking keys as Hash#except takes them.  Like bury it gives back
+        # the document changed rather than writing it anywhere.
+        def except(*keys)
+          JsonExcept.new(self, keys)
+        end
+
         # What dig reads, bury sets: the last argument is the value and the
         # rest are the path to it.  The document comes back changed rather
         # than being written anywhere, which update_all is for.
@@ -474,20 +481,23 @@ module ActiveRecord
         end
 
         # PostgreSQL takes the steps as a text array, where every element is
-        # quoted so that a comma or a brace in a key is part of it.
-        def steps_array
-          "{#{path.map {|step| %("#{escape_step(step)}") }.join(',')}}"
+        # quoted so that a comma or a brace in a key is part of it.  except
+        # writes its keys the same way, which are steps of no one path.
+        def steps_array(steps = path)
+          "{#{steps.map {|step| %("#{escape_step(step)}") }.join(',')}}"
         end
 
         # MySQL and SQLite take a path expression instead, where an integer is
         # a subscript and a name that is not plain has to be quoted.
         def dollar_path
-          path.inject(+'$') do |so_far, step|
-            next so_far << "[#{step}]" if step.is_a?(::Integer)
-            name = step.to_s
-            so_far << '.' << (name.match?(/\A[[:alpha:]_][[:alnum:]_]*\z/) ?
-                              name : %("#{escape_step(step)}"))
-          end
+          path.inject(+'$') {|so_far, step| so_far << dollar_step(step) }
+        end
+
+        def dollar_step(step)
+          return "[#{step}]" if step.is_a?(::Integer)
+          name = step.to_s
+          '.' + (name.match?(/\A[[:alpha:]_][[:alnum:]_]*\z/) ?
+                 name : %("#{escape_step(step)}"))
         end
 
         def escape_step(step)
@@ -565,7 +575,7 @@ module ActiveRecord
       # again is where they part company: SQLite parses it back and MySQL
       # takes it as written, where PostgreSQL has no such function for text.
       module JsonDocument
-        %i[dig dig_json key? contains? bury].each do |name|
+        %i[dig dig_json key? contains? bury except].each do |name|
           define_method(name) do |*args|
             unless as_json
               raise ArgumentError,
@@ -667,6 +677,55 @@ module ActiveRecord
 
         def expression?
           value.is_a?(Node) || value.is_a?(::Symbol)
+        end
+      end
+
+      # Keys taken out of a JSON document.  PostgreSQL subtracts them, the
+      # other two remove a path apiece.
+      class JsonExcept < Node
+        include Predications
+        include JsonSteps
+
+        attr_reader :operand, :keys
+
+        def initialize(operand, keys)
+          @operand = operand
+          @keys = check_keys(keys)
+        end
+
+        def to_arel(table, model)
+          document = to_arel_operand(operand, table, model)
+          return Arel::Nodes::InfixOperation.new(:-, document, key_array) if
+            AST.adapter_family(model) == :postgresql
+
+          Arel::Nodes::NamedFunction.new(
+            'JSON_REMOVE',
+            [document, *keys.map {|key| Arel::Nodes.build_quoted("$#{dollar_step(key)}") }])
+        end
+
+        private
+
+        # jsonb has three subtractions -- a key, an array of keys, an element
+        # by index -- and an array literal written without a type is read as
+        # the first of them: `meta - '{draft}'` takes out the key spelled
+        # {draft}, which is nothing, and says nothing about it.
+        def key_array
+          Arel::Nodes::NamedFunction.new(
+            'CAST',
+            [Arel::Nodes::As.new(Arel::Nodes.build_quoted(steps_array(keys)),
+                                 Arel::Nodes::SqlLiteral.new('text[]'))])
+        end
+
+        # Keys, as Hash#except takes them: an index into an array is not what
+        # the name says anywhere, and is bury's business through a path.
+        def check_keys(keys)
+          raise ArgumentError, 'except needs a key' if keys.empty?
+          keys.each do |key|
+            next if key.is_a?(::String) || key.is_a?(::Symbol)
+            raise ArgumentError,
+              "except takes keys of the document, not #{key.inspect}"
+          end
+          keys
         end
       end
 
