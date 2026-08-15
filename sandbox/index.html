@@ -861,19 +861,21 @@ databaseEl.addEventListener('change', () => useDatabase(databaseEl.value));
       // which one it is rather than sitting at the top.
       button.scrollIntoView({ block: 'nearest' });
     };
-    addEventListener('hashchange', openHash);
-    openHash();
-
-    editorEl.focus();
-
-    // Last, so that the page is there to read while PostgreSQL is fetched:
-    // the example has already run on SQLite and runs again on arrival, which
-    // is what choosing it by hand does.
+    // Before the first example rather than after it: what runs while the page
+    // is busy is dropped rather than queued, and openHash does not wait for
+    // the example it starts, so a switch after it would be the thing dropped
+    // -- leaving the control naming a database nobody had connected to.  The
+    // layout is up by now, so PostgreSQL is fetched with the page on screen.
     const choice = remembered();
     if (choice && choice !== databaseEl.value) {
       databaseEl.value = choice;
       await useDatabase(choice);
     }
+
+    addEventListener('hashchange', openHash);
+    openHash();
+
+    editorEl.focus();
   } catch (e) {
     detailEl.textContent = '';
     statusEl.innerHTML = '<strong>Failed to start.</strong><br>';
