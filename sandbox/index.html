@@ -620,6 +620,34 @@ function run() {
 // first time it is asked for, rather than by everyone who opens the page.
 let pglite = false;
 
+// Which database was chosen, kept for as long as the tab is open.  A browser
+// may reload the page under the reader -- Chrome on Android does, on coming
+// back to a tab left for a while -- and it restores the select to what it was
+// set to, while Ruby starts again on SQLite.  The control would then be
+// naming a database that is not there, so the choice is made again instead.
+//
+// sessionStorage rather than localStorage: this is about the tab that was
+// left, not about handing 5 MB to somebody opening the page next week.  It
+// can throw where storage is turned off, and a database not remembered is no
+// reason to fail the page.
+const CHOICE = 'activerecord-refined:database';
+
+function remember(name) {
+  try {
+    sessionStorage.setItem(CHOICE, name);
+  } catch {
+    // nothing to do
+  }
+}
+
+function remembered() {
+  try {
+    return sessionStorage.getItem(CHOICE);
+  } catch {
+    return null;
+  }
+}
+
 function useDatabase(name) {
   return exclusive(async () => {
     try {
@@ -636,6 +664,7 @@ function useDatabase(name) {
       }
       writeAnsi(outputEl, 'Building the sample data…');
       await vm.evalAsync(`use_database(${JSON.stringify(name)})`);
+      remember(name);
     } catch (e) {
       writeAnsi(outputEl, String(e));
       // The database is whatever Ruby is still connected to, which is what it
@@ -811,6 +840,10 @@ databaseEl.addEventListener('change', () => useDatabase(databaseEl.value));
     const tables = JSON.parse(
       (await vm.evalAsync('require "json"; tables.to_json')).toString());
 
+    // Whatever the browser restored the select to, boot.rb has just connected
+    // to SQLite; the control says so until the choice below is made again.
+    databaseEl.value = (await vm.evalAsync('current_database')).toString();
+
     statusEl.hidden = true;
     layoutEl.hidden = false;
 
@@ -832,6 +865,15 @@ databaseEl.addEventListener('change', () => useDatabase(databaseEl.value));
     openHash();
 
     editorEl.focus();
+
+    // Last, so that the page is there to read while PostgreSQL is fetched:
+    // the example has already run on SQLite and runs again on arrival, which
+    // is what choosing it by hand does.
+    const choice = remembered();
+    if (choice && choice !== databaseEl.value) {
+      databaseEl.value = choice;
+      await useDatabase(choice);
+    }
   } catch (e) {
     detailEl.textContent = '';
     statusEl.innerHTML = '<strong>Failed to start.</strong><br>';
