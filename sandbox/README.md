@@ -53,6 +53,11 @@ it is first chosen rather than by everyone who opens the page. Switching either
 way rebuilds the schema and the sample data, so what the sidebar describes is
 what is there.
 
+The choice goes in the URL beside the example the fragment names, so
+`?db=postgresql#arrays` is a whole page to link to — and what a browser
+restores when it reloads a tab left for a while, which Chrome on Android does.
+SQLite is the page unasked, and is written as the parameter's absence.
+
 The schemas are not quite identical: `posts.tags` is an array, which is a type
 PostgreSQL has and SQLite has not, and `docs.meta` is `jsonb` there against
 `json` here, since containment and the rest of the operators the JSON examples

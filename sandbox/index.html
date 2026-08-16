@@ -620,32 +620,30 @@ function run() {
 // first time it is asked for, rather than by everyone who opens the page.
 let pglite = false;
 
-// Which database was chosen, kept for as long as the tab is open.  A browser
-// may reload the page under the reader -- Chrome on Android does, on coming
-// back to a tab left for a while -- and it restores the select to what it was
-// set to, while Ruby starts again on SQLite.  The control would then be
-// naming a database that is not there, so the choice is made again instead.
+// Which database was chosen is kept in the URL, beside the example the
+// fragment names: ?db=postgresql#arrays is a whole page to link to.  A
+// browser may reload the page under the reader -- Chrome on Android does, on
+// coming back to a tab left for a while -- and it restores the select to what
+// it was set to while Ruby starts again on SQLite, so the control would be
+// naming a database that is not there.  What the URL says is made true
+// instead, and unlike sessionStorage the URL survives a tab thrown away and
+// restored from nothing.
 //
-// sessionStorage rather than localStorage: this is about the tab that was
-// left, not about handing 5 MB to somebody opening the page next week.  It
-// can throw where storage is turned off, and a database not remembered is no
-// reason to fail the page.
-const CHOICE = 'activerecord-refined:database';
-
-function remember(name) {
-  try {
-    sessionStorage.setItem(CHOICE, name);
-  } catch {
-    // nothing to do
-  }
+// SQLite is what the page is without being asked, so it is written as the
+// absence of the parameter rather than as a value.
+function chosen() {
+  const db = new URLSearchParams(location.search).get('db');
+  return [...databaseEl.options].some((option) => option.value === db) ? db : null;
 }
 
-function remembered() {
-  try {
-    return sessionStorage.getItem(CHOICE);
-  } catch {
-    return null;
-  }
+function remember(name) {
+  const url = new URL(location.href);
+  if (name === 'sqlite3') url.searchParams.delete('db');
+  else url.searchParams.set('db', name);
+  // replaceState rather than pushState, for the reason the examples give:
+  // the URL is worth having to copy, but the back button is not for stepping
+  // through what has been tried.
+  history.replaceState(null, '', url);
 }
 
 function useDatabase(name) {
@@ -668,8 +666,10 @@ function useDatabase(name) {
     } catch (e) {
       writeAnsi(outputEl, String(e));
       // The database is whatever Ruby is still connected to, which is what it
-      // was: say so rather than leave the control claiming otherwise.
+      // was: the control and the URL say so rather than claiming otherwise --
+      // a link that failed to open on PostgreSQL is not one to hand on.
       databaseEl.value = (await vm.evalAsync('current_database')).toString();
+      remember(databaseEl.value);
       return;
     }
 
@@ -866,7 +866,7 @@ databaseEl.addEventListener('change', () => useDatabase(databaseEl.value));
     // the example it starts, so a switch after it would be the thing dropped
     // -- leaving the control naming a database nobody had connected to.  The
     // layout is up by now, so PostgreSQL is fetched with the page on screen.
-    const choice = remembered();
+    const choice = chosen();
     if (choice && choice !== databaseEl.value) {
       databaseEl.value = choice;
       await useDatabase(choice);
