@@ -106,6 +106,9 @@ def define_schema
       t.string  :name
       t.integer :price
       t.integer :quantity
+      # What upsert_all upserts by: a name is what a delivery note carries,
+      # where the id is this table's own business.
+      t.index :name, unique: true
     end
 
     create_table :nodes, force: true do |t|

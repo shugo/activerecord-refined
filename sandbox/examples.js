@@ -439,13 +439,26 @@ show Post.where { :published == true }`,
       {
         title: 'upsert_all',
         slug: 'upsert-all',
-        code: `# The block says what happens to a row that is already there.
-# excluded is the row that could not be inserted.  PostgreSQL and SQLite
-# name it; MySQL spells the same thing VALUES(column).
-Author.upsert_all([{ id: 1, name: 'Alice', country: 'JP', age: 38 }],
-                  unique_by: :id) { { age: :age + excluded(:age) } }
+        code: `# A delivery arrives: some of it is stock we carry, some of it is new.
+# upsert_all takes the lot in one statement, and the block says what
+# happens to the rows already there -- where excluded is the row that
+# could not be inserted.  PostgreSQL and SQLite name it that; MySQL
+# spells the same thing VALUES(column).
+show Item.order(:name)
 
-show Author.where { :name == 'Alice' }`,
+delivery = [
+  { name: 'Keyboard', price: 130, quantity: 2 },
+  { name: 'Mouse',    price: 25,  quantity: 10 },
+]
+
+# The new price is taken as it comes; the quantity is added to what is on
+# the shelf.  Anything the block does not name is left alone, which is
+# what keeps this from overwriting a row with the half of it we were sent.
+Item.upsert_all(delivery, unique_by: :name) {
+  { price: excluded(:price), quantity: :quantity + excluded(:quantity) }
+}
+
+show Item.order(:name)`,
       },
     ],
   },
