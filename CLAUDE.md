@@ -101,7 +101,7 @@ sandbox/README.md is the reference.  What matters when changing the gem:
 ## Releasing
 
 ```sh
-bump patch --tag  # or bump minor
+bundle exec bump patch --tag  # or bump minor
 git push --follow-tags
 ```
 

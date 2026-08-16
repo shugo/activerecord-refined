@@ -28,4 +28,6 @@ Gem::Specification.new do |gem|
   gem.add_development_dependency 'sqlite3', ['>= 0']
   gem.add_development_dependency 'minitest', ['>= 0']
   gem.add_development_dependency 'rake', ['>= 0']
+  # What cuts a release: `bump patch --tag`, then push with --follow-tags.
+  gem.add_development_dependency 'bump', ['>= 0']
 end

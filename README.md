@@ -1000,7 +1000,7 @@ and publishes it through RubyGems.org's trusted publishing, so no API key is
 stored anywhere.
 
 ```sh
-bump patch --tag # or bump {major,minor} etc.
+bundle exec bump patch --tag # or bump {major,minor} etc.
 git push --follow-tags
 ```
 
