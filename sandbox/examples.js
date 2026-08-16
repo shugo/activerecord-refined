@@ -393,10 +393,15 @@ show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
         title: 'dig',
         slug: 'dig',
         code: `# dig reads inside a JSON document, by the name of what Hash does, and
-# what it finds stays JSON; dig_text gives the value as text, which is
-# what a comparison wants.  A string or symbol steps into an object, an
-# integer into an array.
-show Doc.select { [:name, :meta.dig_text(:author, :name).as(:author), :meta.dig_text(:tags, 0).as(:first_tag)] }
+# what it finds stays JSON -- the author object comes back whole.  A
+# string or symbol steps into an object, an integer into an array.
+show Doc.select { [:name, :meta.dig(:author).as(:author),
+  :meta.dig(:tags, 0).as(:first_tag), :meta.dig(:stars).as(:stars)] }
+
+# dig_text gives the value as text instead, which is what a comparison
+# wants.
+show Doc.select { [:name, :meta.dig_text(:author, :name).as(:author),
+  :meta.dig_text(:tags, 0).as(:first_tag), :meta.dig_text(:stars).as(:stars)] }
 
 # dig_text gives text on every adapter, so a number is compared through
 # a cast.
