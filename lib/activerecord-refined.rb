@@ -12,5 +12,5 @@ ActiveRecord::Relation.prepend ActiveRecord::Refined::Writes
 # The methods above are Active Record's own, so a model already forwards them
 # to its relation.  These are new, and have to be added to that list.
 ActiveRecord::Base.singleton_class.delegate(
-  :from_cte, :distinct_on,
+  :from_cte, :distinct_on, :lateral,
   :right_outer_joins, :full_outer_joins, :cross_joins, to: :all)

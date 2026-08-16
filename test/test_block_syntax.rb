@@ -2153,7 +2153,7 @@ class TestBlockSyntax < Minitest::Test
   def test_lateral_join
     skip_without_lateral
     seed_for_lateral
-    rows = Author.joins(top_post, as: :top, lateral: true).
+    rows = Author.joins(top_post.lateral, as: :top).
       select { [:name, :top[:title].as(:v)] }.map {|r| [r.name, r.v] }
     assert_equal([['writes', 'b']], rows)
   end
@@ -2162,7 +2162,7 @@ class TestBlockSyntax < Minitest::Test
   def test_left_outer_lateral_join
     skip_without_lateral
     seed_for_lateral
-    rows = Author.left_outer_joins(top_post, as: :top, lateral: true).
+    rows = Author.left_outer_joins(top_post.lateral, as: :top).
       select { [:name, :top[:title].as(:v)] }.order { :name }.map {|r| [r.name, r.v] }
     assert_equal([['does not', nil], ['writes', 'b']], rows)
   end
@@ -2172,22 +2172,28 @@ class TestBlockSyntax < Minitest::Test
   def test_lateral_join_takes_an_on_clause
     skip_without_lateral
     seed_for_lateral
-    assert_equal(0, Author.joins(top_post, as: :top, lateral: true) {
+    assert_equal(0, Author.joins(top_post.lateral, as: :top) {
       :top[:title] == 'nothing'
     }.count)
-    assert_sql(/ON TRUE/, Author.joins(top_post, as: :top, lateral: true).to_sql)
+    assert_sql(/ON TRUE/, Author.joins(top_post.lateral, as: :top).to_sql)
   end
 
-  def test_lateral_join_needs_a_relation_and_a_name
-    e = assert_raises(ArgumentError) { Author.joins(:posts, as: :top, lateral: true) }
-    assert_match(/takes a relation/, e.message)
-    e = assert_raises(ArgumentError) { Author.joins(top_post, lateral: true) }
+  def test_lateral_join_needs_the_mark_and_a_name
+    e = assert_raises(ArgumentError) { Author.joins(top_post, as: :top) }
+    assert_match(/mark it/, e.message)
+    e = assert_raises(ArgumentError) { Author.joins(top_post.lateral) }
     assert_match(/needs a name/, e.message)
+  end
+
+  def test_lateral_spawns
+    relation = top_post
+    assert(relation.lateral.lateral_value)
+    refute(relation.lateral_value)
   end
 
   def test_lateral_join_says_where_it_cannot_go
     skip 'this one has LATERAL' if ADAPTER == 'postgresql' || (ADAPTER == 'mysql2' && !mariadb?)
-    e = assert_raises(NotImplementedError) { Author.joins(top_post, as: :top, lateral: true) }
+    e = assert_raises(NotImplementedError) { Author.joins(top_post.lateral, as: :top) }
     assert_match(/lateral join has no equivalent/, e.message)
   end
 

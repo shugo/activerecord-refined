@@ -366,16 +366,17 @@ the block raises `NotImplementedError` on both.
 
 ### Lateral joins
 
-`lateral: true` joins a relation rather than a table, and lets it see the row
-being joined to. That is what makes the top row of each group reachable in one
-query:
+A relation marked `lateral` joins in place of a table, and sees the row being
+joined to — in SQL the keyword modifies the subquery, not the join, so that is
+where it is written. It is what makes the top row of each group reachable in
+one query:
 
 ```ruby
 top_post = Post.select { :title }.
   where { :posts[:author_id] == :authors[:id] }.
   order { :likes.desc }.limit(1)
 
-Author.left_outer_joins(top_post, as: :top, lateral: true).
+Author.left_outer_joins(top_post.lateral, as: :top).
   select { [:name, :top[:title].as(:top_post)] }
 # SELECT "name", "top"."title" AS "top_post" FROM "authors"
 #   LEFT OUTER JOIN LATERAL (SELECT "title" FROM "posts"

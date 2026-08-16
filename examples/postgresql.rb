@@ -153,7 +153,7 @@ show('rollup is the nested case of the same thing',
 top = Article.select { :title }.
   where { :articles[:writer_id] == :writers[:id] }.
   order { :likes.desc }.limit(1)
-lateral = Writer.left_outer_joins(top, as: :top, lateral: true).
+lateral = Writer.left_outer_joins(top.lateral, as: :top).
   select { [:name, :top[:title].as(:top_article)] }
 show('the top article beside each writer',
   lateral,

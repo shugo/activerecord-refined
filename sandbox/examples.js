@@ -584,7 +584,7 @@ top_post = Post.select { :title }.
   where { :posts[:author_id] == :authors[:id] }.
   order { :likes.desc }.limit(1)
 
-show Author.left_outer_joins(top_post, as: :top, lateral: true).
+show Author.left_outer_joins(top_post.lateral, as: :top).
   select { [:name, :top[:title].as(:top_post)] }`,
       },
       {

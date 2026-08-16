@@ -443,13 +443,32 @@ module ActiveRecord
         @values[:distinct_on] = columns
       end
 
+      # Marks the relation for a lateral join, which lets it see the row being
+      # joined to -- the top few rows of each group, and the like.  In SQL the
+      # keyword modifies the subquery, not the join, so it is said on the
+      # relation: left_outer_joins(top_post.lateral, as: :top).
+      def lateral
+        spawn.lateral!
+      end
+
+      def lateral!
+        self.lateral_value = true
+        self
+      end
+
+      def lateral_value
+        @values[:lateral]
+      end
+
+      def lateral_value=(value)
+        assert_modifiable!
+        @values[:lateral] = value
+      end
+
       # `as` names the table within the query, which is what makes a self
       # join expressible: joins(:employees, as: :managers) { ... }.
-      #
-      # `lateral` joins a relation instead of a table, and lets it see the row
-      # being joined to -- the top few rows of each group, and the like.
-      def joins(*args, as: nil, lateral: false, &block)
-        if lateral
+      def joins(*args, as: nil, &block)
+        if args.first.is_a?(ActiveRecord::Relation)
           super(build_lateral_join(args.first, Arel::Nodes::InnerJoin, as, &block))
         elsif block
           super(build_join_node(args.first, Arel::Nodes::InnerJoin, as, &block))
@@ -459,8 +478,8 @@ module ActiveRecord
         end
       end
 
-      def left_outer_joins(*args, as: nil, lateral: false, &block)
-        if lateral
+      def left_outer_joins(*args, as: nil, &block)
+        if args.first.is_a?(ActiveRecord::Relation)
           joins(build_lateral_join(args.first, Arel::Nodes::OuterJoin, as, &block))
         elsif block
           joins(build_join_node(args.first, Arel::Nodes::OuterJoin, as, &block))
@@ -472,18 +491,18 @@ module ActiveRecord
 
       # The other two outer joins, which Active Record has no method for and
       # Arel has the nodes for.  The rules are joins': the block is the ON,
-      # `as` names the table within the query, `lateral` joins a relation.
-      # An association name is not among them -- what Active Record reads out
-      # of one is an inner or a left join and nothing else.
-      def right_outer_joins(*args, as: nil, lateral: false, &block)
+      # `as` names the table within the query, a relation marked `lateral`
+      # joins as one.  An association name is not among them -- what Active
+      # Record reads out of one is an inner or a left join and nothing else.
+      def right_outer_joins(*args, as: nil, &block)
         outer_joins(:right_outer_joins, Arel::Nodes::RightOuterJoin,
-                    args, as, lateral, &block)
+                    args, as, &block)
       end
 
-      def full_outer_joins(*args, as: nil, lateral: false, &block)
+      def full_outer_joins(*args, as: nil, &block)
         check_full_outer_support
         outer_joins(:full_outer_joins, Arel::Nodes::FullOuterJoin,
-                    args, as, lateral, &block)
+                    args, as, &block)
       end
 
       # CROSS JOIN: every row of one table against every row of the other, so
@@ -551,8 +570,9 @@ module ActiveRecord
       # which is the usual shape -- what the subquery is allowed to see is
       # what makes it lateral, and that is said inside it.
       def build_lateral_join(relation, join_class, alias_name, &block)
-        unless relation.is_a?(ActiveRecord::Relation)
-          raise ArgumentError, "a lateral join takes a relation to join against"
+        unless relation.lateral_value
+          raise ArgumentError,
+            "a relation joins laterally; mark it: joins(sub.lateral, as: :top)"
         end
         unless alias_name
           raise ArgumentError, "a lateral join needs a name: joins(..., as: :top)"
@@ -588,8 +608,10 @@ module ActiveRecord
         raise NotImplementedError, 'a full outer join has no equivalent on MySQL'
       end
 
-      def outer_joins(called, join_class, args, alias_name, lateral, &block)
-        return joins(build_lateral_join(args.first, join_class, alias_name, &block)) if lateral
+      def outer_joins(called, join_class, args, alias_name, &block)
+        if args.first.is_a?(ActiveRecord::Relation)
+          return joins(build_lateral_join(args.first, join_class, alias_name, &block))
+        end
         return joins(build_join_node(args.first, join_class, alias_name, &block)) if block
 
         raise ArgumentError,
