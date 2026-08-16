@@ -723,7 +723,7 @@ three:
 
 | | PostgreSQL | SQLite | MySQL |
 | --- | --- | --- | --- |
-| `dig(:a)` | `#> '{a}'` | `-> '$.a'` | `JSON_EXTRACT(…, '$.a')` |
+| `dig(:a, :b)` | `#> '{a,b}'` | `-> '$.a.b'` | `JSON_EXTRACT(…, '$.a.b')` |
 | `dig_text(:a, :b)` | `#>> '{a,b}'` | `->> '$.a.b'` | `JSON_UNQUOTE(JSON_EXTRACT(…, '$.a.b'))` |
 | `key?(:a)` | `jsonb_exists(…, 'a')` | `json_type(…, '$.a') IS NOT NULL` | `JSON_CONTAINS_PATH(…, 'one', '$.a')` |
 | `contains?(…)` | `@>` | — | `JSON_CONTAINS` |
@@ -769,7 +769,7 @@ Post.update_all { { meta: :meta.bury(:author, :name, 'alice') } }
 # ...          JSON_SET("meta", '$.author.name', 'alice')   elsewhere
 
 Post.update_all { { meta: :meta.bury(:tags, ['ruby', 'sql']) } }
-Post.update_all { { meta: :meta.bury(:copy, :meta.dig_text(:n)) } }
+Post.update_all { { meta: :meta.bury(:copy, :meta.dig(:n)) } }
 ```
 
 A whole document goes in as one — an object or an array rather than the string
@@ -797,6 +797,13 @@ keys, an element by index — and an array literal written without a type is
 read as the first of them, so `"meta" - '{draft}'` takes out the key spelled
 `{draft}`, which is nothing, and says nothing about it.
 
+A key deeper in is reached through the chain: `dig` reads the part out,
+`except` takes the key from it, and `bury` puts it back:
+
+```ruby
+Post.update_all { { meta: :meta.bury(:author, :meta.dig(:author).except(:email)) } }
+```
+
 What `dig` gives is a document, so the JSON operations read it — the same
 question asked of a part of the document rather than of all of it:
 
@@ -819,8 +826,8 @@ function for text at all.
 
 `contains?` has no equivalent on SQLite and raises `NotImplementedError`
 there — later than the rest, since the adapter is only known when the SQL is
-built. On PostgreSQL, `contains?` and `key?` want a `jsonb` column; the
-`json` type carries neither operator.
+built. On PostgreSQL, `dig` and `dig_text` are all the `json` type carries;
+`key?`, `contains?`, `bury` and `except` want a `jsonb` column.
 
 A key that is not a plain name travels as itself rather than being refused:
 `dig(:'odd key')` becomes `'{odd key}'` or `$."odd key"`.

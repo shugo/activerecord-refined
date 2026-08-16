@@ -2292,9 +2292,11 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(%w[7 y], buried { { meta: :meta.bury(:tags, 0, '7') } }['tags'])
   end
 
-  # The value can be read out of the document it is going into.
+  # The value can be read out of the document it is going into: dig keeps
+  # the number a number, dig_text makes it the text of one.
   def test_bury_an_expression
-    assert_equal('5', buried { { meta: :meta.bury(:copy, :meta.dig_text(:n)) } }['copy'].to_s)
+    assert_equal(5, buried { { meta: :meta.bury(:copy, :meta.dig(:n)) } }['copy'])
+    assert_equal('5', buried { { meta: :meta.bury(:copy, :meta.dig_text(:n)) } }['copy'])
   end
 
   # It is an expression, so it does not have to be written anywhere.
@@ -2315,6 +2317,13 @@ class TestBlockSyntax < Minitest::Test
   def test_except_a_key
     assert_equal({ 'a' => { 'b' => 'deep' }, 'tags' => %w[x y], 'odd key' => 1 },
       buried { { meta: :meta.except(:n) } })
+  end
+
+  # A key deeper in is reached through the chain: dig reads the part out,
+  # except takes the key from it, and bury puts it back.  The dug document
+  # needs its parentheses on PostgreSQL, where - binds tighter than #>.
+  def test_except_a_nested_key_through_the_chain
+    assert_equal({}, buried { { meta: :meta.bury(:a, :meta.dig(:a).except(:b)) } }['a'])
   end
 
   def test_except_several_keys

@@ -717,8 +717,12 @@ module ActiveRecord
 
         def to_arel(table, model)
           document = to_arel_operand(operand, table, model)
-          return Arel::Nodes::InfixOperation.new(:-, document, key_array) if
-            AST.adapter_family(model) == :postgresql
+          if AST.adapter_family(model) == :postgresql
+            # Grouped because - binds tighter than #>: dug out of a document,
+            # the subtraction would otherwise take the path literal first.
+            return Arel::Nodes::InfixOperation.new(
+              :-, Arel::Nodes::Grouping.new(document), key_array)
+          end
 
           Arel::Nodes::NamedFunction.new(
             'JSON_REMOVE',
