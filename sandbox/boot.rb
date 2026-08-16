@@ -285,7 +285,10 @@ def format_sql(sql)
     else
       # Only at the start of a word: FROM in far_from_here is not a clause.
       at_word_start = i.zero? || masked[i - 1] =~ /[\s(,]/
-      if at_word_start && (m = CLAUSE_AT.match(masked, i)) &&
+      # ON CONFLICT (...) DO UPDATE is one thing to read, and the UPDATE in
+      # it starts no statement.
+      after_do = masked[0...i].match?(/\bDO\s+\z/i)
+      if at_word_start && !after_do && (m = CLAUSE_AT.match(masked, i)) &&
          open.none? {|_, window| window }
         open[-1][0] = true unless open.empty?
         newline.call
@@ -372,8 +375,12 @@ def print_write(*, payload)
   return unless WRITE_STATEMENT.match?(payload[:sql])
 
   puts red(format_sql(payload[:sql]))
+  puts
   changed = payload[:affected_rows]
-  puts "#{changed} row(s) changed" unless changed.nil?
+  return if changed.nil?
+
+  # Set apart from the statement above it, as the rows are under a read.
+  puts "#{changed} row(s) changed"
   puts
 end
 
