@@ -742,6 +742,12 @@ Post.where { cast(:meta.dig_text(:n), 'integer') > 6 }   # 'signed' on MySQL
 
 The type is the adapter's own name for it, here as everywhere `cast` is used.
 
+Strings and numbers are where the adapters agree. A JSON boolean comes back as
+`"1"` on SQLite, which turns `true` into SQL's `1` before the text cast, and
+as `"true"` on the other two; a JSON `null` is SQL `NULL` everywhere but
+MariaDB, which spells it `"null"`. A key that is not there is `NULL` on all
+three.
+
 Comparing a dug value with anything but a string raises `ArgumentError` rather
 than being left to the adapters, which answer it three ways: `dig_text(:n) ==
 5` is true on SQLite, an error on PostgreSQL and true on MySQL, and
