@@ -757,7 +757,9 @@ about — the JSON for a string carries its quotes, so `dig(:name) == 'alice'`
 is false, an error and true — and `dig_text` is the one that gives the value.
 What `bury` and `except` give back is JSON as `dig`'s is, and is refused the
 same way. A column, a function or another dug value on the right goes through
-untouched; only a Ruby literal is refused.
+untouched; only a Ruby literal is refused. Arithmetic and the bit operators
+are refused outright on both sides — `dig_text(:n) + 1` is 6 on SQLite, an
+error on PostgreSQL and 6.0 on MariaDB — and `cast` settles those too.
 
 `bury` sets what `dig` reads: the last argument is the value and the rest are
 the path to it. The document comes back changed rather than being written
@@ -773,8 +775,10 @@ Post.update_all { { meta: :meta.bury(:copy, :meta.dig(:n)) } }
 ```
 
 A whole document goes in as one — an object or an array rather than the string
-that spells it — which each adapter takes its own way round. `bury` is not a
-Ruby method; it is the name Ruby considered for the other end of `dig`, and
+that spells it — which each adapter takes its own way round, and a boolean
+goes in as JSON too, which SQLite would otherwise write as its `1`. `bury` is
+not a Ruby method; it is the name Ruby considered for the other end of `dig`,
+and
 SQL has no one name to borrow here, since PostgreSQL says `jsonb_set` where
 the others say `JSON_SET`.
 

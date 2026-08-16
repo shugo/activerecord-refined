@@ -529,6 +529,11 @@ module ActiveRecord
       #
       # A string against dig_text, and anything the block itself built -- a
       # column, a function, another dug value -- go through untouched.
+      #
+      # Arithmetic and the bit operators are refused outright on both sides:
+      # `dig_text(:n) + 1` is 6 on SQLite, an error on PostgreSQL and 6.0 on
+      # MariaDB, and an expression on the right does not change what the
+      # dug side is.
       module JsonComparable
         %i[== != < <= > >=].each do |operator|
           define_method(operator) do |other|
@@ -541,6 +546,16 @@ module ActiveRecord
         def not_in?(values) = super(check_each(values))
         def between?(min, max) = super(*check_each([min, max]))
         def not_between?(min, max) = super(*check_each([min, max]))
+
+        %i[+ - * / & | ^ << >>].each do |operator|
+          define_method(operator) do |_other|
+            raise ArgumentError, arithmetic_refusal(operator)
+          end
+        end
+
+        def ~
+          raise ArgumentError, arithmetic_refusal(:~)
+        end
 
         private
 
@@ -567,6 +582,14 @@ module ActiveRecord
           else values.each {|value| check_comparable(value) }
           end
           values
+        end
+
+        def arithmetic_refusal(operator)
+          as_json ?
+            "#{json_source} gives JSON, and #{operator} on it means something " \
+            "different on every adapter; cast dig_text to the type meant" :
+            "dig_text gives text, and #{operator} on it means something " \
+            "different on every adapter; cast it to the type meant"
         end
       end
 
@@ -676,16 +699,25 @@ module ActiveRecord
           Arel::Nodes.build_quoted(JSON.generate(value))
         end
 
-        # The others take the value as it is, except a whole document, which
-        # they read out of a literal rather than take as a string.  MySQL casts
-        # to JSON where MariaDB, which answers to the same adapter, does not.
+        # The others take the value as it is, except a whole document or a
+        # boolean, which go in as JSON: taken as they are, a document would
+        # be the string that spells it, and a boolean SQLite's own 1.
+        # SQLite's json() marks the literal for JSON_SET; the MySQL family,
+        # which has no json(), reads it with JSON_EXTRACT.
         def other_value(table, model)
           return to_arel_operand(value, table, model) if expression?
-          return Arel::Nodes.build_quoted(value) unless value.is_a?(::Hash) || value.is_a?(::Array)
+          unless value.is_a?(::Hash) || value.is_a?(::Array) ||
+                 value == true || value == false
+            return Arel::Nodes.build_quoted(value)
+          end
 
-          Arel::Nodes::NamedFunction.new(
-            'JSON_EXTRACT',
-            [Arel::Nodes.build_quoted(JSON.generate(value)), Arel::Nodes.build_quoted('$')])
+          json = Arel::Nodes.build_quoted(JSON.generate(value))
+          if AST.adapter_family(model) == :sqlite
+            Arel::Nodes::NamedFunction.new('json', [json])
+          else
+            Arel::Nodes::NamedFunction.new(
+              'JSON_EXTRACT', [json, Arel::Nodes.build_quoted('$')])
+          end
         end
 
         def expression?

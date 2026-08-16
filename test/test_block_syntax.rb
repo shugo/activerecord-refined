@@ -2008,6 +2008,24 @@ class TestBlockSyntax < Minitest::Test
     assert_sql(/ = /, Doc.where { :meta.except(:a) == :meta.except(:b) })
   end
 
+  # Arithmetic is refused like a literal comparison is: text plus one is 6
+  # on SQLite, an error on PostgreSQL and 6.0 on MariaDB.  cast settles it,
+  # and an expression on the right changes nothing about the dug side.
+  def test_arithmetic_is_refused_on_a_dug_value
+    e = assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:n) + 1 } }
+    assert_match(/cast it to the type meant/, e.message)
+    e = assert_raises(ArgumentError) { Doc.select { :meta.dig(:n) * 2 } }
+    assert_match(/dig gives JSON/, e.message)
+    assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:n) + :name } }
+    assert_raises(ArgumentError) { Doc.select { :meta.bury(:a, 1) - 1 } }
+    assert_raises(ArgumentError) { Doc.select { ~:meta.dig(:n) } }
+    seed_docs
+    type = integer_type
+    assert_equal(6,
+      Doc.where { :name == 'one' }.
+        select { (cast(:meta.dig_text(:n), type) + 1).as(:v) }.first.v.to_i)
+  end
+
   def test_dig_text_from_a_qualified_column
     seed_docs
     assert_equal(['one'], Doc.where { :docs[:meta].dig_text(:a, :b) == 'deep' }.pluck(:name))
@@ -2286,6 +2304,18 @@ class TestBlockSyntax < Minitest::Test
   def test_bury_an_object_and_an_array
     assert_equal({ 'x' => 1 }, buried { { meta: :meta.bury(:obj, { 'x' => 1 }) } }['obj'])
     assert_equal([1, 2], buried { { meta: :meta.bury(:arr, [1, 2]) } }['arr'])
+  end
+
+  # A boolean goes in as JSON too: taken as it is, SQLite would write its 1.
+  def test_bury_a_boolean
+    assert_equal(true, buried { { meta: :meta.bury(:flag, true) } }['flag'])
+    assert_equal(false, buried { { meta: :meta.bury(:flag, false) } }['flag'])
+  end
+
+  def test_bury_a_null
+    document = buried { { meta: :meta.bury(:gone, nil) } }
+    assert(document.key?('gone'))
+    assert_nil(document['gone'])
   end
 
   def test_bury_an_array_index
