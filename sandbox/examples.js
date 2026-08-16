@@ -392,17 +392,20 @@ show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
       {
         title: 'dig',
         slug: 'dig',
-        code: `# dig reads inside a JSON document, by the name of what Hash does.  A
-# string or symbol steps into an object, an integer into an array.
-show Doc.select { [:name, :meta.dig(:author, :name).as(:author), :meta.dig(:tags, 0).as(:first_tag)] }
+        code: `# dig reads inside a JSON document, by the name of what Hash does, and
+# what it finds stays JSON; dig_text gives the value as text, which is
+# what a comparison wants.  A string or symbol steps into an object, an
+# integer into an array.
+show Doc.select { [:name, :meta.dig_text(:author, :name).as(:author), :meta.dig_text(:tags, 0).as(:first_tag)] }
 
-# dig gives text on every adapter, so a number is compared through a cast.
-show Doc.where { cast(:meta.dig(:stars), 'integer') > 6 }
+# dig_text gives text on every adapter, so a number is compared through
+# a cast.
+show Doc.where { cast(:meta.dig_text(:stars), 'integer') > 6 }
 
 # Comparing it with a number instead is refused: the three adapters
 # answer that three ways -- true here, an error on PostgreSQL, true on
 # MySQL -- and cast is what says which type was meant.
-show Doc.where { :meta.dig(:stars) > 6 }`,
+show Doc.where { :meta.dig_text(:stars) > 6 }`,
       },
       {
         title: 'bury and except',
@@ -410,11 +413,11 @@ show Doc.where { :meta.dig(:stars) > 6 }`,
         code: `# bury sets what dig reads: the last argument is the value, the rest are
 # the path to it.  The document comes back changed rather than being
 # written anywhere, so update_all is what makes it stick.
-show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }
+show Doc.select { [:name, :meta.dig_text(:author, :name).as(:author)] }
 
 Doc.where { :name == 'first' }.update_all { { meta: :meta.bury(:author, :name, 'Erin') } }
 
-show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }
+show Doc.select { [:name, :meta.dig_text(:author, :name).as(:author)] }
 
 # except takes keys out again, as Hash#except does -- keys of the
 # document, however many, rather than a path.  It gives back a document
@@ -429,15 +432,15 @@ show Doc.where { :name == 'second' }`,
         slug: 'key',
         code: `show Doc.where { :meta.key?(:author) }
 
-# What dig_json keeps is a document, so these read it too: the same
+# What dig keeps is a document, so these read it too: the same
 # question asked of a part rather than of the whole.
-show Doc.where { :meta.dig_json(:author).key?(:name) }
+show Doc.where { :meta.dig(:author).key?(:name) }
 
 # No two adapters spell any of this alike; the block is the same on all
 # three.  Containment is the exception -- SQLite has none, so this page
 # cannot run it unless the database above is PostgreSQL.
 show Doc.where { :meta.contains?(stars: 5) }
-show Doc.where { :meta.dig_json(:tags).contains?(['sql']) }`,
+show Doc.where { :meta.dig(:tags).contains?(['sql']) }`,
       },
     ],
   },

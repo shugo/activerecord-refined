@@ -1891,115 +1891,115 @@ class TestBlockSyntax < Minitest::Test
     Doc.create!(name: 'two', meta: json_document({ 'n' => 9 }))
   end
 
-  def test_dig_a_key
+  def test_dig_text_a_key
     seed_docs
-    assert_equal(%w[5 9], Doc.order(:name).select { :meta.dig(:n).as(:v) }.map(&:v))
+    assert_equal(%w[5 9], Doc.order(:name).select { :meta.dig_text(:n).as(:v) }.map(&:v))
   end
 
-  def test_dig_a_path
+  def test_dig_text_a_path
     seed_docs
     assert_equal(['deep', nil],
-      Doc.order(:name).select { :meta.dig(:a, :b).as(:v) }.map(&:v))
+      Doc.order(:name).select { :meta.dig_text(:a, :b).as(:v) }.map(&:v))
   end
 
-  def test_dig_an_array_index
+  def test_dig_text_an_array_index
     seed_docs
     assert_equal(['x', nil],
-      Doc.order(:name).select { :meta.dig(:tags, 0).as(:v) }.map(&:v))
+      Doc.order(:name).select { :meta.dig_text(:tags, 0).as(:v) }.map(&:v))
   end
 
   # A key that is not a plain name travels as itself rather than being refused.
-  def test_dig_a_key_that_needs_quoting
+  def test_dig_text_a_key_that_needs_quoting
     seed_docs
     assert_equal(['1', nil],
-      Doc.order(:name).select { :meta.dig(:'odd key').as(:v) }.map(&:v))
+      Doc.order(:name).select { :meta.dig_text(:'odd key').as(:v) }.map(&:v))
   end
 
-  # dig gives text on every adapter -- SQLite's ->> would otherwise give the
+  # dig_text gives text on every adapter -- SQLite's ->> would otherwise give the
   # value with its type -- so a number is compared through a cast.
-  def test_dig_is_text_everywhere
+  def test_dig_text_is_text_everywhere
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.dig(:n) == '5' }.pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig_text(:n) == '5' }.pluck(:name))
     type = integer_type
-    assert_equal(['two'], Doc.where { cast(:meta.dig(:n), type) > 6 }.pluck(:name))
+    assert_equal(['two'], Doc.where { cast(:meta.dig_text(:n), type) > 6 }.pluck(:name))
   end
 
-  def test_dig_json_keeps_the_json
+  def test_dig_keeps_the_json
     seed_docs
-    value = Doc.where { :name == 'one' }.select { :meta.dig_json(:tags).as(:v) }.first.v
+    value = Doc.where { :name == 'one' }.select { :meta.dig(:tags).as(:v) }.first.v
     assert_equal(%w[x y], value.is_a?(String) ? JSON.parse(value) : value)
   end
 
   # What text compared with a number means is a question the three adapters
-  # answer three ways -- `dig(:n) == 5` is true on SQLite, an error on
-  # PostgreSQL and true on MySQL, and `dig(:flag) == true` is true, an error
+  # answer three ways -- `dig_text(:n) == 5` is true on SQLite, an error on
+  # PostgreSQL and true on MySQL, and `dig_text(:flag) == true` is true, an error
   # and false -- so the comparison is refused rather than left to them.
-  def test_dig_refuses_a_comparison_with_anything_but_text
-    e = assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) == 5 } }
+  def test_dig_text_refuses_a_comparison_with_anything_but_text
+    e = assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:n) == 5 } }
     assert_match(/cast/, e.message)
-    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) != 5 } }
-    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) > 6 } }
-    assert_raises(ArgumentError) { Doc.where { :meta.dig(:flag) == true } }
-    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n).in?([1, 2]) } }
-    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n).between?(1, 9) } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:n) != 5 } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:n) > 6 } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:flag) == true } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:n).in?([1, 2]) } }
+    assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:n).between?(1, 9) } }
   end
 
   # A string is what a dug value compares to; so is anything the block built
   # rather than wrote as a literal, since that is nobody's guess to make.
-  def test_dig_compares_with_text_and_with_expressions
+  def test_dig_text_compares_with_text_and_with_expressions
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.dig(:n) == '5' }.pluck(:name))
-    assert_equal([], Doc.where { :meta.dig(:n) == :name }.pluck(:name))
-    assert_equal(['one'], Doc.where { :meta.dig(:n) == upper('5') }.pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig_text(:n) == '5' }.pluck(:name))
+    assert_equal([], Doc.where { :meta.dig_text(:n) == :name }.pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig_text(:n) == upper('5') }.pluck(:name))
     type = integer_type
-    assert_equal(['one'], Doc.where { cast(:meta.dig(:n), type) == 5 }.pluck(:name))
+    assert_equal(['one'], Doc.where { cast(:meta.dig_text(:n), type) == 5 }.pluck(:name))
   end
 
   # The JSON for a string carries its quotes, so the same comparison is
   # refused the other way about: false on SQLite, an error on PostgreSQL and
   # true on MySQL.
-  def test_dig_json_refuses_a_comparison_with_a_ruby_value
-    e = assert_raises(ArgumentError) { Doc.where { :meta.dig_json(:a) == 'deep' } }
-    assert_match(/dig gives the value/, e.message)
-    assert_raises(ArgumentError) { Doc.where { :meta.dig_json(:n) == 5 } }
+  def test_dig_refuses_a_comparison_with_a_ruby_value
+    e = assert_raises(ArgumentError) { Doc.where { :meta.dig(:a) == 'deep' } }
+    assert_match(/dig_text gives the value/, e.message)
+    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) == 5 } }
   end
 
-  # What dig_json gives is a document, so the JSON operations read it: the
+  # What dig gives is a document, so the JSON operations read it: the
   # same question asked of a part rather than of the whole.
-  def test_the_json_operations_read_what_dig_json_kept
+  def test_the_json_operations_read_what_dig_kept
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.dig_json(:a).key?(:b) }.pluck(:name))
-    assert_equal(%w[one two], Doc.where { :meta.dig_json(:n).not_null? }.order(:name).pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig(:a).key?(:b) }.pluck(:name))
+    assert_equal(%w[one two], Doc.where { :meta.dig(:n).not_null? }.order(:name).pluck(:name))
     assert_equal(['one'],
-      Doc.where { :meta.dig_json(:a).dig(:b) == 'deep' }.pluck(:name))
+      Doc.where { :meta.dig(:a).dig_text(:b) == 'deep' }.pluck(:name))
     value = Doc.where { :name == 'one' }.
-      select { :meta.dig_json(:a).bury(:b, 'x').as(:v) }.first.v
+      select { :meta.dig(:a).bury(:b, 'x').as(:v) }.first.v
     assert_equal('x', (value.is_a?(String) ? JSON.parse(value) : value)['b'])
   end
 
-  def test_containment_reads_what_dig_json_kept
+  def test_containment_reads_what_dig_kept
     skip_without_json_containment
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.dig_json(:tags).contains?(['x']) }.pluck(:name))
-    assert_equal([], Doc.where { :meta.dig_json(:tags).contains?(['z']) }.pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig(:tags).contains?(['x']) }.pluck(:name))
+    assert_equal([], Doc.where { :meta.dig(:tags).contains?(['z']) }.pluck(:name))
   end
 
   # Reading text back as a document is where the adapters part company:
   # SQLite parses it, MySQL takes it as written, PostgreSQL has no such
   # function for text at all.
   def test_the_json_operations_are_refused_on_a_dug_value
-    e = assert_raises(ArgumentError) { Doc.where { :meta.dig(:a).key?(:b) } }
-    assert_match(/dig_json keeps it/, e.message)
-    assert_raises(ArgumentError) { Doc.where { :meta.dig(:a).contains?(b: 1) } }
-    assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).dig(:b) } }
-    assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).dig_json(:b) } }
-    assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).bury(:b, 'x') } }
-    assert_raises(ArgumentError) { Doc.select { :meta.dig(:a).except(:b) } }
+    e = assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:a).key?(:b) } }
+    assert_match(/dig keeps it/, e.message)
+    assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:a).contains?(b: 1) } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).dig_text(:b) } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).dig(:b) } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).bury(:b, 'x') } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).except(:b) } }
   end
 
-  def test_dig_from_a_qualified_column
+  def test_dig_text_from_a_qualified_column
     seed_docs
-    assert_equal(['one'], Doc.where { :docs[:meta].dig(:a, :b) == 'deep' }.pluck(:name))
+    assert_equal(['one'], Doc.where { :docs[:meta].dig_text(:a, :b) == 'deep' }.pluck(:name))
   end
 
   def test_key
@@ -2022,7 +2022,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_dig_needs_a_path
     assert_raises(ArgumentError) { Doc.select { :meta.dig } }
-    e = assert_raises(ArgumentError) { Doc.select { :meta.dig(1.5) } }
+    e = assert_raises(ArgumentError) { Doc.select { :meta.dig_text(1.5) } }
     assert_match(/key or an array index/, e.message)
   end
 
@@ -2283,7 +2283,7 @@ class TestBlockSyntax < Minitest::Test
 
   # The value can be read out of the document it is going into.
   def test_bury_an_expression
-    assert_equal('5', buried { { meta: :meta.bury(:copy, :meta.dig(:n)) } }['copy'].to_s)
+    assert_equal('5', buried { { meta: :meta.bury(:copy, :meta.dig_text(:n)) } }['copy'].to_s)
   end
 
   # It is an expression, so it does not have to be written anywhere.

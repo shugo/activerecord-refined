@@ -706,11 +706,14 @@ Author.select { sum(case_when { :age >= 60 }.then(1).else(0)).as(:seniors) }
 ### JSON
 
 `dig` reads inside a JSON document, by the name of what `Hash` does. A string
-or symbol steps into an object, an integer into an array:
+or symbol steps into an object, an integer into an array, and what comes back
+is still JSON — the way `Hash#dig` hands back the structure itself — for a
+document to be dug into further or asked the JSON questions. `dig_text` gives
+the value as text instead, which is what a comparison wants:
 
 ```ruby
-Post.where { :meta.dig(:author, :name) == 'alice' }
-Post.select { :meta.dig(:tags, 0).as(:first_tag) }
+Post.where { :meta.dig_text(:author, :name) == 'alice' }
+Post.select { :meta.dig(:author).as(:author) }
 Post.where { :meta.key?(:draft) }
 Post.where { :meta.contains?(status: 'open') }
 ```
@@ -720,34 +723,34 @@ three:
 
 | | PostgreSQL | SQLite | MySQL |
 | --- | --- | --- | --- |
-| `dig(:a, :b)` | `#>> '{a,b}'` | `->> '$.a.b'` | `JSON_UNQUOTE(JSON_EXTRACT(…, '$.a.b'))` |
-| `dig_json(:a)` | `#> '{a}'` | `-> '$.a'` | `JSON_EXTRACT(…, '$.a')` |
+| `dig(:a)` | `#> '{a}'` | `-> '$.a'` | `JSON_EXTRACT(…, '$.a')` |
+| `dig_text(:a, :b)` | `#>> '{a,b}'` | `->> '$.a.b'` | `JSON_UNQUOTE(JSON_EXTRACT(…, '$.a.b'))` |
 | `key?(:a)` | `jsonb_exists(…, 'a')` | `json_type(…, '$.a') IS NOT NULL` | `JSON_CONTAINS_PATH(…, 'one', '$.a')` |
 | `contains?(…)` | `@>` | — | `JSON_CONTAINS` |
 
 MariaDB answers to the `mysql2` adapter and has none of `->` or `->>`, so the
 MySQL family goes through the functions, which both have.
 
-`dig` gives text everywhere. SQLite's `->>` would otherwise hand back the value
-with its type, so a comparison that worked there would fail on the other two;
-a number is compared through a `cast` on all three:
+`dig_text` gives text everywhere. SQLite's `->>` would otherwise hand back the
+value with its type, so a comparison that worked there would fail on the other
+two; a number is compared through a `cast` on all three:
 
 ```ruby
-Post.where { :meta.dig(:n) == '5' }
-Post.where { cast(:meta.dig(:n), 'integer') > 6 }   # 'signed' on MySQL
+Post.where { :meta.dig_text(:n) == '5' }
+Post.where { cast(:meta.dig_text(:n), 'integer') > 6 }   # 'signed' on MySQL
 ```
 
 The type is the adapter's own name for it, here as everywhere `cast` is used.
 
 Comparing a dug value with anything but a string raises `ArgumentError` rather
-than being left to the adapters, which answer it three ways: `dig(:n) == 5` is
-true on SQLite, an error on PostgreSQL and true on MySQL, and
-`dig(:flag) == true` is true, an error and false. `cast` is what says which
-type was meant, and then all three agree. `dig_json` is refused the other way
-about — the JSON for a string carries its quotes, so `dig_json(:name) ==
-'alice'` is false, an error and true — and `dig` is the one that gives the
-value. A column, a function or another dug value on the right goes through
-untouched; only a Ruby literal is refused.
+than being left to the adapters, which answer it three ways: `dig_text(:n) ==
+5` is true on SQLite, an error on PostgreSQL and true on MySQL, and
+`dig_text(:flag) == true` is true, an error and false. `cast` is what says
+which type was meant, and then all three agree. `dig` is refused the other way
+about — the JSON for a string carries its quotes, so `dig(:name) == 'alice'`
+is false, an error and true — and `dig_text` is the one that gives the value.
+A column, a function or another dug value on the right goes through untouched;
+only a Ruby literal is refused.
 
 `bury` sets what `dig` reads: the last argument is the value and the rest are
 the path to it. The document comes back changed rather than being written
@@ -759,7 +762,7 @@ Post.update_all { { meta: :meta.bury(:author, :name, 'alice') } }
 # ...          JSON_SET("meta", '$.author.name', 'alice')   elsewhere
 
 Post.update_all { { meta: :meta.bury(:tags, ['ruby', 'sql']) } }
-Post.update_all { { meta: :meta.bury(:copy, :meta.dig(:n)) } }
+Post.update_all { { meta: :meta.bury(:copy, :meta.dig_text(:n)) } }
 ```
 
 A whole document goes in as one — an object or an array rather than the string
@@ -787,26 +790,25 @@ keys, an element by index — and an array literal written without a type is
 read as the first of them, so `"meta" - '{draft}'` takes out the key spelled
 `{draft}`, which is nothing, and says nothing about it.
 
-`dig_json` keeps the JSON, for a document to be dug into further or compared
-whole — so the JSON operations read what it gives, which is the same question
-asked of a part of the document rather than of all of it:
+What `dig` gives is a document, so the JSON operations read it — the same
+question asked of a part of the document rather than of all of it:
 
 ```ruby
-Post.where { :meta.dig_json(:author).key?(:email) }
-Post.where { :meta.dig_json(:author).dig(:name) == 'alice' }
-Post.update_all { { meta: :meta.dig_json(:author).bury(:name, 'alice') } }
+Post.where { :meta.dig(:author).key?(:email) }
+Post.where { :meta.dig(:author).dig_text(:name) == 'alice' }
+Post.update_all { { meta: :meta.dig(:author).bury(:name, 'alice') } }
 ```
 
 Containment reads it too, on the adapters that have containment at all:
 
 ```ruby
-Post.where { :meta.dig_json(:tags).contains?(['ruby']) }
+Post.where { :meta.dig(:tags).contains?(['ruby']) }
 ```
 
-Asking the same of `dig` raises `ArgumentError`: what it gives is text, and
-reading text back as a document is where the adapters part company — SQLite
-parses it, MySQL takes it as written, and PostgreSQL has no such function for
-text at all.
+Asking the same of `dig_text` raises `ArgumentError`: what it gives is text,
+and reading text back as a document is where the adapters part company —
+SQLite parses it, MySQL takes it as written, and PostgreSQL has no such
+function for text at all.
 
 `contains?` has no equivalent on SQLite and raises `NotImplementedError`
 there — later than the rest, since the adapter is only known when the SQL is

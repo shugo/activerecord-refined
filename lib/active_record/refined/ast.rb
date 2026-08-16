@@ -217,15 +217,16 @@ module ActiveRecord
 
         # Reading inside a JSON document, by the name of what Hash does.  A
         # string or symbol steps into an object, an integer into an array, and
-        # what comes back is the value rather than the JSON, since that is what
-        # a comparison wants.  dig_json keeps it JSON, for a document to be dug
-        # into further or compared whole.
+        # what comes back is still JSON, the way Hash#dig hands back the
+        # structure itself -- for a document to be dug into further or asked
+        # the JSON questions.  dig_text gives the value as text instead,
+        # which is what a comparison wants.
         def dig(*path)
-          JsonPath.new(self, path)
+          JsonPath.new(self, path, as_json: true)
         end
 
-        def dig_json(*path)
-          JsonPath.new(self, path, as_json: true)
+        def dig_text(*path)
+          JsonPath.new(self, path)
         end
 
         # Keys taken out of a JSON document, by the name of what Hash does,
@@ -513,20 +514,20 @@ module ActiveRecord
       #
       # The path is turned into a string either way, so a key with a space or
       # a quote in it travels as itself rather than having to be refused.
-      # What a dug value may be compared with.  dig gives text on every
+      # What a dug value may be compared with.  dig_text gives text on every
       # adapter, and what a text value compared with a number means is a
-      # question the three answer three ways: `dig(:n) == 5` is true on
+      # question the three answer three ways: `dig_text(:n) == 5` is true on
       # SQLite, an error on PostgreSQL and true on MySQL, while
-      # `dig(:flag) == true` is true, an error, and false.  cast is what says
-      # which type was meant, and then all three agree.
+      # `dig_text(:flag) == true` is true, an error, and false.  cast is what
+      # says which type was meant, and then all three agree.
       #
-      # dig_json is refused the other way about: the JSON for a string carries
-      # its quotes, so `dig_json(:name) == 'alice'` is false on SQLite, an
-      # error on PostgreSQL and true on MySQL.  dig is the one that gives the
-      # value.
+      # dig is refused the other way about: the JSON for a string carries
+      # its quotes, so `dig(:name) == 'alice'` is false on SQLite, an
+      # error on PostgreSQL and true on MySQL.  dig_text is the one that
+      # gives the value.
       #
-      # A string against dig, and anything the block itself built -- a column,
-      # a function, another dug value -- go through untouched.
+      # A string against dig_text, and anything the block itself built -- a
+      # column, a function, another dug value -- go through untouched.
       module JsonComparable
         %i[== != < <= > >=].each do |operator|
           define_method(operator) do |other|
@@ -552,9 +553,9 @@ module ActiveRecord
           return if other.is_a?(::String) && !as_json
 
           raise ArgumentError, as_json ?
-            "dig_json gives JSON, and comparing it with #{other.inspect} " \
-            "means something different on every adapter; dig gives the value" :
-            "dig gives text, and comparing it with #{other.inspect} means " \
+            "dig gives JSON, and comparing it with #{other.inspect} " \
+            "means something different on every adapter; dig_text gives the value" :
+            "dig_text gives text, and comparing it with #{other.inspect} means " \
             "something different on every adapter; cast it to the type meant"
         end
 
@@ -568,18 +569,18 @@ module ActiveRecord
         end
       end
 
-      # The JSON operations read a document, and what dig_json gives is one:
-      # `dig_json(:author).key?(:email)` and `dig_json(:tags).contains?(...)`
-      # are the same question asked of a part of it, and the adapters answer
-      # them alike.  What dig gives is text, and reading that as a document
+      # The JSON operations read a document, and what dig gives is one:
+      # `dig(:author).key?(:email)` and `dig(:tags).contains?(...)` are the
+      # same question asked of a part of it, and the adapters answer them
+      # alike.  What dig_text gives is text, and reading that as a document
       # again is where they part company: SQLite parses it back and MySQL
       # takes it as written, where PostgreSQL has no such function for text.
       module JsonDocument
-        %i[dig dig_json key? contains? bury except].each do |name|
+        %i[dig dig_text key? contains? bury except].each do |name|
           define_method(name) do |*args|
             unless as_json
               raise ArgumentError,
-                "dig gives text, and #{name} reads JSON; dig_json keeps it"
+                "dig_text gives text, and #{name} reads JSON; dig keeps it"
             end
             super(*args)
           end
@@ -615,8 +616,8 @@ module ActiveRecord
             extracted = Arel::Nodes::InfixOperation.new(
               as_json ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
             # SQLite's ->> gives back the value with its type, where the other
-            # two give text.  Cast so that `dig(:n) == '5'` means the same
-            # thing everywhere, and a number wants a cast everywhere too.
+            # two give text.  Cast so that `dig_text(:n) == '5'` means the
+            # same thing everywhere, and a number wants a cast everywhere too.
             as_json ? extracted : Arel::Nodes::NamedFunction.new(
               'CAST', [Arel::Nodes::As.new(extracted, Arel::Nodes::SqlLiteral.new('text'))])
           end
