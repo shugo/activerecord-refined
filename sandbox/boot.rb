@@ -404,7 +404,19 @@ def data(table, limit: 50)
   name = table_named(table)
   puts name
   puts
-  print_result ActiveRecord::Base.connection.select_all("SELECT * FROM #{name} LIMIT #{limit.to_i}")
+  print_result ActiveRecord::Base.connection.select_all(rows_of(name, limit))
+end
+
+# A SELECT with an order, which a table read for looking at wants and SQL
+# gives nothing without: PostgreSQL hands back the rows as the heap holds
+# them, and an update moves the row it changed to the end, so a table looked
+# at after an example had run came out shuffled.  The key is the order the
+# sample data was made in.
+def rows_of(name, limit)
+  connection = ActiveRecord::Base.connection
+  key = connection.primary_key(name)
+  order = key ? " ORDER BY #{connection.quote_column_name(key)}" : ''
+  "SELECT * FROM #{name}#{order} LIMIT #{limit.to_i}"
 end
 
 # The same rows as `data`, handed to the page as JSON so it can lay them out
@@ -413,9 +425,10 @@ end
 # about.
 def data_json(table, limit: 200)
   require 'json'
-  result = ActiveRecord::Base.connection.select_all("SELECT * FROM #{table_named(table)} LIMIT #{limit.to_i}")
+  name = table_named(table)
+  result = ActiveRecord::Base.connection.select_all(rows_of(name, limit))
   rows = cast_rows(result).map { |row| row.map { |value| cell_value(value) } }
-  JSON.generate(table: table_named(table), columns: result.columns, rows: rows)
+  JSON.generate(table: name, columns: result.columns, rows: rows)
 end
 
 # The rows as Ruby values rather than as the adapter left them.  PGlite hands
