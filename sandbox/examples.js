@@ -430,7 +430,8 @@ show Doc.where { :meta.dig_json(:tags).contains?(['sql']) }`,
         slug: 'update-all',
         code: `# update_all's hash reads a symbol as the value it is.  The block reads it
 # as the column it names, which is what lets the new value be worked out
-# from the old.
+# from the old.  It has no relation to show -- it runs and answers with a
+# count -- so the statement is printed as it goes, between the two reads.
 show Post.where { :published == true }
 
 Post.where { :published == true }.update_all { { likes: :likes + 1 } }

@@ -352,6 +352,31 @@ rescue ActiveRecord::StatementInvalid => e
   puts
 end
 
+# A statement that changes rows is printed as it runs.  `show` takes a
+# relation, and update_all and upsert_all have none to give -- they execute and
+# answer with a count -- so their SQL would otherwise be the one thing on this
+# page nobody could see.
+#
+# Only while the page is running what was typed: the schema and the sample data
+# are built through these same notifications, and nobody came here to read
+# those.
+WRITE_STATEMENT = /\A\s*(INSERT|UPDATE|DELETE)\b/i
+
+def show_writes(&block)
+  ActiveSupport::Notifications.subscribed(
+    method(:print_write), 'sql.active_record', &block)
+end
+
+def print_write(*, payload)
+  return if %w[SCHEMA TRANSACTION].include?(payload[:name])
+  return unless WRITE_STATEMENT.match?(payload[:sql])
+
+  puts red(format_sql(payload[:sql]))
+  changed = payload[:affected_rows]
+  puts "#{changed} row(s) changed" unless changed.nil?
+  puts
+end
+
 # Prints just the SQL, for examples where running the query is beside the point.
 def sql(relation)
   puts red(format_sql(relation.to_sql))

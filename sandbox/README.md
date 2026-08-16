@@ -24,7 +24,7 @@ A server is required because browsers refuse to load WebAssembly over
 
 ```
 index.html         example list, editor, output
-boot.rb            schema and seed data, the database switch, the show helper
+boot.rb            schema and seed data, the database switch, show and the write log
 examples.js        the examples
 pglite/            the PostgreSQL adapter and what it is missing
 pglite-bridge.mjs  the JS half of that adapter
@@ -110,6 +110,15 @@ SELECT oid FROM pg_type WHERE typcategory = 'A'
 A result read through the connection rather than through a model is not cast by
 anyone, and with the parsers off it is text all the way down, so `show` and the
 table pane ask for `cast_values`.
+
+## What the page prints
+
+`show` takes a relation: it prints the SQL and then the rows. `update_all` and
+`upsert_all` have no relation to give — they run and answer with a count — so
+every statement that changes rows is printed as it runs, with the number it
+changed, and a write is as visible as a read. It is subscribed only around what
+the page is running: the schema and the sample data are built through the same
+notifications and nobody came here to read those.
 
 `bin/build-wasm` strips the binary at the end. rbwasm builds with `-g`
 throughout, and the DWARF that leaves behind is about 21 MB, a third of the

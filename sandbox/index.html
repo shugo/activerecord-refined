@@ -526,9 +526,11 @@ begin
   __prev = $stdout
   $stdout = __buf
   begin
-    eval(<<'${nonce}', TOPLEVEL_BINDING, '(sandbox)', 1)
+    show_writes do
+      eval(<<'${nonce}', TOPLEVEL_BINDING, '(sandbox)', 1)
 ${code}
 ${nonce}
+    end
   rescue Exception => e
     __buf.puts "#{e.class}: #{e.message}"
   ensure
