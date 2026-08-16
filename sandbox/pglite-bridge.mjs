@@ -8,12 +8,12 @@
 // imported here.
 
 // PGlite's own parsers turn a value into what JS would make of it, which is
-// not what ActiveRecord is about to do with it: a float would arrive at
+// not what Active Record is about to do with it: a float would arrive at
 // translate_value as a JS number and be rounded to an integer, a timestamp as
 // a Date and be read back in the local zone, and jsonb as an object that
-// comes out of to_s as nothing ActiveRecord can parse.  Parsing every type as
+// comes out of to_s as nothing Active Record can parse.  Parsing every type as
 // itself hands over the text PostgreSQL wrote, which is what the pg gem would
-// have handed over and what ActiveRecord's own casting expects.
+// have handed over and what Active Record's own casting expects.
 // The array types have to be named as well: PGlite parses an array whether or
 // not there is a parser registered for its type, and what it hands over then
 // is a JS array, which reaches Ruby through to_s as its elements joined by

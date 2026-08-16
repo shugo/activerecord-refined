@@ -366,7 +366,7 @@ module ActiveRecord
       # A literal standing where an expression would: `select { value(0).as(:depth) }`.
       #
       # Values reach the SQL quoted wherever they appear as an operand, but the
-      # top of a select list is ActiveRecord's, and a bare string there is SQL
+      # top of a select list is Active Record's, and a bare string there is SQL
       # rather than a string.  Saying `value` is how you ask for the other
       # meaning, and it carries the predications with it, so a literal can be
       # compared and combined like anything else.
@@ -448,7 +448,7 @@ module ActiveRecord
         end
 
         # What a `when` is until its `then` arrives.  A Node so that using it
-        # as one says what is missing rather than reaching ActiveRecord as
+        # as one says what is missing rather than reaching Active Record as
         # something it cannot read.
         class Pending < Node
           def initialize(kase, condition)
@@ -1262,7 +1262,7 @@ module ActiveRecord
 
       # A plain SQL comparison. The value is passed through as it is, so a Range
       # or an Array compares against a PostgreSQL range or array column, the way
-      # ActiveRecord's own force_equality? types do.
+      # Active Record's own force_equality? types do.
       class Comparison < Predicate
         OPERATOR_MAP = {
           :== => :eq, :!= => :not_eq,
@@ -1321,7 +1321,7 @@ module ActiveRecord
       end
 
       # A relation standing for a set of values, which is what IN and the
-      # quantifiers each take.  The treatment is ActiveRecord's own
+      # quantifiers each take.  The treatment is Active Record's own
       # RelationHandler's: without an explicit select list the subquery
       # selects the model's primary key.
       module SetSubquery

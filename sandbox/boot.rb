@@ -2,13 +2,13 @@
 # models the examples use, then defines the helpers the examples call.
 
 # ruby.wasm starts with RubyGems disabled, so Gem is not defined.  ActiveSupport's
-# BacktraceCleaner reads Gem.path and Gem.default_dir while ActiveRecord loads,
+# BacktraceCleaner reads Gem.path and Gem.default_dir while Active Record loads,
 # so RubyGems has to be pulled in first.
 require 'rubygems'
 
 # sqlite3 is compiled into ruby.wasm as a bundled extension rather than
 # installed as a gem, so RubyGems has no spec for it and the `gem "sqlite3"`
-# call at the top of ActiveRecord's adapter would fail to resolve.  Kernel#gem
+# call at the top of Active Record's adapter would fail to resolve.  Kernel#gem
 # returns early when Gem.loaded_specs already satisfies the requirement, so
 # registering the version that is actually built in is enough.
 require 'sqlite3'
@@ -433,7 +433,7 @@ end
 
 # The rows as Ruby values rather than as the adapter left them.  PGlite hands
 # every value over as the text PostgreSQL wrote -- on purpose, so that
-# ActiveRecord's casting is what decides what a value is -- and a result read
+# Active Record's casting is what decides what a value is -- and a result read
 # through the connection rather than through a model has not been cast yet.
 # One column is a special case: cast_values flattens it.
 def cast_rows(result)

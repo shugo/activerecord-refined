@@ -3,7 +3,7 @@
 [![gem](https://img.shields.io/gem/v/activerecord-refined.svg)](https://rubygems.org/gems/activerecord-refined)
 [![test](https://github.com/shugo/activerecord-refined/actions/workflows/test.yml/badge.svg)](https://github.com/shugo/activerecord-refined/actions/workflows/test.yml)
 
-Adding clean and powerful query syntax on ActiveRecord using refinements.
+Adding clean and powerful query syntax on Active Record using refinements.
 
 ```ruby
 Author.
@@ -15,7 +15,7 @@ Author.
 ```
 
 **[Try it in your browser](https://shugo.github.io/activerecord-refined/)** —
-Ruby 4.1, ActiveRecord, SQLite and PostgreSQL run in the page, so the examples
+Ruby 4.1, Active Record, SQLite and PostgreSQL run in the page, so the examples
 build real SQL and return real rows without a `ruby-master` build of your own.
 
 ## History
@@ -43,7 +43,7 @@ works again without monkey-patching `Symbol` globally.
 ## Requirements
 
 * Ruby 4.1 or later (for `Proc#refined`; not released yet, so a `ruby-master` build is needed for now)
-* ActiveRecord 7.0 or later
+* Active Record 7.0 or later
 
 The [sandbox](https://shugo.github.io/activerecord-refined/) is there to skip
 that build: it carries its own Ruby 4.1. `sandbox/` in this repository is what
@@ -123,7 +123,7 @@ answers false there. `not_true?` is therefore "false or never set" and
 way and answers them alike.
 
 `in?` also takes a relation as a subquery. Without an explicit select list the
-subquery selects the relation's primary key, the same way ActiveRecord's own
+subquery selects the relation's primary key, the same way Active Record's own
 `where(id: relation)` does:
 
 ```ruby
@@ -245,7 +245,7 @@ database can express what you mean.
 
 `==` always means SQL `=`, and passes its value through untouched. A Range or an
 Array therefore compares against a PostgreSQL range or array column, the same
-way ActiveRecord's own `where(period: from...to)` does for those column types:
+way Active Record's own `where(period: from...to)` does for those column types:
 
 ```ruby
 Reservation.where { :period == (from...to) }   # daterange = '[from,to)'
@@ -294,9 +294,9 @@ Employee.joins(:employees, as: :managers) { :managers[:id] == :employees[:manage
 #   INNER JOIN "employees" "managers" ON "managers"."id" = "employees"."manager_id"
 ```
 
-`right_outer_joins` and `full_outer_joins` are the two ActiveRecord has no
+`right_outer_joins` and `full_outer_joins` are the two Active Record has no
 method for, and they take what `joins` takes. An association name is not among
-it: what ActiveRecord reads out of one is an inner or a left join and nothing
+it: what Active Record reads out of one is an inner or a left join and nothing
 else, so these two want the block that says how to join.
 
 ```ruby
@@ -339,7 +339,7 @@ Post.from(ranked, :posts).where { :rn == 1 }
 ```
 
 The subquery is named after the model's own table for the reason `from_cte`
-is: ActiveRecord goes on qualifying columns with that name, so `where` needs
+is: Active Record goes on qualifying columns with that name, so `where` needs
 to find it.
 
 ### Grouping several ways at once
@@ -393,7 +393,7 @@ writes it, so the SQL is written here instead.
 
 ### Common table expressions
 
-ActiveRecord's `with` and `with_recursive` need nothing from this gem: a CTE
+Active Record's `with` and `with_recursive` need nothing from this gem: a CTE
 is joined by name like any other table, so its `ON` clause is a block, where
 Rails' own documentation reaches for a string join.
 
@@ -424,8 +424,8 @@ the shape of a tree comes out of a flat table. The `0` is a value rather than
 SQL — see [`value`](#aggregates-functions-and-aliases) below for why a number
 can say `.as` directly.
 
-The alias on the last line is there for ActiveRecord's sake, not SQL's:
-written by hand that line would be `SELECT * FROM tree`. ActiveRecord goes on qualifying
+The alias on the last line is there for Active Record's sake, not SQL's:
+written by hand that line would be `SELECT * FROM tree`. Active Record goes on qualifying
 columns with the model's table name, so without the alias that name is not in
 the query and anything qualifying a column fails:
 
@@ -532,7 +532,7 @@ Post.select { fn(:date_trunc, 'day', :created_at).as(:day) }
 ```
 
 Values are quoted by the adapter wherever they appear, as they are in
-ActiveRecord, and so is a column alias. That is what makes the name asked for
+Active Record, and so is a column alias. That is what makes the name asked for
 the name that comes back: unquoted, PostgreSQL folds a capital away where the
 other two keep it, so one block would mean two things. It also leaves nothing
 to refuse — a name that would have been SQL becomes an identifier with a
@@ -647,7 +647,7 @@ number, the others as a negative one, and the bits are the same either way.
 
 One place asks for a value to be said out loud: the top of a select list.
 Everywhere else a bare literal is already a value — `where { :age > 18 }`,
-`concat(:name, '-x')` — but ActiveRecord reads a string in `select` as SQL,
+`concat(:name, '-x')` — but Active Record reads a string in `select` as SQL,
 so `value` is how you ask for the other meaning. It carries the predications
 and arithmetic with it, so a literal can be compared and combined like
 anything else. Numbers have a shorthand, since nothing else could be meant by
@@ -853,7 +853,7 @@ Post.select { sum(:likes).over.order(:created_at).rows(0..).as(:remaining) }
 ```
 
 `range` says `RANGE` where `rows` says `ROWS`, and a window has one frame or
-none. Named windows — `WINDOW w AS (...)` — have no clause in ActiveRecord to
+none. Named windows — `WINDOW w AS (...)` — have no clause in Active Record to
 live in, so they are not here.
 
 ### Aliases and ordering
@@ -887,7 +887,7 @@ Author.
 
 ### Writing
 
-`update_all` reads its hash the way ActiveRecord does — `update_all(likes: :likes)`
+`update_all` reads its hash the way Active Record does — `update_all(likes: :likes)`
 sets the column to the symbol itself. The block reads a symbol as the column it
 names, as every other block here does, which is what lets the new value be
 worked out from the old:
@@ -909,23 +909,23 @@ Tally.upsert_all(rows, unique_by: :page) { { hits: :hits + excluded(:hits) } }
 
 PostgreSQL and SQLite name that row `excluded`; MySQL spells the same thing
 `VALUES(column)`, and the block comes out as whichever the adapter reads.
-ActiveRecord's own `on_duplicate:` takes SQL text and nothing else, so this is
+Active Record's own `on_duplicate:` takes SQL text and nothing else, so this is
 the one place the DSL writes SQL out itself rather than handing Arel a tree —
 and the two cannot both be given.
 
 `insert_all` has no block: its values are literals by construction.
-ActiveRecord type-casts each one on the way into the `VALUES` list, so an
+Active Record type-casts each one on the way into the `VALUES` list, so an
 expression does not become SQL there — it becomes nothing, silently. Use
 `upsert_all` where a row's value has to be worked out.
 
 ## Performance
 
 `benchmark/query_building.rb` compares building the same queries through the
-block DSL and through ActiveRecord's other argument styles. Only query
+block DSL and through Active Record's other argument styles. Only query
 construction (through `to_sql`) is measured — every style produces the same
 SQL, so execution costs the same regardless.
 
-Queries built per second (ruby 4.1.0dev, ActiveRecord 8.1.3, one machine —
+Queries built per second (ruby 4.1.0dev, Active Record 8.1.3, one machine —
 treat the ratios, not the absolute numbers, as the result):
 
 | query | string | arel | block (this gem) | hash | relation and/or |

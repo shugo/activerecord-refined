@@ -34,8 +34,8 @@ Product.create!(name: 'apple', category_id: groceries.id, price: 2)
 #    rather than the string join Rails' own documentation reaches for.
 #    `from_cte` then selects the CTE under the model's table name.
 #
-#    That alias is ActiveRecord's requirement rather than SQL's: by hand the
-#    last line would be `SELECT * FROM tree`.  ActiveRecord keeps qualifying
+#    That alias is Active Record's requirement rather than SQL's: by hand the
+#    last line would be `SELECT * FROM tree`.  Active Record keeps qualifying
 #    columns with the model's table name, so without it `where` and `find_by`
 #    look for a table the query does not have.  `count`, `order` and `select`
 #    never qualify and would work either way, which makes it easy to miss.

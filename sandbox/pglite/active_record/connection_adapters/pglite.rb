@@ -21,7 +21,7 @@ module PG
 
   # PostgreSQL::OID::Array hands the literal to the pg gem to write and read,
   # so an array column needs these two even though every other type is cast by
-  # ActiveRecord itself.  Only the text format is here: that is all the adapter
+  # Active Record itself.  Only the text format is here: that is all the adapter
   # ever asks for.
   module TextEncoder
     class Array
@@ -168,7 +168,7 @@ module ActiveRecord
     end
 
     # PostgreSQLAdapter reads the SQLSTATE off the pg gem's result to decide
-    # which ActiveRecord error a failure is, and hands back the exception
+    # which Active Record error a failure is, and hands back the exception
     # untouched when there is none to read -- which here is always, since the
     # JS side has only a message.  Everything the database rejects is a
     # StatementInvalid instead, which is what the page is written to catch.

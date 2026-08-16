@@ -88,7 +88,7 @@ end
 numbered = Sale.select {
   [:region, :day, :amount, row_number.over.partition(:region).order(:amount.desc).as(:place)]
 }
-# The subquery is named after the model's own table because ActiveRecord goes
+# The subquery is named after the model's own table because Active Record goes
 # on qualifying columns with that name, so where has to find it there.
 show('the biggest sale of each region',
   Sale.from(numbered, :sales).where { :place == 1 },

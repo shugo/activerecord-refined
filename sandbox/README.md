@@ -1,6 +1,6 @@
 # activerecord-refined sandbox
 
-A page that runs Ruby 4.1, ActiveRecord, SQLite and PostgreSQL inside the
+A page that runs Ruby 4.1, Active Record, SQLite and PostgreSQL inside the
 browser so that
 [activerecord-refined](https://github.com/shugo/activerecord-refined)'s block
 syntax can be tried out without installing anything.
@@ -31,7 +31,7 @@ pglite-bridge.mjs  the JS half of that adapter
 manifest.json      list of the Ruby files written into the VM at boot   (generated)
 rb/lib/**          their contents                                       (generated)
 assets/            ruby.wasm's loader and CodeMirror                    (generated)
-ruby.wasm          Ruby 4.1 + ActiveRecord + SQLite                  (generated, ~40 MB)
+ruby.wasm          Ruby 4.1 + Active Record + SQLite                  (generated, ~40 MB)
 ```
 
 Each example has its own URL, so one can be linked to:
@@ -66,7 +66,7 @@ use belong to `jsonb` alone.
 The adapter is [wasmify-rails](https://github.com/palkan/wasmify-rails)'s,
 vendored under `pglite/` unmodified: it subclasses `PostgreSQLAdapter` and
 swaps only the connection for an object that calls out to JS, so the SQL
-ActiveRecord builds and the results it reads are its own. `pglite.rb` beside it
+Active Record builds and the results it reads are its own. `pglite.rb` beside it
 adds what this needs on top — the array types, the array encoder and decoder
 the pg stub does without, the quoting of every identifier rather than only the
 ones that would otherwise be read wrongly (PostgreSQL folds an unquoted one to
@@ -87,10 +87,10 @@ answers a query with a promise, which the Ruby side waits on with
 touch a database, on both adapters.
 
 **PGlite's own parsers are turned off.** Left on, they hand over what JS would
-make of a value, which is not what ActiveRecord is about to do with it: a float
+make of a value, which is not what Active Record is about to do with it: a float
 arrives as a JS number and is rounded to an integer, a timestamp as a Date and
 is read back in the local zone, and jsonb as an object that comes out of `to_s`
-as nothing ActiveRecord can parse. Parsing every type as itself hands over the
+as nothing Active Record can parse. Parsing every type as itself hands over the
 text PostgreSQL wrote, which is what the pg gem would have handed over.
 
 The array types have to be named as well, and named on each call: PGlite parses
@@ -377,14 +377,14 @@ built-in prism gives `duplicate symbol: pm_buffer_*`.
 
 ## What the page needs at runtime
 
-The three things at the top of `boot.rb` are all needed to run ActiveRecord on
+The three things at the top of `boot.rb` are all needed to run Active Record on
 Ruby under WASI.
 
 - **`require "rubygems"`** — ruby.wasm starts with RubyGems disabled, so `Gem`
   is undefined, but ActiveSupport's BacktraceCleaner reads `Gem.path`.
 - **Registering `Gem.loaded_specs['sqlite3']`** — sqlite3 is built in as a
   bundled extension rather than installed as a gem, so RubyGems cannot see it,
-  and ActiveRecord's adapter opens with `gem "sqlite3", ">= 2.1"`. `Kernel#gem`
+  and Active Record's adapter opens with `gem "sqlite3", ">= 2.1"`. `Kernel#gem`
   returns early when `Gem.loaded_specs` already satisfies the requirement.
 - **`reaping_frequency: nil`** — the connection pool's reaper runs on a
   `Thread`, and WASI has no threads (`Thread.new` raises
@@ -399,10 +399,10 @@ as `Socket::AF_INET`.
 
 **Verified on Firefox 140.**
 
-There is not much headroom. Compiling ActiveRecord's `relation.rb` needs about
+There is not much headroom. Compiling Active Record's `relation.rb` needs about
 **1.2 MB of JS stack**. Node's default (about 984 KB) raises
 `RangeError: Maximum call stack size exceeded`, and `--stack-size=4000` was
-needed. This is ActiveRecord's code, not the gem's, and switching to
+needed. This is Active Record's code, not the gem's, and switching to
 `--parser=parse.y` makes no difference.
 
 Chrome has not been tested. V8's default stack there is in the same range as

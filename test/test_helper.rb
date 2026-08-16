@@ -79,7 +79,7 @@ module SqlAssertions
     skip "#{ADAPTER} has no full outer join" if ADAPTER == 'mysql2'
   end
 
-  # MariaDB's json is a checked longtext, which ActiveRecord sees as a string
+  # MariaDB's json is a checked longtext, which Active Record sees as a string
   # and does not serialise a hash into -- what would go in is Ruby's inspect,
   # which the check refuses.  MySQL's json is a type of its own and takes the
   # hash; handing that one a string would store the document as a JSON string

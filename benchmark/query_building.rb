@@ -1,5 +1,5 @@
 # Compares the cost of building the same queries through this gem's block
-# DSL and through ActiveRecord's other argument styles: hash conditions,
+# DSL and through Active Record's other argument styles: hash conditions,
 # string conditions, raw Arel, and relation and/or chains.  Only query
 # construction (through to_sql) is measured; every style produces the same
 # SQL, which the script prints first as a sanity check.

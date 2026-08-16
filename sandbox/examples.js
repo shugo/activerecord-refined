@@ -248,7 +248,7 @@ show Employee.joins(:employees, as: :managers) {
 }`,
       },
       {
-        title: 'The joins ActiveRecord has no method for',
+        title: 'The joins Active Record has no method for',
         slug: 'other-joins',
         code: `# RIGHT OUTER keeps the rows of the table joined rather than the one
 # selected from -- here, the comment whose post has gone.
@@ -354,7 +354,7 @@ Author.select { row_number.as(:r) }`,
 # clause, and it runs everywhere.
 #
 # The subquery is named after the model's own table for the reason from_cte
-# is: ActiveRecord goes on qualifying columns with it.
+# is: Active Record goes on qualifying columns with it.
 ranked = Author.select {
   [:name, :country, :age, row_number.over.partition(:country).order(:age.desc).as(:rn)]
 }

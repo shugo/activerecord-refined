@@ -81,7 +81,7 @@ puts "--- 4. Self join through an alias ---"
 puts query4.to_sql
 puts
 
-# 5. The joins ActiveRecord has no method for.  RIGHT OUTER keeps the rows of
+# 5. The joins Active Record has no method for.  RIGHT OUTER keeps the rows of
 #    the table joined rather than the one selected from; FULL OUTER keeps
 #    both, which MySQL has no spelling for and this gem refuses there.
 query5 =

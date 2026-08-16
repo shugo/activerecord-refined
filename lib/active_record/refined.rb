@@ -251,7 +251,7 @@ module ActiveRecord
       #
       #   select { [:id, value(0).as(:depth)] }
       #
-      # Needed because the top of a select list is ActiveRecord's, and a bare
+      # Needed because the top of a select list is Active Record's, and a bare
       # string there is SQL rather than a string.  Numbers have a shorthand --
       # `0.as(:depth)` -- since nothing else could be meant by one.
       def value(literal)
@@ -367,7 +367,7 @@ module ActiveRecord
         end
       end
 
-      # A symbol names a table, which ActiveRecord's own from only takes as a
+      # A symbol names a table, which Active Record's own from only takes as a
       # string.  With `as` it is selected under another name; when that name
       # is the model's own, from_cte says the same thing without repeating it.
       def from(value, subquery_name = nil, as: nil)
@@ -383,7 +383,7 @@ module ActiveRecord
       end
 
       # Selects a CTE in place of the model's own table.  The alias is not a
-      # choice -- ActiveRecord keeps qualifying columns with the table name,
+      # choice -- Active Record keeps qualifying columns with the table name,
       # so the model's is the only name that works -- which is why it is
       # taken from the model rather than asked for:
       # with_recursive(tree: [...]).from_cte(:tree)
@@ -432,7 +432,7 @@ module ActiveRecord
         self
       end
 
-      # ActiveRecord generates these for the values it knows about; this one
+      # Active Record generates these for the values it knows about; this one
       # is ours, and lives in the same place so that it survives a spawn.
       def distinct_on_values
         @values.fetch(:distinct_on, ActiveRecord::QueryMethods::FROZEN_EMPTY_ARRAY)
@@ -470,10 +470,10 @@ module ActiveRecord
         end
       end
 
-      # The other two outer joins, which ActiveRecord has no method for and
+      # The other two outer joins, which Active Record has no method for and
       # Arel has the nodes for.  The rules are joins': the block is the ON,
       # `as` names the table within the query, `lateral` joins a relation.
-      # An association name is not among them -- what ActiveRecord reads out
+      # An association name is not among them -- what Active Record reads out
       # of one is an inner or a left join and nothing else.
       def right_outer_joins(*args, as: nil, lateral: false, &block)
         outer_joins(:right_outer_joins, Arel::Nodes::RightOuterJoin,

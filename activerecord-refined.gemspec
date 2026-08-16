@@ -8,7 +8,7 @@ Gem::Specification.new do |gem|
   gem.version       = Activerecord::Refined::VERSION
   gem.authors       = ["Shugo Maeda"]
   gem.email         = ["shugo@ruby-lang.org"]
-  gem.description   = 'Adding clean and powerful query syntax on AR using refinements'
+  gem.description   = 'Adding clean and powerful query syntax on Active Record using refinements'
   gem.summary       = 'Write Active Record queries as Ruby expressions'
   gem.homepage      = 'https://github.com/shugo/activerecord-refined'
 

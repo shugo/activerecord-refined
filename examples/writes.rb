@@ -27,7 +27,7 @@ Page.create!(path: '/about', hits: 3,  bonus: 0, title: 'about us')
 Page.create!(path: '/faq',   hits: 0,  bonus: 5, title: 'faq')
 
 # These statements run rather than being built, so unlike the other examples
-# the SQL is taken from the notification ActiveRecord sends for each one.
+# the SQL is taken from the notification Active Record sends for each one.
 def write(title)
   statements = []
   subscriber = ActiveSupport::Notifications.subscribe('sql.active_record') do |*, payload|
@@ -41,7 +41,7 @@ def write(title)
   puts
 end
 
-# 1. update_all.  ActiveRecord reads its hash as literals -- update_all(hits:
+# 1. update_all.  Active Record reads its hash as literals -- update_all(hits:
 #    :hits) would set the column to the symbol itself -- and the block reads a
 #    symbol as the column it names, which is what lets the new value be worked
 #    out from the old.
@@ -70,14 +70,14 @@ write('the old value and the new one added together') do
   Page.upsert_all(incoming, unique_by: :path) { {hits: :hits + excluded(:hits)} }
 end
 
-# Without a block, upsert_all overwrites -- that is ActiveRecord's own
+# Without a block, upsert_all overwrites -- that is Active Record's own
 # behaviour, and the block is what makes the old value reachable.
 write('and without a block it is a plain overwrite') do
   Page.upsert_all([{path: '/index', hits: 1, bonus: 0, title: 'HOME'}],
                   unique_by: :path)
 end
 
-# insert_all has no block: ActiveRecord type-casts each value into the VALUES
+# insert_all has no block: Active Record type-casts each value into the VALUES
 # list, so an expression there would become nothing rather than SQL.
 write('insert_all takes literals') do
   Page.insert_all([{path: '/legal', hits: 0, bonus: 0, title: 'legal'}])

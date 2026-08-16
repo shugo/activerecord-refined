@@ -697,7 +697,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   # A relation without an explicit select list selects its primary key, the
-  # same way ActiveRecord's own where(id: relation) does.
+  # same way Active Record's own where(id: relation) does.
   def test_in_subquery_selects_primary_key_by_default
     assert_sql(/WHERE "authors"."id" IN \(SELECT "posts"."id" FROM "posts"\)/,
       Author.where { :id.in?(Post.all) }.to_sql)
@@ -878,7 +878,7 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Author.left_outer_joins(:posts, as: :p) }
   end
 
-  # The other two outer joins, which ActiveRecord has no method for.  MySQL
+  # The other two outer joins, which Active Record has no method for.  MySQL
   # has no FULL OUTER JOIN either, and says so before the SQL is built.
   def test_right_outer_joins_with_block
     assert_sql(/RIGHT OUTER JOIN "posts" ON "posts"."author_id" = "authors"."id"/,
@@ -966,7 +966,7 @@ class TestBlockSyntax < Minitest::Test
         pluck(:name).sort)
   end
 
-  # ActiveRecord's from only takes a table name as a string.
+  # Active Record's from only takes a table name as a string.
   def test_from_symbol
     assert_sql(/FROM "tree"/, Node.from(:tree).to_sql)
   end

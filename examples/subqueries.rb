@@ -41,7 +41,7 @@ end
 
 # 1. in? takes a relation as a subquery.  With an explicit select list the
 #    subquery selects that column; without one it selects the primary key,
-#    the same way ActiveRecord's own where(id: relation) does.
+#    the same way Active Record's own where(id: relation) does.
 show('in? with a subquery',
   Author.where { :id.in?(Post.published.select(:author_id)) })
 

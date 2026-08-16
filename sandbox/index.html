@@ -833,7 +833,7 @@ databaseEl.addEventListener('change', () => useDatabase(databaseEl.value));
     detailEl.textContent = '(starting Ruby)';
     ({ vm } = await DefaultRubyVM(module));
 
-    detailEl.textContent = '(loading ActiveRecord and creating the sample data)';
+    detailEl.textContent = '(loading Active Record and creating the sample data)';
     await installRubyFiles();
     await vm.evalAsync(await (await fetch('./boot.rb', FRESH)).text());
 

@@ -128,7 +128,7 @@ jobs:
         run: ./bin/prepare-rb
 
       # Runs every example through the same WASI shim the page uses.  The
-      # larger stack is needed to compile ActiveRecord's relation.rb; see the
+      # larger stack is needed to compile Active Record's relation.rb; see the
       # note in sandbox/README.md.
       - name: Check the examples
         run: node --stack-size=4000 check-examples.mjs

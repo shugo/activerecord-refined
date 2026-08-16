@@ -64,7 +64,7 @@ rake test:all                # all three in turn
   adapter-specific and intended; PostgreSQL skips nothing.
 - `ADAPTER=mysql2` here reaches MariaDB; CI runs both it and `mysql:8`, so a
   green run here is half the mysql job.  The two differ over JSON, where
-  MariaDB's json column is a checked longtext that ActiveRecord will not
+  MariaDB's json column is a checked longtext that Active Record will not
   serialise a hash into and MySQL's is a type of its own that wants one, and
   over cast, where MariaDB takes integer and MySQL knows only signed.
   `connection.mariadb?` tells them apart.
