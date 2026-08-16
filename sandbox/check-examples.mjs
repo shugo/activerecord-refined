@@ -5,8 +5,6 @@ import { examples } from './examples.js';
 
 const wasm = process.argv[2] ?? './ruby.wasm';
 
-const vm = await boot(wasm);
-
 // An example that prints nothing is not showing anything, whatever it says it
 // is showing.  The one that caught this built a relation and never asked for
 // its SQL, so the failure it was written to demonstrate never happened.
@@ -37,7 +35,13 @@ for (const group of examples) {
 
 // Both databases: the page offers both, and an example that says what
 // PostgreSQL makes of it has to have been run there to be worth saying.
+//
+// Each database gets a VM of its own, which is what a page load gives:
+// the ?db=postgresql reload switches before anything else has run.
+// Switching a VM that had already run every SQLite example crashed CI's
+// ruby.wasm out of bounds -- deterministically, and only there.
 for (const database of ['sqlite3', 'postgresql']) {
+  const vm = await boot(wasm);
   await useDatabase(vm, database);
 
   console.log('#'.repeat(72));
