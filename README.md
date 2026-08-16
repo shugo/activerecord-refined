@@ -294,6 +294,27 @@ Employee.joins(:employees, as: :managers) { :managers[:id] == :employees[:manage
 #   INNER JOIN "employees" "managers" ON "managers"."id" = "employees"."manager_id"
 ```
 
+`right_outer_joins` and `full_outer_joins` are the two ActiveRecord has no
+method for, and they take what `joins` takes. An association name is not among
+it: what ActiveRecord reads out of one is an inner or a left join and nothing
+else, so these two want the block that says how to join.
+
+```ruby
+Author.right_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
+Author.full_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
+```
+
+MySQL has no `FULL OUTER JOIN` and neither has MariaDB, so `full_outer_joins`
+raises `NotImplementedError` there. SQLite has had one since 3.39.
+
+`cross_joins` is every row of one table against every row of the other. There
+is no condition to give, so it takes no block — `as` still names the table:
+
+```ruby
+Post.cross_joins(:authors)              # FROM "posts" CROSS JOIN "authors"
+Post.cross_joins(:posts, as: :others)   # FROM "posts" CROSS JOIN "posts" "others"
+```
+
 ### Keeping one row per group
 
 `distinct_on` is PostgreSQL's `DISTINCT ON`: the first row of each group the

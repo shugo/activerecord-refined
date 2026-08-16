@@ -10,5 +10,7 @@ ActiveRecord::QueryMethods.prepend ActiveRecord::Refined::QueryMethods
 ActiveRecord::Relation.prepend ActiveRecord::Refined::Writes
 
 # The methods above are ActiveRecord's own, so a model already forwards them
-# to its relation.  These two are new, and have to be added to that list.
-ActiveRecord::Base.singleton_class.delegate :from_cte, :distinct_on, to: :all
+# to its relation.  These are new, and have to be added to that list.
+ActiveRecord::Base.singleton_class.delegate(
+  :from_cte, :distinct_on,
+  :right_outer_joins, :full_outer_joins, :cross_joins, to: :all)

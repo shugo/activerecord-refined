@@ -74,6 +74,11 @@ module SqlAssertions
     skip "#{ADAPTER} has no JSON containment" if ADAPTER == 'sqlite3'
   end
 
+  # MySQL is the one without a FULL OUTER JOIN, and so is MariaDB.
+  def skip_without_full_outer_joins
+    skip "#{ADAPTER} has no full outer join" if ADAPTER == 'mysql2'
+  end
+
   # MariaDB's json is a checked longtext, which ActiveRecord sees as a string
   # and does not serialise a hash into -- what would go in is Ruby's inspect,
   # which the check refuses.  MySQL's json is a type of its own and takes the

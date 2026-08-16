@@ -878,6 +878,80 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Author.left_outer_joins(:posts, as: :p) }
   end
 
+  # The other two outer joins, which ActiveRecord has no method for.  MySQL
+  # has no FULL OUTER JOIN either, and says so before the SQL is built.
+  def test_right_outer_joins_with_block
+    assert_sql(/RIGHT OUTER JOIN "posts" ON "posts"."author_id" = "authors"."id"/,
+      Author.right_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }.to_sql)
+  end
+
+  def test_full_outer_joins_with_block
+    skip_without_full_outer_joins
+    assert_sql(/FULL OUTER JOIN "posts" ON "posts"."author_id" = "authors"."id"/,
+      Author.full_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }.to_sql)
+  end
+
+  def test_full_outer_joins_says_where_it_cannot_go
+    skip "#{ADAPTER} has FULL OUTER JOIN" unless ADAPTER == 'mysql2'
+    e = assert_raises(NotImplementedError) do
+      Author.full_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
+    end
+    assert_match(/no equivalent on MySQL/, e.message)
+  end
+
+  def test_right_outer_joins_with_alias
+    assert_sql(
+      /RIGHT OUTER JOIN "authors" (?:AS )?"mentors" ON "mentors"."id" = "authors"."id"/,
+      Author.right_outer_joins(:authors, as: :mentors) { :mentors[:id] == :authors[:id] }.to_sql)
+  end
+
+  # An association is what joins and left_outer_joins read; there is nothing
+  # for these two to read one as.
+  def test_the_other_outer_joins_need_a_block
+    e = assert_raises(ArgumentError) { Author.right_outer_joins(:posts) }
+    assert_match(/takes a table and the block/, e.message)
+    unless ADAPTER == 'mysql2'
+      assert_raises(ArgumentError) { Author.full_outer_joins(:posts) }
+    end
+  end
+
+  # CROSS JOIN: every row against every row, so there is no condition to give.
+  def test_cross_joins
+    assert_sql(/FROM "authors" CROSS JOIN "posts"/, Author.cross_joins(:posts).to_sql)
+  end
+
+  def test_cross_joins_with_alias
+    assert_sql(/CROSS JOIN "authors" "others"/,
+      Author.cross_joins(:authors, as: :others).to_sql)
+  end
+
+  def test_cross_joins_takes_no_block
+    e = assert_raises(ArgumentError) { Author.cross_joins(:posts) { :id == 1 } }
+    assert_match(/no condition/, e.message)
+  end
+
+  def test_cross_joins_execution
+    Author.delete_all
+    Post.delete_all
+    Author.create!(name: 'a')
+    Author.create!(name: 'b')
+    Post.create!(title: 'one')
+    Post.create!(title: 'two')
+    Post.create!(title: 'three')
+    assert_equal(6, Author.cross_joins(:posts).count)
+  end
+
+  def test_right_outer_joins_execution
+    Author.delete_all
+    Post.delete_all
+    author = Author.create!(name: 'a')
+    Post.create!(title: 'hers', author_id: author.id)
+    Post.create!(title: 'nobody\'s', author_id: nil)
+    assert_equal(['a', nil],
+      Author.right_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }.
+        order { :posts[:title] }.pluck(:'authors.name'))
+  end
+
   def test_joins_without_alias_still_delegates
     assert_sql(/INNER JOIN "posts" ON "posts"."author_id" = "authors"."id"/,
       Author.joins(:posts).to_sql)

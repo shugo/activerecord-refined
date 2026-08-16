@@ -247,6 +247,26 @@ show Employee.joins(:employees, as: :managers) {
   :managers[:id] == :employees[:manager_id]
 }`,
       },
+      {
+        title: 'The joins ActiveRecord has no method for',
+        slug: 'other-joins',
+        code: `# RIGHT OUTER keeps the rows of the table joined rather than the one
+# selected from -- here, the comment whose post has gone.
+Comment.create!(post_id: 999, body: 'orphan')
+
+show Post.right_outer_joins(:comments) { :comments[:post_id] == :posts[:id] }.
+  select { [:posts[:title], :comments[:body]] }
+
+# FULL OUTER keeps both sides.  MySQL has no spelling for it, and the gem
+# says so rather than leaving MySQL's parser to; SQLite has had one since
+# 3.39 and PostgreSQL always.
+show Post.full_outer_joins(:comments) { :comments[:post_id] == :posts[:id] }.
+  select { [:posts[:title], :comments[:body]] }
+
+# CROSS JOIN is every row against every row, so there is no condition to
+# give and no block to write it in.
+show Author.cross_joins(:employees).select { [:authors[:name], :employees[:name].as(:employee)] }`,
+      },
     ],
   },
 

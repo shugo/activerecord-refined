@@ -470,6 +470,36 @@ module ActiveRecord
         end
       end
 
+      # The other two outer joins, which ActiveRecord has no method for and
+      # Arel has the nodes for.  The rules are joins': the block is the ON,
+      # `as` names the table within the query, `lateral` joins a relation.
+      # An association name is not among them -- what ActiveRecord reads out
+      # of one is an inner or a left join and nothing else.
+      def right_outer_joins(*args, as: nil, lateral: false, &block)
+        outer_joins(:right_outer_joins, Arel::Nodes::RightOuterJoin,
+                    args, as, lateral, &block)
+      end
+
+      def full_outer_joins(*args, as: nil, lateral: false, &block)
+        check_full_outer_support
+        outer_joins(:full_outer_joins, Arel::Nodes::FullOuterJoin,
+                    args, as, lateral, &block)
+      end
+
+      # CROSS JOIN: every row of one table against every row of the other, so
+      # unlike the joins above there is no condition to give and no block to
+      # write it in.
+      #
+      #   Post.cross_joins(:authors)
+      #   Post.cross_joins(:posts, as: :others)
+      def cross_joins(*args, as: nil, &block)
+        if block
+          raise ArgumentError,
+            'a cross join has no condition; joins is the one that takes a block'
+        end
+        joins(build_cross_join(args.first, as))
+      end
+
       private
 
       def build_arel(...)
@@ -549,6 +579,35 @@ module ActiveRecord
 
       def refuse_lateral(database)
         raise NotImplementedError, "a lateral join has no equivalent on #{database}"
+      end
+
+      # MySQL has no FULL OUTER JOIN, and neither has MariaDB; SQLite has had
+      # one since 3.39 and PostgreSQL always.
+      def check_full_outer_support
+        return unless AST.adapter_family(klass) == :mysql
+        raise NotImplementedError, 'a full outer join has no equivalent on MySQL'
+      end
+
+      def outer_joins(called, join_class, args, alias_name, lateral, &block)
+        return joins(build_lateral_join(args.first, join_class, alias_name, &block)) if lateral
+        return joins(build_join_node(args.first, join_class, alias_name, &block)) if block
+
+        raise ArgumentError,
+          "#{called} takes a table and the block that joins it; an association " \
+          'is what joins and left_outer_joins read'
+      end
+
+      # Arel has a node for every other join and none for this one, and INNER
+      # JOIN with no ON -- which is a cross join on SQLite and MySQL -- is a
+      # syntax error on PostgreSQL.  So the SQL is written here, the second
+      # place in the gem that writes any: the keyword is fixed and the names
+      # are quoted by the adapter, so nothing of the caller's is in it.
+      def build_cross_join(target_table, alias_name)
+        joined = klass.with_connection do |connection|
+          name = connection.quote_table_name(target_table.to_s)
+          alias_name ? "#{name} #{connection.quote_table_name(alias_name.to_s)}" : name
+        end
+        Arel::Nodes::StringJoin.new(Arel.sql("CROSS JOIN #{joined}"))
       end
 
       def build_join_node(target_table, join_class, alias_name, &block)
