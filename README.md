@@ -26,7 +26,8 @@ Refinements' spec change, that implementation stopped working on Ruby 2.0.0 stab
 the project was left dormant for a long time.
 
 It has now been renamed to **activerecord-refined** and reimplemented on top of
-`Proc#refined`, which will be introduced in Ruby 4.1. `Proc#refined` returns a new proc that
+[`Proc#refined`](https://docs.ruby-lang.org/en/master/Proc.html#method-i-refined),
+which will be introduced in Ruby 4.1. `Proc#refined` returns a new proc that
 is evaluated with the given refinements activated, so a block written by the caller can
 be re-interpreted under the query DSL's refinements:
 
