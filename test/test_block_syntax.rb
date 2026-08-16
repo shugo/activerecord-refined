@@ -1997,6 +1997,17 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).except(:b) } }
   end
 
+  # What bury and except give back is JSON as dig's is, so the same guard
+  # covers them; an expression on the right still goes through.
+  def test_bury_and_except_refuse_a_comparison_with_a_ruby_value
+    e = assert_raises(ArgumentError) { Doc.where { :meta.bury(:a, 1) == '{"a": 1}' } }
+    assert_match(/bury gives JSON/, e.message)
+    e = assert_raises(ArgumentError) { Doc.where { :meta.except(:a) == '{"b": 2}' } }
+    assert_match(/except gives JSON/, e.message)
+    assert_raises(ArgumentError) { Doc.where { :meta.except(:a).in?(['{}']) } }
+    assert_sql(/ = /, Doc.where { :meta.except(:a) == :meta.except(:b) })
+  end
+
   def test_dig_text_from_a_qualified_column
     seed_docs
     assert_equal(['one'], Doc.where { :docs[:meta].dig_text(:a, :b) == 'deep' }.pluck(:name))

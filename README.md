@@ -755,8 +755,9 @@ than being left to the adapters, which answer it three ways: `dig_text(:n) ==
 which type was meant, and then all three agree. `dig` is refused the other way
 about — the JSON for a string carries its quotes, so `dig(:name) == 'alice'`
 is false, an error and true — and `dig_text` is the one that gives the value.
-A column, a function or another dug value on the right goes through untouched;
-only a Ruby literal is refused.
+What `bury` and `except` give back is JSON as `dig`'s is, and is refused the
+same way. A column, a function or another dug value on the right goes through
+untouched; only a Ruby literal is refused.
 
 `bury` sets what `dig` reads: the last argument is the value and the rest are
 the path to it. The document comes back changed rather than being written

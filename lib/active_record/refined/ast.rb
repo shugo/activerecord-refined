@@ -524,7 +524,8 @@ module ActiveRecord
       # dig is refused the other way about: the JSON for a string carries
       # its quotes, so `dig(:name) == 'alice'` is false on SQLite, an
       # error on PostgreSQL and true on MySQL.  dig_text is the one that
-      # gives the value.
+      # gives the value.  What bury and except give back is JSON as dig's
+      # is, and is refused the same way.
       #
       # A string against dig_text, and anything the block itself built -- a
       # column, a function, another dug value -- go through untouched.
@@ -553,7 +554,7 @@ module ActiveRecord
           return if other.is_a?(::String) && !as_json
 
           raise ArgumentError, as_json ?
-            "dig gives JSON, and comparing it with #{other.inspect} " \
+            "#{json_source} gives JSON, and comparing it with #{other.inspect} " \
             "means something different on every adapter; dig_text gives the value" :
             "dig_text gives text, and comparing it with #{other.inspect} means " \
             "something different on every adapter; cast it to the type meant"
@@ -623,6 +624,11 @@ module ActiveRecord
           end
         end
 
+        private
+
+        def json_source
+          'dig'
+        end
       end
 
       # Setting a value inside a JSON document, which is what bury does to what
@@ -631,6 +637,7 @@ module ActiveRecord
       class JsonSet < Node
         include Predications
         include JsonSteps
+        include JsonComparable
 
         attr_reader :operand, :path, :value
 
@@ -638,6 +645,11 @@ module ActiveRecord
           @operand = operand
           @path = check_steps(path, 'bury')
           @value = value
+        end
+
+        # Always JSON, which is what the comparison guard asks.
+        def as_json
+          true
         end
 
         def to_arel(table, model)
@@ -679,6 +691,10 @@ module ActiveRecord
         def expression?
           value.is_a?(Node) || value.is_a?(::Symbol)
         end
+
+        def json_source
+          'bury'
+        end
       end
 
       # Keys taken out of a JSON document.  PostgreSQL subtracts them, the
@@ -686,12 +702,17 @@ module ActiveRecord
       class JsonExcept < Node
         include Predications
         include JsonSteps
+        include JsonComparable
 
         attr_reader :operand, :keys
 
         def initialize(operand, keys)
           @operand = operand
           @keys = check_keys(keys)
+        end
+
+        def as_json
+          true
         end
 
         def to_arel(table, model)
@@ -727,6 +748,10 @@ module ActiveRecord
               "except takes keys of the document, not #{key.inspect}"
           end
           keys
+        end
+
+        def json_source
+          'except'
         end
       end
 
