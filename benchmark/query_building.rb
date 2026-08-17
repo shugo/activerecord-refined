@@ -4,11 +4,9 @@
 # construction (through to_sql) is measured; every style produces the same
 # SQL, which the script prints first as a sanity check.
 #
-# Run without bundler, so the profiling gems don't need to live in the
-# Gemfile:
+# The profiling gems are development dependencies, so:
 #
-#   gem install benchmark-ips memory_profiler
-#   ruby -Ilib benchmark/query_building.rb
+#   bundle exec ruby benchmark/query_building.rb
 
 require "benchmark/ips"
 require "memory_profiler"
