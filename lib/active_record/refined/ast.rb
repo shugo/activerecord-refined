@@ -634,8 +634,16 @@ module ActiveRecord
 
         def in?(values) = super(comparison_set(values))
         def not_in?(values) = super(comparison_set(values))
-        def between?(min, max) = super(comparison_value(min), comparison_value(max))
-        def not_between?(min, max) = super(comparison_value(min), comparison_value(max))
+
+        def between?(min, max)
+          super(comparison_value(min, in_set: true),
+                comparison_value(max, in_set: true))
+        end
+
+        def not_between?(min, max)
+          super(comparison_value(min, in_set: true),
+                comparison_value(max, in_set: true))
+        end
 
         %i[+ - * / & | ^ << >>].each do |operator|
           define_method(operator) do |_other|
