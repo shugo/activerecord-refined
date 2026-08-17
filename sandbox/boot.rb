@@ -106,6 +106,7 @@ def define_schema
       t.string  :name
       t.integer :price
       t.integer :quantity
+      t.integer :reorder_level
       # What upsert_all upserts by: a name is what a delivery note carries,
       # where the id is this table's own business.
       t.index :name, unique: true
@@ -183,9 +184,9 @@ def seed
   Employee.create!(name: 'Dev A', manager_id: lead.id)
   Employee.create!(name: 'Dev B', manager_id: lead.id)
 
-  Item.create!(name: 'Keyboard', price: 120, quantity: 3)
-  Item.create!(name: 'Monitor',  price: 400, quantity: 2)
-  Item.create!(name: 'Cable',    price: 10,  quantity: 25)
+  Item.create!(name: 'Keyboard', price: 120, quantity: 3,  reorder_level: 5)
+  Item.create!(name: 'Monitor',  price: 400, quantity: 2,  reorder_level: 2)
+  Item.create!(name: 'Cable',    price: 10,  quantity: 25, reorder_level: 10)
 
   # Two trees rather than one: walking the first has to leave the second behind,
   # which is the whole point of the recursive example and invisible if every row

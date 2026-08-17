@@ -611,11 +611,12 @@ module ActiveRecord
       # `dig_text(:flag) == true` is true, an error, and false.  cast is what
       # says which type was meant, and then all three agree.
       #
-      # dig, bury and except give JSON, and a JSON comparison is jsonb's:
-      # numbers compare as numbers and documents structurally, key order and
-      # spelling aside.  The Ruby value goes in as a JSON literal, and the
-      # adapters without jsonb refuse it from JsonLiteral when the SQL is
-      # written, which is when the adapter is known.
+      # dig, bury and except give JSON, and a JSON comparison belongs to the
+      # JSON types -- jsonb and MySQL's -- where numbers compare as numbers
+      # and documents structurally, key order and spelling aside.  The Ruby
+      # value goes in as a JSON literal, and the adapters without such a
+      # type refuse it from JsonLiteral when the SQL is written, which is
+      # when the adapter is known.
       #
       # A string against dig_text, and anything the block itself built -- a
       # column, a function, another dug value -- go through untouched.
@@ -650,12 +651,12 @@ module ActiveRecord
 
         # nil is left to the comparison itself, which says to use null?, and
         # so is anything the block built rather than wrote as a literal.
-        def comparison_value(other)
+        def comparison_value(other, in_set: false)
           return other if other.nil? || other.is_a?(Node) || other.is_a?(::Symbol) ||
                           other.is_a?(Arel::Nodes::Node) ||
                           other.is_a?(Arel::Attributes::Attribute) ||
                           other.is_a?(ActiveRecord::Relation)
-          return json_literal(other) if as_json
+          return json_literal(other, in_set: in_set) if as_json
           return other if other.is_a?(::String)
 
           raise ArgumentError,
@@ -663,10 +664,10 @@ module ActiveRecord
             "something different on every adapter; cast it to the type meant"
         end
 
-        def json_literal(other)
+        def json_literal(other, in_set: false)
           case other
           when ::String, ::Integer, ::Float, ::BigDecimal, true, false, ::Hash, ::Array
-            JsonLiteral.new(other)
+            JsonLiteral.new(other, in_set: in_set)
           when ::Rational
             raise ArgumentError,
               'a Rational has no exact SQL spelling; to_d says the decimal meant'
@@ -681,9 +682,10 @@ module ActiveRecord
           case values
           when ActiveRecord::Relation then values
           when ::Range
-            In::QuotedRange.new(comparison_value(values.begin),
-                                comparison_value(values.end), values.exclude_end?)
-          else values.map {|value| comparison_value(value) }
+            In::QuotedRange.new(comparison_value(values.begin, in_set: true),
+                                comparison_value(values.end, in_set: true),
+                                values.exclude_end?)
+          else values.map {|value| comparison_value(value, in_set: true) }
           end
         end
 
@@ -696,27 +698,50 @@ module ActiveRecord
         end
       end
 
-      # A Ruby value on the JSON side of a comparison.  Only PostgreSQL can
-      # answer one: jsonb compares numbers as numbers and documents
-      # structurally, where SQLite and MariaDB have only the text of each --
-      # spelling and key order deciding what equality means -- and MySQL's
-      # JSON type sides with jsonb but answers to the same adapter as
-      # MariaDB, so the family stays refused.  No cast is needed: an
-      # untyped literal beside a jsonb operand coerces to jsonb.
+      # A Ruby value on the JSON side of a comparison, which jsonb and
+      # MySQL's JSON type answer alike: numbers compare as numbers and
+      # documents structurally.  SQLite and MariaDB have only the text of
+      # each -- spelling and key order deciding what equality means -- and
+      # refuse here.  PostgreSQL needs no cast, an untyped literal beside a
+      # jsonb operand coercing to jsonb; MySQL is told CAST(... AS JSON),
+      # since a bare string beside JSON would be a JSON string, and every
+      # string outranks every number in its ordering.
       class JsonLiteral < Node
-        attr_reader :value
+        attr_reader :value, :in_set
 
-        def initialize(value)
+        def initialize(value, in_set: false)
           @value = value
+          @in_set = in_set
         end
 
         def to_arel(_table, model)
-          unless AST.adapter_family(model) == :postgresql
-            raise NotImplementedError,
-              'a JSON comparison has no equivalent on ' \
-              "#{model.connection_db_config.adapter}; dig_text gives the value"
+          json = Arel::Nodes.build_quoted(JSON.generate(value))
+          case AST.adapter_family(model)
+          when :postgresql then json
+          when :mysql then mysql_literal(json, model)
+          else refuse(model.connection_db_config.adapter)
           end
-          Arel::Nodes.build_quoted(JSON.generate(value))
+        end
+
+        private
+
+        # MySQL compares JSON with the six operators and leaves IN and
+        # BETWEEN out -- those fall back to another comparison entirely --
+        # and MariaDB, on the same adapter, has no JSON type at all.
+        def mysql_literal(json, model)
+          refuse('MariaDB') if model.with_connection {|c| c.mariadb? }
+          if in_set
+            raise NotImplementedError,
+              'IN and BETWEEN do not compare JSON on MySQL; dig_text gives the value'
+          end
+          Arel::Nodes::NamedFunction.new(
+            'CAST', [Arel::Nodes::As.new(json, Arel::Nodes::SqlLiteral.new('JSON'))])
+        end
+
+        def refuse(database)
+          raise NotImplementedError,
+            "a JSON comparison has no equivalent on #{database}; " \
+            'dig_text gives the value'
         end
       end
 

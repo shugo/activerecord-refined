@@ -777,15 +777,19 @@ ways: `dig_text(:n) == 5` is true on SQLite, an error on PostgreSQL and true
 on MySQL, and `dig_text(:flag) == true` is true, an error and false. `cast`
 is what says which type was meant, and then all three agree.
 
-A JSON comparison — `dig`'s side, and `bury`'s and `except`'s — is `jsonb`'s
-alone: numbers compare as numbers and documents structurally, key order and
-spelling aside, so on PostgreSQL a dug value compares with a Ruby one
-directly. The others have only the text of each, which is a different
-question, and raise `NotImplementedError` as the SQL is written:
+A JSON comparison — `dig`'s side, and `bury`'s and `except`'s — belongs to
+the JSON types: on PostgreSQL's `jsonb` and MySQL's `JSON` alike, numbers
+compare as numbers and documents structurally, key order and spelling aside,
+so a dug value compares with a Ruby one directly. SQLite and MariaDB have
+only the text of each, which is a different question, and raise
+`NotImplementedError` as the SQL is written. `in?` and `between?` are the
+two MySQL leaves out of its JSON comparisons, so those forms are `jsonb`'s
+alone:
 
 ```ruby
-Post.where { :meta.dig(:stars) >= 10 }              # PostgreSQL
+Post.where { :meta.dig(:stars) >= 10 }              # PostgreSQL and MySQL
 Post.where { :meta.dig(:author) == { 'name' => 'alice' } }
+Post.where { :meta.dig(:stars).in?([5, 10]) }       # PostgreSQL
 Post.where { cast(:meta.dig_text(:stars), 'integer') >= 10 }   # everywhere
 ```
 

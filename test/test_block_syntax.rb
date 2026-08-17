@@ -2021,22 +2021,38 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(['one'], Doc.where { cast(:meta.dig_text(:n), type) == 5 }.pluck(:name))
   end
 
-  # A JSON comparison is jsonb's: numbers compare as numbers and documents
-  # structurally, key order aside.
-  def test_json_comparisons_are_jsonb_answers
+  # A JSON comparison belongs to the JSON types: numbers compare as numbers
+  # and documents structurally, key order aside.
+  def test_json_comparisons_are_the_json_types_answers
     skip_without_json_comparisons
     seed_docs
     assert_equal(['two'], Doc.where { :meta.dig(:n) >= 6 }.pluck(:name))
     assert_equal(['one'], Doc.where { :meta.dig(:a) == { 'b' => 'deep' } }.pluck(:name))
     assert_equal(['one'], Doc.where { :meta.dig(:tags, 0) == 'x' }.pluck(:name))
-    assert_equal(%w[one two], Doc.where { :meta.dig(:n).in?([5, 9]) }.order(:name).pluck(:name))
-    assert_equal(['one'], Doc.where { :meta.dig(:n).between?(1, 6) }.pluck(:name))
     assert_equal(['one'],
       Doc.where { :meta.except(:a, :tags, :'odd key') == { 'n' => 5 } }.pluck(:name))
   end
 
+  # IN and BETWEEN are the two MySQL leaves out of its JSON comparisons --
+  # they fall back to another comparison entirely -- so the set forms are
+  # jsonb's alone.
+  def test_json_sets_are_jsonbs_alone
+    skip "#{ADAPTER} has no JSON IN" unless ADAPTER == 'postgresql'
+    seed_docs
+    assert_equal(%w[one two], Doc.where { :meta.dig(:n).in?([5, 9]) }.order(:name).pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig(:n).between?(1, 6) }.pluck(:name))
+  end
+
+  def test_json_sets_say_so_on_mysql
+    skip 'MySQL is the one that leaves IN out' unless ADAPTER == 'mysql2' && !mariadb?
+    e = assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n).in?([5, 9]) } }
+    assert_match(/IN and BETWEEN/, e.message)
+    assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n).between?(1, 6) } }
+  end
+
   def test_json_comparisons_elsewhere_say_so
-    skip 'this one has jsonb' if ADAPTER == 'postgresql'
+    skip 'this one has a JSON type' if ADAPTER == 'postgresql' ||
+                                       (ADAPTER == 'mysql2' && !mariadb?)
     e = assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n) >= 6 } }
     assert_match(/JSON comparison has no equivalent/, e.message)
     assert_raises(NotImplementedError) { Doc.where { :meta.bury(:a, 1) == '{"a": 1}' } }

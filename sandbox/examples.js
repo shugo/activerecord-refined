@@ -42,6 +42,18 @@ sql Author.where { :posts[:published] == true }`,
 show Author.where { :country == 'JP' }`,
       },
       {
+        title: 'A column on the right',
+        slug: 'column-right',
+        code: `# A bare symbol is a column in every position, the right of a
+# comparison included: what has run below its reorder level?
+show Item.where { :quantity < :reorder_level }
+
+# A name the model has no column for is refused rather than compared
+# against nothing anyone meant -- it is almost always an enum value
+# spelled as a symbol, which is written as its string.
+Item.where { :name == :keyboard }`,
+      },
+      {
         title: '== nil raises',
         slug: 'nil-raises',
         code: `# country = NULL is never true in SQL.  Letting nil through would mean
@@ -621,10 +633,13 @@ show Post.select { [bit_and(:flags).as(:common), bit_or(:flags).as(:any)] }`,
         title: 'JSON comparisons',
         slug: 'json-compare',
         code: `# jsonb compares numbers as numbers and documents structurally, so a
-# dug value compares with a Ruby one directly -- on PostgreSQL alone;
-# this page on SQLite says so.  dig_text with a cast is the portable
-# spelling.
-show Doc.where { :meta.dig(:stars) >= 10 }`,
+# dug value compares with a Ruby one directly -- on PostgreSQL, and on
+# MySQL 8; this page on SQLite says so.  dig_text with a cast is the
+# portable spelling.
+show Doc.where { :meta.dig(:stars) >= 10 }
+
+# A document compares whole, key order and spelling aside.
+show Doc.where { :meta.dig(:author) == { 'name' => 'Bob' } }`,
       },
       {
         title: 'Array column operators',

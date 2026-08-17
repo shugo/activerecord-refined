@@ -178,8 +178,9 @@ show('containment asks about a whole document',
   Article.where { :meta.contains?(draft: true) },
   Article.where { :meta.contains?(draft: true) }.pluck(:title))
 
-# A JSON comparison is jsonb's alone: numbers compare as numbers, documents
-# structurally.  The other adapters have only the text of each and raise.
+# A JSON comparison belongs to the JSON types -- jsonb here, MySQL's JSON
+# too: numbers compare as numbers, documents structurally.  SQLite and
+# MariaDB have only the text of each and raise.
 show('a dug value compares with a Ruby one directly',
   Article.where { :meta.dig(:draft) == true },
   Article.where { :meta.dig(:draft) == true }.pluck(:title))
