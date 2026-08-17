@@ -74,6 +74,11 @@ module SqlAssertions
     skip "#{ADAPTER} has no JSON containment" if ADAPTER == 'sqlite3'
   end
 
+  # Comparing a JSON value with a Ruby one is jsonb's alone.
+  def skip_without_json_comparisons
+    skip "#{ADAPTER} has no JSON comparison" unless ADAPTER == 'postgresql'
+  end
+
   # MySQL is the one without a FULL OUTER JOIN, and so is MariaDB.
   def skip_without_full_outer_joins
     skip "#{ADAPTER} has no full outer join" if ADAPTER == 'mysql2'

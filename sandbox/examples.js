@@ -618,6 +618,15 @@ show Author.where { :age > any(Author.where { :country == 'JP' }.select(:age)) }
 show Post.select { [bit_and(:flags).as(:common), bit_or(:flags).as(:any)] }`,
       },
       {
+        title: 'JSON comparisons',
+        slug: 'json-compare',
+        code: `# jsonb compares numbers as numbers and documents structurally, so a
+# dug value compares with a Ruby one directly -- on PostgreSQL alone;
+# this page on SQLite says so.  dig_text with a cast is the portable
+# spelling.
+show Doc.where { :meta.dig(:stars) >= 10 }`,
+      },
+      {
         title: 'Array column operators',
         slug: 'arrays',
         code: `# member?, superset?, subset? and intersect? become PostgreSQL's array

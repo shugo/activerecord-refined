@@ -122,12 +122,14 @@ module ActiveRecord
           In.new(self, values, negated: true)
         end
 
+        # Not min..max: an endpoint may be an expression, which Range would
+        # refuse to hold, since expressions do not compare among themselves.
         def between?(min, max)
-          In.new(self, min..max)
+          In.new(self, In::QuotedRange.new(min, max, false))
         end
 
         def not_between?(min, max)
-          In.new(self, min..max, negated: true)
+          In.new(self, In::QuotedRange.new(min, max, false), negated: true)
         end
 
         # CASE with this as the operand, compared against each `when`:
@@ -594,11 +596,11 @@ module ActiveRecord
       # `dig_text(:flag) == true` is true, an error, and false.  cast is what
       # says which type was meant, and then all three agree.
       #
-      # dig is refused the other way about: the JSON for a string carries
-      # its quotes, so `dig(:name) == 'alice'` is false on SQLite, an
-      # error on PostgreSQL and true on MySQL.  dig_text is the one that
-      # gives the value.  What bury and except give back is JSON as dig's
-      # is, and is refused the same way.
+      # dig, bury and except give JSON, and a JSON comparison is jsonb's:
+      # numbers compare as numbers and documents structurally, key order and
+      # spelling aside.  The Ruby value goes in as a JSON literal, and the
+      # adapters without jsonb refuse it from JsonLiteral when the SQL is
+      # written, which is when the adapter is known.
       #
       # A string against dig_text, and anything the block itself built -- a
       # column, a function, another dug value -- go through untouched.
@@ -610,15 +612,14 @@ module ActiveRecord
       module JsonComparable
         %i[== != < <= > >=].each do |operator|
           define_method(operator) do |other|
-            check_comparable(other)
-            super(other)
+            super(comparison_value(other))
           end
         end
 
-        def in?(values) = super(check_each(values))
-        def not_in?(values) = super(check_each(values))
-        def between?(min, max) = super(*check_each([min, max]))
-        def not_between?(min, max) = super(*check_each([min, max]))
+        def in?(values) = super(comparison_set(values))
+        def not_in?(values) = super(comparison_set(values))
+        def between?(min, max) = super(comparison_value(min), comparison_value(max))
+        def not_between?(min, max) = super(comparison_value(min), comparison_value(max))
 
         %i[+ - * / & | ^ << >>].each do |operator|
           define_method(operator) do |_other|
@@ -634,27 +635,41 @@ module ActiveRecord
 
         # nil is left to the comparison itself, which says to use null?, and
         # so is anything the block built rather than wrote as a literal.
-        def check_comparable(other)
-          return if other.nil? || other.is_a?(Node) || other.is_a?(::Symbol) ||
-                    other.is_a?(Arel::Nodes::Node) ||
-                    other.is_a?(Arel::Attributes::Attribute) ||
-                    other.is_a?(ActiveRecord::Relation)
-          return if other.is_a?(::String) && !as_json
+        def comparison_value(other)
+          return other if other.nil? || other.is_a?(Node) || other.is_a?(::Symbol) ||
+                          other.is_a?(Arel::Nodes::Node) ||
+                          other.is_a?(Arel::Attributes::Attribute) ||
+                          other.is_a?(ActiveRecord::Relation)
+          return json_literal(other) if as_json
+          return other if other.is_a?(::String)
 
-          raise ArgumentError, as_json ?
-            "#{json_source} gives JSON, and comparing it with #{other.inspect} " \
-            "means something different on every adapter; dig_text gives the value" :
+          raise ArgumentError,
             "dig_text gives text, and comparing it with #{other.inspect} means " \
             "something different on every adapter; cast it to the type meant"
         end
 
-        def check_each(values)
+        def json_literal(other)
+          case other
+          when ::String, ::Integer, ::Float, ::BigDecimal, true, false, ::Hash, ::Array
+            JsonLiteral.new(other)
+          when ::Rational
+            raise ArgumentError,
+              'a Rational has no exact SQL spelling; to_d says the decimal meant'
+          else
+            raise ArgumentError,
+              "#{json_source} gives JSON, and #{other.inspect} has no JSON " \
+              'spelling; dig_text gives the value'
+          end
+        end
+
+        def comparison_set(values)
           case values
           when ActiveRecord::Relation then values
-          when ::Range then [values.begin, values.end].each {|v| check_comparable(v) }
-          else values.each {|value| check_comparable(value) }
+          when ::Range
+            In::QuotedRange.new(comparison_value(values.begin),
+                                comparison_value(values.end), values.exclude_end?)
+          else values.map {|value| comparison_value(value) }
           end
-          values
         end
 
         def arithmetic_refusal(operator)
@@ -663,6 +678,30 @@ module ActiveRecord
             "different on every adapter; cast dig_text to the type meant" :
             "dig_text gives text, and #{operator} on it means something " \
             "different on every adapter; cast it to the type meant"
+        end
+      end
+
+      # A Ruby value on the JSON side of a comparison.  Only PostgreSQL can
+      # answer one: jsonb compares numbers as numbers and documents
+      # structurally, where SQLite and MariaDB have only the text of each --
+      # spelling and key order deciding what equality means -- and MySQL's
+      # JSON type sides with jsonb but answers to the same adapter as
+      # MariaDB, so the family stays refused.  No cast is needed: an
+      # untyped literal beside a jsonb operand coerces to jsonb.
+      class JsonLiteral < Node
+        attr_reader :value
+
+        def initialize(value)
+          @value = value
+        end
+
+        def to_arel(_table, model)
+          unless AST.adapter_family(model) == :postgresql
+            raise NotImplementedError,
+              'a JSON comparison has no equivalent on ' \
+              "#{model.connection_db_config.adapter}; dig_text gives the value"
+          end
+          Arel::Nodes.build_quoted(JSON.generate(value))
         end
       end
 
@@ -1500,15 +1539,27 @@ module ActiveRecord
 
         def to_arel(table, model)
           arel_operand = to_arel_operand(operand, table, model)
-          if values.is_a?(Range)
-            range = QuotedRange.new(quote_number(values.begin),
-                                    quote_number(values.end), values.exclude_end?)
+          case values
+          when Range, QuotedRange
+            range = QuotedRange.new(quote_value(values.begin, table, model),
+                                    quote_value(values.end, table, model),
+                                    values.exclude_end?)
             arel_operand.public_send(negated ? :not_between : :between, range)
+          when ActiveRecord::Relation
+            arel_operand.public_send(negated ? :not_in : :in, set_subquery(values, 'IN'))
           else
-            arg = values.is_a?(ActiveRecord::Relation) ? set_subquery(values, 'IN') : values
-            arg = arg.map {|value| quote_number(value) } if arg.is_a?(::Array)
+            arg = values
+            arg = arg.map {|value| quote_value(value, table, model) } if arg.is_a?(::Array)
             arel_operand.public_send(negated ? :not_in : :in, arg)
           end
+        end
+
+        private
+
+        # An element that is already an expression resolves; a number is
+        # quoted as itself; the rest ride for Arel to cast by the column.
+        def quote_value(value, table, model)
+          value.is_a?(Node) ? value.to_arel(table, model) : quote_number(value)
         end
       end
 

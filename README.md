@@ -768,18 +768,28 @@ as `"true"` on the other two; a JSON `null` is SQL `NULL` everywhere but
 MariaDB, which spells it `"null"`. A key that is not there is `NULL` on all
 three.
 
-Comparing a dug value with anything but a string raises `ArgumentError` rather
-than being left to the adapters, which answer it three ways: `dig_text(:n) ==
-5` is true on SQLite, an error on PostgreSQL and true on MySQL, and
-`dig_text(:flag) == true` is true, an error and false. `cast` is what says
-which type was meant, and then all three agree. `dig` is refused the other way
-about — the JSON for a string carries its quotes, so `dig(:name) == 'alice'`
-is false, an error and true — and `dig_text` is the one that gives the value.
-What `bury` and `except` give back is JSON as `dig`'s is, and is refused the
-same way. A column, a function or another dug value on the right goes through
-untouched; only a Ruby literal is refused. Arithmetic and the bit operators
-are refused outright on both sides — `dig_text(:n) + 1` is 6 on SQLite, an
-error on PostgreSQL and 6.0 on MariaDB — and `cast` settles those too.
+Comparing `dig_text`'s value with anything but a string raises
+`ArgumentError` rather than being left to the adapters, which answer it three
+ways: `dig_text(:n) == 5` is true on SQLite, an error on PostgreSQL and true
+on MySQL, and `dig_text(:flag) == true` is true, an error and false. `cast`
+is what says which type was meant, and then all three agree.
+
+A JSON comparison — `dig`'s side, and `bury`'s and `except`'s — is `jsonb`'s
+alone: numbers compare as numbers and documents structurally, key order and
+spelling aside, so on PostgreSQL a dug value compares with a Ruby one
+directly. The others have only the text of each, which is a different
+question, and raise `NotImplementedError` as the SQL is written:
+
+```ruby
+Post.where { :meta.dig(:stars) >= 10 }              # PostgreSQL
+Post.where { :meta.dig(:author) == { 'name' => 'alice' } }
+Post.where { cast(:meta.dig_text(:stars), 'integer') >= 10 }   # everywhere
+```
+
+A column, a function or another dug value on the right goes through untouched
+on every adapter. Arithmetic and the bit operators are refused outright on
+both sides — `dig_text(:n) + 1` is 6 on SQLite, an error on PostgreSQL and
+6.0 on MariaDB — and `cast` settles those too.
 
 `bury` sets what `dig` reads: the last argument is the value and the rest are
 the path to it. The document comes back changed rather than being written

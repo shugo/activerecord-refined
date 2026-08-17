@@ -178,6 +178,12 @@ show('containment asks about a whole document',
   Article.where { :meta.contains?(draft: true) },
   Article.where { :meta.contains?(draft: true) }.pluck(:title))
 
+# A JSON comparison is jsonb's alone: numbers compare as numbers, documents
+# structurally.  The other adapters have only the text of each and raise.
+show('a dug value compares with a Ruby one directly',
+  Article.where { :meta.dig(:draft) == true },
+  Article.where { :meta.dig(:draft) == true }.pluck(:title))
+
 show('the bits every article has, and the bits any of them has',
   Article.select { [bit_and(:flags).as(:common), bit_or(:flags).as(:any)] },
   Article.select { [bit_and(:flags).as(:common), bit_or(:flags).as(:any)] }.

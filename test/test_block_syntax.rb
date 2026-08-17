@@ -2007,13 +2007,32 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(['one'], Doc.where { cast(:meta.dig_text(:n), type) == 5 }.pluck(:name))
   end
 
-  # The JSON for a string carries its quotes, so the same comparison is
-  # refused the other way about: false on SQLite, an error on PostgreSQL and
-  # true on MySQL.
-  def test_dig_refuses_a_comparison_with_a_ruby_value
-    e = assert_raises(ArgumentError) { Doc.where { :meta.dig(:a) == 'deep' } }
-    assert_match(/dig_text gives the value/, e.message)
-    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) == 5 } }
+  # A JSON comparison is jsonb's: numbers compare as numbers and documents
+  # structurally, key order aside.
+  def test_json_comparisons_are_jsonb_answers
+    skip_without_json_comparisons
+    seed_docs
+    assert_equal(['two'], Doc.where { :meta.dig(:n) >= 6 }.pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig(:a) == { 'b' => 'deep' } }.pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig(:tags, 0) == 'x' }.pluck(:name))
+    assert_equal(%w[one two], Doc.where { :meta.dig(:n).in?([5, 9]) }.order(:name).pluck(:name))
+    assert_equal(['one'], Doc.where { :meta.dig(:n).between?(1, 6) }.pluck(:name))
+    assert_equal(['one'],
+      Doc.where { :meta.except(:a, :tags, :'odd key') == { 'n' => 5 } }.pluck(:name))
+  end
+
+  def test_json_comparisons_elsewhere_say_so
+    skip 'this one has jsonb' if ADAPTER == 'postgresql'
+    e = assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n) >= 6 } }
+    assert_match(/JSON comparison has no equivalent/, e.message)
+    assert_raises(NotImplementedError) { Doc.where { :meta.bury(:a, 1) == '{"a": 1}' } }
+  end
+
+  # What has no JSON spelling is refused before any adapter is asked.
+  def test_a_value_without_a_json_spelling_is_refused
+    e = assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) == Date.today } }
+    assert_match(/no JSON spelling/, e.message)
+    assert_raises(ArgumentError) { Doc.where { :meta.dig(:n) == Rational(1, 3) } }
   end
 
   # What dig gives is a document, so the JSON operations read it: the
@@ -2049,15 +2068,14 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).except(:b) } }
   end
 
-  # What bury and except give back is JSON as dig's is, so the same guard
-  # covers them; an expression on the right still goes through.
-  def test_bury_and_except_refuse_a_comparison_with_a_ruby_value
-    e = assert_raises(ArgumentError) { Doc.where { :meta.bury(:a, 1) == '{"a": 1}' } }
-    assert_match(/bury gives JSON/, e.message)
-    e = assert_raises(ArgumentError) { Doc.where { :meta.except(:a) == '{"b": 2}' } }
-    assert_match(/except gives JSON/, e.message)
-    assert_raises(ArgumentError) { Doc.where { :meta.except(:a).in?(['{}']) } }
+  # What bury and except give back is JSON as dig's is, so their
+  # comparisons are the same jsonb answers; an expression on the right
+  # goes through everywhere.
+  def test_bury_and_except_compare_as_json
     assert_sql(/ = /, Doc.where { :meta.except(:a) == :meta.except(:b) })
+    skip_without_json_comparisons
+    seed_docs
+    assert_equal(['two'], Doc.where { :meta.bury(:n, 9) == :docs[:meta] }.pluck(:name))
   end
 
   # Arithmetic is refused like a literal comparison is: text plus one is 6
