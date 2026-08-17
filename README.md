@@ -74,7 +74,10 @@ require 'activerecord-refined'
 ```
 
 Inside the block, symbols denote columns of the receiver's table, and `:table[:column]`
-denotes a qualified column.
+denotes a qualified column. That holds in every position — on the right of a
+comparison too, so `:age == :retirement_age` compares two columns. A value is
+written as its literal, an enum's as its string; a symbol naming no column of
+the model is refused rather than compared against nothing anyone meant.
 
 ### Conditions
 

@@ -1587,6 +1587,20 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { User.where { :age.in?(Rational(1, 3)..) }.to_sql }
   end
 
+  # A bare symbol is a column in every position, the right of a comparison
+  # included; a name the model has no column for is refused, being almost
+  # always an enum value spelled as a symbol.
+  def test_a_symbol_on_the_right_is_a_column
+    User.delete_all
+    User.create!(name: 'a', age: 30, flags: 30)
+    assert_sql(/"users"\."age" = "users"\."flags"/, User.where { :age == :flags })
+    assert_equal(1, User.where { :age == :flags }.count)
+    assert_equal(1, User.where { :age.in?([:flags]) }.count)
+    e = assert_raises(ArgumentError) { User.where { :age == :draft } }
+    assert_match(/no column of users/, e.message)
+    assert_raises(ArgumentError) { User.where { :age.in?([:draft]) } }
+  end
+
   # A numeric literal compares as itself, the way a bound ? does.  The typed
   # path casts 99.5 against an integer column to 99, and an age of 99
   # answered a >= 99.5 it does not satisfy.  A string keeps the column's own

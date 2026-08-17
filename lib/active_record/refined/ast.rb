@@ -399,6 +399,21 @@ module ActiveRecord
           end
         end
 
+        # A bare symbol is a column in every position, the value side of a
+        # comparison included.  The name is checked against the model, since
+        # a name it has no column for is almost always an enum value spelled
+        # as a symbol -- which, taken as a column, would quietly compare
+        # against nothing anyone meant.
+        def column_operand(name, table, model)
+          unless model.column_names.include?(name.to_s)
+            raise ArgumentError,
+              "#{name.inspect} is no column of #{model.table_name}; an enum " \
+              'value is written as its string, a column of another table ' \
+              'qualified'
+          end
+          table[name]
+        end
+
         # A number compares as itself, the way a bound ? does: the typed path
         # would cast 99.5 against an integer column to 99 and quietly move
         # the boundary.  Everything else keeps the column's own
@@ -1459,6 +1474,7 @@ module ActiveRecord
           arel_value =
             case value
             when Node then value.to_arel(table, model)
+            when ::Symbol then column_operand(value, table, model)
             when ActiveRecord::Relation then scalar_subquery(value)
             else quote_number(value)
             end
@@ -1556,10 +1572,15 @@ module ActiveRecord
 
         private
 
-        # An element that is already an expression resolves; a number is
-        # quoted as itself; the rest ride for Arel to cast by the column.
+        # An element that is already an expression resolves, a symbol is a
+        # column here as everywhere, a number is quoted as itself, and the
+        # rest ride for Arel to cast by the column.
         def quote_value(value, table, model)
-          value.is_a?(Node) ? value.to_arel(table, model) : quote_number(value)
+          case value
+          when Node then value.to_arel(table, model)
+          when ::Symbol then column_operand(value, table, model)
+          else quote_number(value)
+          end
         end
       end
 
