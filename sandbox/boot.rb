@@ -199,7 +199,9 @@ def seed
   Node.create!(name: 'other child', parent_id: other.id)
 
   Doc.create!(name: 'first',  meta: { 'author' => { 'name' => 'Alice' }, 'tags' => %w[ruby sql], 'stars' => 5 })
-  Doc.create!(name: 'second', meta: { 'author' => { 'name' => 'Bob' }, 'tags' => %w[ruby], 'stars' => 12 })
+  Doc.create!(name: 'second',
+              meta: { 'author' => { 'name' => 'Bob' }, 'tags' => %w[ruby],
+                      'stars' => 12, 'draft' => true })
 end
 
 # Set the SQL apart from the rows printed under it.  The page reads the escape

@@ -252,7 +252,7 @@ show Employee.joins(:employees, as: :managers) {
         slug: 'other-joins',
         code: `# RIGHT OUTER keeps the rows of the table joined rather than the one
 # selected from -- here, the comment whose post has gone.
-Comment.create!(post_id: 999, body: 'orphan')
+Comment.find_or_create_by!(post_id: 999, body: 'orphan')
 
 show Post.right_outer_joins(:comments) { :comments[:post_id] == :posts[:id] }.
   select { [:posts[:title], :comments[:body]] }
@@ -264,8 +264,9 @@ show Post.full_outer_joins(:comments) { :comments[:post_id] == :posts[:id] }.
   select { [:posts[:title], :comments[:body]] }
 
 # CROSS JOIN is every row against every row, so there is no condition to
-# give and no block to write it in.
-show Author.cross_joins(:employees).select { [:authors[:name], :employees[:name].as(:employee)] }`,
+# give and no block to write it in.  Every employee against every post:
+# the review roster before anyone has picked.
+show Employee.cross_joins(:posts).select { [:employees[:name], :posts[:title]] }`,
       },
     ],
   },
@@ -304,7 +305,7 @@ sql Author.select { count(:*).filter { :age < 50 } }`,
 # each adapter gets its own: char_length, greatest and least are LENGTH,
 # MAX and MIN on SQLite.
 sql Author.select { char_length(:name).as(:n) }
-sql Item.select { greatest(:price, :quantity).as(:g) }`,
+sql Item.select { least(:quantity, 10).as(:per_order) }`,
       },
       {
         title: 'A function an adapter lacks raises',
@@ -426,9 +427,10 @@ show Doc.select { [:name, :meta.dig_text(:author, :name).as(:author)] }
 
 # except takes keys out again, as Hash#except does -- keys of the
 # document, however many, rather than a path.  It gives back a document
-# too, so the two chain into one statement.
+# too, so review sign-off is one statement: mark it reviewed, drop the
+# draft flag.
 Doc.where { :name == 'second' }.
-  update_all { { meta: :meta.bury(:stars, 99).except(:tags) } }
+  update_all { { meta: :meta.bury(:reviewed, true).except(:draft) } }
 
 show Doc.where { :name == 'second' }`,
       },
