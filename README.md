@@ -106,6 +106,14 @@ select the same rows, NULLs included. `not_between?` is the one whose SQL
 looks unlike its name — Arel writes it as the two comparisons, `age < 20 OR
 age > 40`, which is again the same rows.
 
+A number compares as itself, the way a bound `?` does: `:age >= 99.5` says
+`>= 99.5`, where `where(age: 99.5..)` casts to the column's type and says
+`>= 99`, letting an age of 99 through a bound it does not satisfy. Everything
+that is not an `Integer`, `Float` or `BigDecimal` keeps the column's own
+serialization — an enum's name, a time's zone, a custom type's scaling — so a
+custom type that scales a number, money kept in cents, is the one place the
+number has to be written as the column stores it.
+
 A boolean column has `true?` and `false?`, which become SQL's `IS TRUE` and
 `IS FALSE`, and the two negations to go with them:
 

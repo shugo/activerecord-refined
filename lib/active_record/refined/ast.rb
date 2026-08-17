@@ -392,11 +392,24 @@ module ActiveRecord
           when Node then operand.to_arel(table, model)
           when :* then Arel.star
           when Symbol then table[operand]
-          when ::BigDecimal then Arel::Nodes.build_quoted(operand)
+          when ::BigDecimal, ::Rational then quote_number(operand)
+          else operand
+          end
+        end
+
+        # A number compares as itself, the way a bound ? does: the typed path
+        # would cast 99.5 against an integer column to 99 and quietly move
+        # the boundary.  Everything else keeps the column's own
+        # serialization -- an enum's name, a time's zone, a custom type's
+        # scaling.
+        def quote_number(value)
+          case value
           when ::Rational
             raise ArgumentError,
               'a Rational has no exact SQL spelling; to_d says the decimal meant'
-          else operand
+          when ::Integer, ::Float, ::BigDecimal
+            Arel::Nodes.build_quoted(value)
+          else value
           end
         end
 
@@ -1408,7 +1421,7 @@ module ActiveRecord
             case value
             when Node then value.to_arel(table, model)
             when ActiveRecord::Relation then scalar_subquery(value)
-            else value
+            else quote_number(value)
             end
           arel_column.public_send(OPERATOR_MAP.fetch(operator), arel_value)
         end
@@ -1471,6 +1484,12 @@ module ActiveRecord
       class In < Predicate
         include SetSubquery
 
+        # Range holds its endpoints to Comparable, which a quoted node is
+        # not, so this quacks the three methods Arel's between reads.
+        QuotedRange = Struct.new(:begin, :end, :exclude_end) do
+          def exclude_end? = exclude_end
+        end
+
         attr_reader :operand, :values, :negated
 
         def initialize(operand, values, negated: false)
@@ -1482,9 +1501,12 @@ module ActiveRecord
         def to_arel(table, model)
           arel_operand = to_arel_operand(operand, table, model)
           if values.is_a?(Range)
-            arel_operand.public_send(negated ? :not_between : :between, values)
+            range = QuotedRange.new(quote_number(values.begin),
+                                    quote_number(values.end), values.exclude_end?)
+            arel_operand.public_send(negated ? :not_between : :between, range)
           else
             arg = values.is_a?(ActiveRecord::Relation) ? set_subquery(values, 'IN') : values
+            arg = arg.map {|value| quote_number(value) } if arg.is_a?(::Array)
             arel_operand.public_send(negated ? :not_in : :in, arg)
           end
         end

@@ -1582,6 +1582,26 @@ class TestBlockSyntax < Minitest::Test
     e = assert_raises(ArgumentError) { User.select { (:age * Rational(1, 3)).as(:v) }.to_sql }
     assert_match(/no exact SQL spelling/, e.message)
     assert_raises(ArgumentError) { User.select { coalesce(:age, Rational(1, 3)) }.to_sql }
+    assert_raises(ArgumentError) { User.where { :age > Rational(1, 3) }.to_sql }
+    assert_raises(ArgumentError) { User.where { :age.in?([Rational(1, 3)]) }.to_sql }
+    assert_raises(ArgumentError) { User.where { :age.in?(Rational(1, 3)..) }.to_sql }
+  end
+
+  # A numeric literal compares as itself, the way a bound ? does.  The typed
+  # path casts 99.5 against an integer column to 99, and an age of 99
+  # answered a >= 99.5 it does not satisfy.  A string keeps the column's own
+  # serialization, along with everything else that is not a number.
+  def test_a_number_compares_as_itself
+    User.delete_all
+    User.create!(name: 'a', age: 99)
+    assert_sql(/"age" >= 99\.5/, User.where { :age >= 99.5 })
+    assert_equal(0, User.where { :age >= 99.5 }.count)
+    assert_equal(1, User.where { :age <= 99.5 }.count)
+    assert_equal(0, User.where { :age.in?([99.5]) }.count)
+    assert_equal(0, User.where { :age.in?(99.5..) }.count)
+    assert_equal(1, User.where { :age.between?(98.5, 99.5) }.count)
+    assert_equal(0, User.where { :age.not_between?(98.5, 99.5) }.count)
+    assert_sql(/"age" = 99\z/, User.where { :age == '99' })
   end
 
   def test_bitwise_and_or
