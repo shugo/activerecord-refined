@@ -93,7 +93,7 @@ iseq_count = -> {
   counts = ObjectSpace.count_imemo_objects
   counts[:imemo_iseq] || counts[:iseq]
 }
-context = ActiveRecord::Refined::BlockContext.new
+context = ActiveRecord::Refined::BlockContext.new(User)
 syntax = ActiveRecord::Refined::BlockSyntax
 
 {
@@ -117,13 +117,13 @@ puts
 puts "=== where the block path spends its time ==="
 block = proc { :name == "alice" }
 refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
-context = ActiveRecord::Refined::BlockContext.new
+context = ActiveRecord::Refined::BlockContext.new(User)
 Benchmark.ips do |x|
   x.config(warmup: 0.5, time: 2)
   x.report("Proc#refined alone") { block.refined(ActiveRecord::Refined::BlockSyntax) }
   x.report("instance_exec of pre-refined proc") { context.instance_exec(&refined_block) }
   x.report("refined + instance_exec") {
-    ActiveRecord::Refined::BlockContext.new.instance_exec(&block.refined(ActiveRecord::Refined::BlockSyntax))
+    ActiveRecord::Refined::BlockContext.new(User).instance_exec(&block.refined(ActiveRecord::Refined::BlockSyntax))
   }
   x.compare!
 end
