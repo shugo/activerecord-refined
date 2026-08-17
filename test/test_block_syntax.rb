@@ -1552,6 +1552,38 @@ class TestBlockSyntax < Minitest::Test
       User.select { :users[:age] - 1 }.to_sql)
   end
 
+  # The number may stand on the left.  Only a column or an expression on
+  # the right builds a query; plain Ruby arithmetic still folds, so the
+  # 10 + 20 here reaches the SQL as 30.
+  def test_arithmetic_with_the_number_on_the_left
+    User.delete_all
+    User.create!(name: 'a', age: 30, flags: 3)
+    assert_sql(/\(100 - "users"."age"\)/, User.select { (100 - :age).as(:v) })
+    assert_equal(70, User.select { (100 - :age).as(:v) }.first.v.to_i)
+    assert_equal(15, User.select { (0.5 * :age).as(:v) }.first.v.to_f.to_i)
+    assert_equal(0, User.select { (4 & :flags).as(:v) }.first.v.to_i)
+    assert_sql(/> 30/, User.where { :age > 10 + 20 })
+  end
+
+  # BigDecimal is a number here -- what a decimal column's values are --
+  # and is quoted as the exact decimal on either side.
+  def test_arithmetic_with_a_bigdecimal
+    User.delete_all
+    User.create!(name: 'a', age: 30)
+    assert_sql(/1\.5 \* "users"\."age"/, User.select { (BigDecimal('1.5') * :age).as(:v) })
+    assert_equal(45, User.select { (BigDecimal('1.5') * :age).as(:v) }.first.v.to_f.to_i)
+    assert_equal(45, User.select { (:age * BigDecimal('1.5')).as(:v) }.first.v.to_f.to_i)
+    assert_sql(/9\.9 AS "v"/, User.select { BigDecimal('9.9').as(:v) })
+  end
+
+  # No decimal spells 1/3r exactly, and choosing the precision is not this
+  # gem's decision to make.
+  def test_a_rational_is_refused
+    e = assert_raises(ArgumentError) { User.select { (:age * Rational(1, 3)).as(:v) }.to_sql }
+    assert_match(/no exact SQL spelling/, e.message)
+    assert_raises(ArgumentError) { User.select { coalesce(:age, Rational(1, 3)) }.to_sql }
+  end
+
   def test_bitwise_and_or
     assert_sql(/SELECT \("users"."flags" & 4\) AS "masked"/,
       User.select { (:flags & 4).as(:masked) }.to_sql)

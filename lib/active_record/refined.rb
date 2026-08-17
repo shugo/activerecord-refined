@@ -22,12 +22,16 @@ module ActiveRecord
         end
       end
 
-      # Shorthand for `value(0).as(:depth)` and the like.  Numbers only: a
-      # string in a select list already means SQL rather than a string, so
-      # giving String this would make the same literal mean two things
-      # depending on whether it had been sent a message.
-      [Integer, Float].each do |klass|
+      # Shorthand for `value(0).as(:depth)` and the like, and arithmetic with
+      # the number on the left: 20 - :quantity.  Numbers only: a string in a
+      # select list already means SQL rather than a string, so giving String
+      # this would make the same literal mean two things depending on whether
+      # it had been sent a message.  BigDecimal is a number here because that
+      # is what a decimal column's values are.
+      [Integer, Float, BigDecimal].each do |klass|
         refine klass do
+          import_methods AST::NumericArithmetics
+
           def as(alias_name, quote: true)
             AST::As.new(AST::Value.new(self), alias_name, quote: quote)
           end

@@ -599,6 +599,17 @@ Item.where { :price * :quantity > 1000 }
 Item.select { sum(:price * :quantity).as(:total) }
 ```
 
+The number may stand on the left — only a column or an expression on the
+right builds a query, so Ruby's own arithmetic is untouched — and
+`BigDecimal` is a number here, being what a decimal column's values are,
+quoted as the exact decimal on either side. A `Rational` is refused: no
+decimal spells `1/3r` exactly, and `to_d` is what says the decimal meant.
+
+```ruby
+Item.select { greatest(20 - :quantity, 0).as(:shortfall) }
+Item.where { BigDecimal('1.08') * :price > 500 }
+```
+
 `&`, `|`, `^`, `~`, `<<` and `>>` are SQL's bitwise operators. Between
 conditions `&` and `|` are AND and OR, and that is where they are defined,
 which leaves them free to mean here what SQL means by them:

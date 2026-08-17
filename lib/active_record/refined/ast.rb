@@ -306,6 +306,58 @@ module ActiveRecord
         end
       end
 
+      # Arithmetic with the number on the left, imported into the numeric
+      # refinements: 20 - :quantity builds what :quantity + 20 builds.  Only
+      # a column or an expression on the right means a query; anything else
+      # goes back to the number through super, so 1 + 2 is 3 inside a block
+      # too.
+      module NumericArithmetics
+        def +(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Arithmetic.new(self, :+, other)
+        end
+
+        def -(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Arithmetic.new(self, :-, other)
+        end
+
+        def *(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Arithmetic.new(self, :*, other)
+        end
+
+        def /(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Arithmetic.new(self, :/, other)
+        end
+
+        def &(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Bitwise.new(self, :&, other)
+        end
+
+        def |(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Bitwise.new(self, :|, other)
+        end
+
+        def ^(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Bitwise.new(self, :^, other)
+        end
+
+        def <<(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Bitwise.new(self, :<<, other)
+        end
+
+        def >>(other)
+          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
+          Bitwise.new(self, :>>, other)
+        end
+      end
+
       class Node
         # The model travels with the table because some SQL cannot be written
         # without knowing the adapter, and a node is built before anything
@@ -330,12 +382,20 @@ module ActiveRecord
 
         private
 
-        # Resolves an operand denoting a column or an expression.
+        # Resolves an operand denoting a column or an expression.  A number
+        # rides along for Arel to write out, which it can do for Integer and
+        # Float alone: a BigDecimal is quoted, which the adapter spells as
+        # the exact decimal, and a Rational, which no decimal spells exactly,
+        # is refused.
         def to_arel_operand(operand, table, model)
           case operand
           when Node then operand.to_arel(table, model)
           when :* then Arel.star
           when Symbol then table[operand]
+          when ::BigDecimal then Arel::Nodes.build_quoted(operand)
+          when ::Rational
+            raise ArgumentError,
+              'a Rational has no exact SQL spelling; to_d says the decimal meant'
           else operand
           end
         end
@@ -344,7 +404,7 @@ module ActiveRecord
         # anything else a value to be quoted.
         def to_arel_argument(arg, table, model)
           case arg
-          when Node, Symbol then to_arel_operand(arg, table, model)
+          when Node, Symbol, ::Rational then to_arel_operand(arg, table, model)
           else Arel::Nodes.build_quoted(arg)
           end
         end
@@ -908,8 +968,11 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          to_arel_operand(left, table, model).
-            public_send(operator, to_arel_operand(right, table, model))
+          arel_left = to_arel_operand(left, table, model)
+          # The operator dispatches Arel's Math, which a bare number carries
+          # none of; quoted, it is a node with the same methods.
+          arel_left = Arel::Nodes.build_quoted(arel_left) if arel_left.is_a?(::Numeric)
+          arel_left.public_send(operator, to_arel_operand(right, table, model))
         end
       end
 

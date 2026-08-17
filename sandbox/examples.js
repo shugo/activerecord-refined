@@ -178,7 +178,10 @@ show Author.where { !:country.in?(%w[JP US]) }`,
         title: 'Arithmetic',
         slug: 'arithmetic',
         code: `show Item.where { :price * :quantity > 500 }
-show Item.select { [:name, (:price * :quantity).as(:total)] }`,
+show Item.select { [:name, (:price * :quantity).as(:total)] }
+
+# The number may stand on the left; plain Ruby arithmetic is untouched.
+show Item.select { [:name, (12 - :quantity).as(:to_the_dozen)] }`,
       },
       {
         title: 'Bitwise operators',
@@ -305,7 +308,7 @@ sql Author.select { count(:*).filter { :age < 50 } }`,
 # each adapter gets its own: char_length, greatest and least are LENGTH,
 # MAX and MIN on SQLite.
 sql Author.select { char_length(:name).as(:n) }
-sql Item.select { least(:quantity, 10).as(:per_order) }`,
+sql Item.select { greatest(20 - :quantity, 0).as(:shortfall) }`,
       },
       {
         title: 'A function an adapter lacks raises',
