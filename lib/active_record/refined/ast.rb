@@ -274,6 +274,11 @@ module ActiveRecord
         def key?(key)
           JsonHasKey.new(self, key)
         end
+
+        # The keys of the document, as Hash#keys gives them: a JSON array.
+        def keys
+          JsonKeys.new(self)
+        end
       end
 
       # Arithmetic builders shared by symbols, qualified columns and
@@ -758,7 +763,7 @@ module ActiveRecord
       # again is where they part company: SQLite parses it back and MySQL
       # takes it as written, where PostgreSQL has no such function for text.
       module JsonDocument
-        %i[dig dig_text key? contains? bury except].each do |name|
+        %i[dig dig_text key? keys contains? bury except].each do |name|
           define_method(name) do |*args|
             unless json_value?
               raise ArgumentError,
@@ -767,6 +772,22 @@ module ActiveRecord
             super(*args)
           end
         end
+      end
+
+      # JSON the query computes rather than reads out of a document: always
+      # a JSON value, with no dig_text counterpart for JsonComparable's
+      # advice to name.  Included after JsonComparable, whose own
+      # arithmetic_refusal it overrides.
+      module ComputedJson
+        def json_value?
+          true
+        end
+
+        private
+          def arithmetic_refusal(operator)
+            "#{json_source} gives JSON, and #{operator} on it means " \
+            "something different on every adapter"
+          end
       end
 
       class JsonPath < Node
@@ -992,6 +1013,54 @@ module ActiveRecord
         end
       end
 
+      # The keys of a JSON document, as Hash#keys gives them: a JSON array.
+      # Only the MySQL family has a function for it; the other two reach the
+      # same array through a subquery over their key-listing functions.  The
+      # type guard is what makes all four answer alike: the keys of what is
+      # not an object are NULL rather than SQLite's array indices or
+      # PostgreSQL's error, and the keys of {} are [] rather than
+      # PostgreSQL's NULL, jsonb_agg over no rows.
+      class JsonKeys < Node
+        include Predications
+        include JsonComparable
+        include ComputedJson
+
+        attr_reader :operand
+
+        def initialize(operand)
+          @operand = operand
+        end
+
+        def to_arel(table, model)
+          document = to_arel_operand(operand, table, model)
+          case AST.adapter_family(model)
+          when :sqlite
+            sql = compile(document, model)
+            Arel.sql("CASE WHEN json_type(#{sql}) = 'object' " \
+                     "THEN (SELECT json_group_array(key) FROM json_each(#{sql})) END")
+          when :postgresql
+            sql = compile(document, model)
+            Arel.sql("CASE WHEN jsonb_typeof(#{sql}) = 'object' " \
+                     "THEN COALESCE((SELECT jsonb_agg(k) FROM jsonb_object_keys(#{sql}) k), " \
+                     "CAST('[]' AS jsonb)) END")
+          else
+            Arel::Nodes::NamedFunction.new("JSON_KEYS", [document])
+          end
+        end
+
+        private
+          # The document appears more than once, the way SQLite's XOR names
+          # its operands twice; the connection's own visitor compiles it, so
+          # its quoting is the adapter's.
+          def compile(document, model)
+            model.with_connection { |connection| connection.visitor.compile(document) }
+          end
+
+          def json_source
+            "keys"
+          end
+      end
+
       # A JSON document built in the row: json_array from the values given,
       # json_object from a Ruby hash.  SQLite and the MySQL family both say
       # the standard names; PostgreSQL is asked to build jsonb, whose
@@ -999,6 +1068,7 @@ module ActiveRecord
       class JsonBuild < Node
         include Predications
         include JsonComparable
+        include ComputedJson
 
         NAMES = {
           array: { postgresql: "jsonb_build_array" },
@@ -1010,11 +1080,6 @@ module ActiveRecord
         def initialize(kind, values)
           @kind = kind
           @values = kind == :object ? check_pairs(values) : values
-        end
-
-        # Always JSON, which is what the comparison guard asks.
-        def json_value?
-          true
         end
 
         def to_arel(table, model)
@@ -1075,13 +1140,6 @@ module ActiveRecord
 
           def json_source
             "json_#{kind}"
-          end
-
-          # JsonComparable's own advice says to reach for dig_text, which a
-          # built document has no counterpart of.
-          def arithmetic_refusal(operator)
-            "#{json_source} gives JSON, and #{operator} on it means " \
-            "something different on every adapter"
           end
       end
 
@@ -1436,6 +1494,7 @@ module ActiveRecord
       class JsonAggregate < Node
         include Predications
         include JsonComparable
+        include ComputedJson
         include Windowing
 
         # The standard names, which are also the DSL's own and MySQL's, serve
@@ -1452,11 +1511,6 @@ module ActiveRecord
           @kind = kind
           @operands = operands
           @condition = condition
-        end
-
-        # Always JSON, which is what the comparison guard asks.
-        def json_value?
-          true
         end
 
         def filter(condition = nil, &block)
@@ -1495,13 +1549,6 @@ module ActiveRecord
         private
           def json_source
             "json_#{kind}"
-          end
-
-          # JsonComparable's own advice says to reach for dig_text, which an
-          # aggregate has no counterpart of.
-          def arithmetic_refusal(operator)
-            "#{json_source} gives JSON, and #{operator} on it means " \
-            "something different on every adapter"
           end
       end
 

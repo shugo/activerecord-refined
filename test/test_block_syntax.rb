@@ -2336,6 +2336,63 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/json_array gives JSON/, e.message)
   end
 
+  # keys gives the keys of the document as a JSON array, NULL where there
+  # is no object to ask -- the type guard on SQLite and PostgreSQL is what
+  # makes the four answer alike there.  The order of the keys is the
+  # adapters' own: the JSON types give their normalized order, the text
+  # ones the stored order.
+  def test_keys
+    seed_docs
+    value = json_aggregate(Doc.where { :name == "one" }.select { :meta.keys.as(:v) })
+    assert_equal(["a", "n", "odd key", "tags"], value.sort)
+    assert_equal(["b"],
+      json_aggregate(Doc.where { :name == "one" }.select { :meta.dig(:a).keys.as(:v) }))
+  end
+
+  def test_keys_where_there_is_no_object
+    seed_docs
+    Doc.create!(name: "bare", meta: json_document({}))
+    Doc.create!(name: "empty")
+    assert_equal([],
+      json_aggregate(Doc.where { :name == "bare" }.select { :meta.keys.as(:v) }))
+    assert_nil(Doc.where { :name == "one" }.select { :meta.dig(:tags).keys.as(:v) }.to_a.first.v)
+    assert_nil(Doc.where { :name == "one" }.select { :meta.dig(:n).keys.as(:v) }.to_a.first.v)
+    assert_nil(Doc.where { :name == "empty" }.select { :meta.keys.as(:v) }.to_a.first.v)
+  end
+
+  def test_keys_is_spelled_per_adapter
+    relation = Doc.select { :meta.keys }
+    case ADAPTER
+    when "sqlite3"
+      assert_sql(/CASE WHEN json_type\("docs"."meta"\) = 'object' THEN \(SELECT/, relation)
+    when "postgresql"
+      assert_sql(/CASE WHEN jsonb_typeof\("docs"."meta"\) = 'object' THEN COALESCE\(\(SELECT/,
+        relation)
+    else
+      assert_sql(/JSON_KEYS\("docs"."meta"\)/, relation)
+    end
+  end
+
+  # What keys gives is JSON, so the comparisons and containment read it.
+  def test_keys_compare_as_json
+    skip_without_json_comparisons
+    seed_docs
+    assert_equal(["two"], Doc.where { :meta.keys == ["n"] }.pluck(:name))
+  end
+
+  def test_keys_contain_a_key
+    skip_without_json_containment
+    seed_docs
+    assert_equal(["one"], Doc.where { :meta.keys.contains?(["tags"]) }.pluck(:name))
+  end
+
+  def test_keys_of_text_say_dig
+    e = assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).keys } }
+    assert_match(/dig keeps it/, e.message)
+    e = assert_raises(ArgumentError) { Doc.select { :meta.keys + 1 } }
+    assert_match(/keys gives JSON/, e.message)
+  end
+
   # A built document is JSON as dig's is, so the JSON operations read it,
   # bury takes it whole as a value, and the aggregates collect it nested.
   def test_json_build_composes

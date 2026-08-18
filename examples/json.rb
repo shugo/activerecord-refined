@@ -148,3 +148,14 @@ show("json_object builds a document from columns",
 show("json_arrayagg collects built documents",
   Document.select { json_arrayagg(json_object(name: :name)).as(:docs) },
   Document.select { json_arrayagg(json_object(name: :name)).as(:docs) }.take.docs)
+
+# 7. The keys of the document, as Hash#keys gives them: a JSON array.
+#    Where the document is not an object -- a value, an array, a missing
+#    key -- the answer is NULL on every adapter.
+show("keys lists what the document holds",
+  Document.select { [:name, :meta.keys.as(:fields)] },
+  Document.select { [:name, :meta.keys.as(:fields)] }.map { |d| [d.name, d.fields] })
+
+show("keys of a part, through dig",
+  Document.select { [:name, :meta.dig(:author).keys.as(:fields)] },
+  Document.select { [:name, :meta.dig(:author).keys.as(:fields)] }.map { |d| [d.name, d.fields] })

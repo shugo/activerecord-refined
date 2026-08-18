@@ -451,9 +451,13 @@ Doc.where { :name == 'second' }.
 show Doc.where { :name == 'second' }`,
       },
       {
-        title: 'key? and contains?',
+        title: 'key?, keys and contains?',
         slug: 'key',
         code: `show Doc.where { :meta.key?(:author) }
+
+# keys gives all of them at once, as Hash#keys does: a JSON array,
+# NULL where there is no object to ask.
+show Doc.select { [:name, :meta.keys.as(:fields)] }
 
 # What dig keeps is a document, so these read it too: the same
 # question asked of a part rather than of the whole.

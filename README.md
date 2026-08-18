@@ -878,6 +878,25 @@ built. On PostgreSQL, `dig` and `dig_text` are all the `json` type carries;
 A key that is not a plain name travels as itself rather than being refused:
 `dig(:'odd key')` becomes `'{odd key}'` or `$."odd key"`.
 
+`keys` gives the keys of the document, as `Hash#keys` does — a JSON array
+of them. Only the MySQL family has a function for it; the other two reach
+the same array through a subquery over their key-listing functions, guarded
+by type so that all four answer alike: the keys of anything that is not an
+object are `NULL` — rather than SQLite's array indices or PostgreSQL's
+error — and the keys of `{}` are `[]` rather than PostgreSQL's `NULL`:
+
+```ruby
+Post.select { :meta.keys.as(:fields) }
+Post.select { :meta.dig(:author).keys.as(:author_fields) }
+# JSON_KEYS("meta")                                              MySQL
+# CASE WHEN jsonb_typeof("meta") = 'object' THEN COALESCE((…))   PostgreSQL
+# CASE WHEN json_type("meta") = 'object' THEN (SELECT …)         SQLite
+```
+
+The order the keys come in is the adapters' own: the JSON types give their
+normalized order and the text ones the stored order — the same divide every
+JSON comparison here rides on.
+
 `json_array` and `json_object` build a document in the row — `json_array`
 from the values given, `json_object` from a Ruby hash. The names are the
 standard's, which SQLite and the MySQL family say as written; PostgreSQL is
