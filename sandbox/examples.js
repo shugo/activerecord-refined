@@ -470,25 +470,6 @@ show Doc.where { :meta.contains?(stars: 5) }
 show Doc.where { :meta.dig(:tags).contains?(['sql']) }`,
       },
       {
-        title: 'json_arrayagg and json_objectagg',
-        slug: 'json-agg',
-        code: `# Rows gathered into one JSON document: a value from each row into an
-# array, a key and a value into an object.  PostgreSQL spells the pair
-# jsonb_agg and jsonb_object_agg, SQLite json_group_array and
-# json_group_object.
-show Doc.select { json_arrayagg(:name).as(:names) }
-
-# A dug value goes in as JSON: the stars land as numbers, and a whole
-# object nests.
-show Doc.select { json_objectagg(:name, :meta.dig(:stars)).as(:stars) }
-show Doc.select { json_arrayagg(:meta.dig(:author)).as(:authors) }
-
-# filter takes rows out of the aggregate before they land.
-show Doc.select {
-  json_arrayagg(:name).filter { cast(:meta.dig_text(:stars), 'integer') >= 10 }.as(:starred)
-}`,
-      },
-      {
         title: 'json_array and json_object',
         slug: 'json-build',
         code: `# A document built in the row.  json_object takes a Ruby hash whose
@@ -498,11 +479,28 @@ show Doc.select { json_object(name: :name, stars: :meta.dig(:stars)).as(:summary
 
 # A Ruby value goes in as its JSON self -- a boolean or a whole document
 # included, the route bury takes them.
-show Doc.select { json_array(:name, true, ['x', 'y']).as(:mixed) }
+show Doc.select { json_array(:name, true, ['x', 'y']).as(:mixed) }`,
+      },
+      {
+        title: 'json_arrayagg and json_objectagg',
+        slug: 'json-agg',
+        code: `# Rows gathered into one JSON document: a value from each row into an
+# array, a key and a value into an object.  PostgreSQL spells the pair
+# jsonb_agg and jsonb_object_agg, SQLite json_group_array and
+# json_group_object.
+show Doc.select { json_arrayagg(:name).as(:names) }
+
+# A dug value goes in as JSON: the stars land as numbers.
+show Doc.select { json_objectagg(:name, :meta.dig(:stars)).as(:stars) }
 
 # Built and gathered: one document per row, collected into one per
 # query.
-show Doc.select { json_arrayagg(json_object(name: :name, tags: :meta.dig(:tags))).as(:docs) }`,
+show Doc.select { json_arrayagg(json_object(name: :name, tags: :meta.dig(:tags))).as(:docs) }
+
+# filter takes rows out of the aggregate before they land.
+show Doc.select {
+  json_arrayagg(:name).filter { cast(:meta.dig_text(:stars), 'integer') >= 10 }.as(:starred)
+}`,
       },
     ],
   },
