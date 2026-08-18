@@ -2031,23 +2031,20 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(['one'], Doc.where { :meta.dig(:tags, 0) == 'x' }.pluck(:name))
     assert_equal(['one'],
       Doc.where { :meta.except(:a, :tags, :'odd key') == { 'n' => 5 } }.pluck(:name))
-  end
-
-  # IN and BETWEEN are the two MySQL leaves out of its JSON comparisons --
-  # they fall back to another comparison entirely -- so the set forms are
-  # jsonb's alone.
-  def test_json_sets_are_jsonbs_alone
-    skip "#{ADAPTER} has no JSON IN" unless ADAPTER == 'postgresql'
-    seed_docs
     assert_equal(%w[one two], Doc.where { :meta.dig(:n).in?([5, 9]) }.order(:name).pluck(:name))
+    assert_equal(['two'], Doc.where { :meta.dig(:n).not_in?([5]) }.pluck(:name))
     assert_equal(['one'], Doc.where { :meta.dig(:n).between?(1, 6) }.pluck(:name))
+    assert_equal(['two'], Doc.where { :meta.dig(:n).not_between?(1, 6) }.pluck(:name))
   end
 
-  def test_json_sets_say_so_on_mysql
-    skip 'MySQL is the one that leaves IN out' unless ADAPTER == 'mysql2' && !mariadb?
-    e = assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n).in?([5, 9]) } }
-    assert_match(/IN and BETWEEN/, e.message)
-    assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n).between?(1, 6) } }
+  # MySQL leaves IN and BETWEEN out of its JSON comparisons, so there the
+  # set forms are spelled as the comparisons they mean.
+  def test_json_sets_expand_on_mysql
+    skip 'MySQL is the one that expands them' unless ADAPTER == 'mysql2' && !mariadb?
+    assert_sql(/ = CAST.+ OR .+ = CAST/, Doc.where { :meta.dig(:n).in?([5, 9]) })
+    assert_sql(/>= CAST.+<= CAST/, Doc.where { :meta.dig(:n).between?(1, 6) })
+    assert_sql(/!= CAST.+ AND .+!= CAST/, Doc.where { :meta.dig(:n).not_in?([5, 9]) })
+    refute_match(/BETWEEN/, Doc.where { :meta.dig(:n).not_between?(1, 6) }.to_sql)
   end
 
   def test_json_comparisons_elsewhere_say_so
@@ -2056,6 +2053,8 @@ class TestBlockSyntax < Minitest::Test
     e = assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n) >= 6 } }
     assert_match(/JSON comparison has no equivalent/, e.message)
     assert_raises(NotImplementedError) { Doc.where { :meta.bury(:a, 1) == '{"a": 1}' } }
+    assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n).in?([5, 9]) } }
+    assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n).between?(1, 6) } }
   end
 
   # What has no JSON spelling is refused before any adapter is asked.

@@ -634,16 +634,8 @@ module ActiveRecord
 
         def in?(values) = super(comparison_set(values))
         def not_in?(values) = super(comparison_set(values))
-
-        def between?(min, max)
-          super(comparison_value(min, in_set: true),
-                comparison_value(max, in_set: true))
-        end
-
-        def not_between?(min, max)
-          super(comparison_value(min, in_set: true),
-                comparison_value(max, in_set: true))
-        end
+        def between?(min, max) = super(comparison_value(min), comparison_value(max))
+        def not_between?(min, max) = super(comparison_value(min), comparison_value(max))
 
         %i[+ - * / & | ^ << >>].each do |operator|
           define_method(operator) do |_other|
@@ -659,12 +651,12 @@ module ActiveRecord
 
         # nil is left to the comparison itself, which says to use null?, and
         # so is anything the block built rather than wrote as a literal.
-        def comparison_value(other, in_set: false)
+        def comparison_value(other)
           return other if other.nil? || other.is_a?(Node) || other.is_a?(::Symbol) ||
                           other.is_a?(Arel::Nodes::Node) ||
                           other.is_a?(Arel::Attributes::Attribute) ||
                           other.is_a?(ActiveRecord::Relation)
-          return json_literal(other, in_set: in_set) if as_json
+          return json_literal(other) if as_json
           return other if other.is_a?(::String)
 
           raise ArgumentError,
@@ -672,10 +664,10 @@ module ActiveRecord
             "something different on every adapter; cast it to the type meant"
         end
 
-        def json_literal(other, in_set: false)
+        def json_literal(other)
           case other
           when ::String, ::Integer, ::Float, ::BigDecimal, true, false, ::Hash, ::Array
-            JsonLiteral.new(other, in_set: in_set)
+            JsonLiteral.new(other)
           when ::Rational
             raise ArgumentError,
               'a Rational has no exact SQL spelling; to_d says the decimal meant'
@@ -690,10 +682,9 @@ module ActiveRecord
           case values
           when ActiveRecord::Relation then values
           when ::Range
-            In::QuotedRange.new(comparison_value(values.begin, in_set: true),
-                                comparison_value(values.end, in_set: true),
-                                values.exclude_end?)
-          else values.map {|value| comparison_value(value, in_set: true) }
+            In::QuotedRange.new(comparison_value(values.begin),
+                                comparison_value(values.end), values.exclude_end?)
+          else values.map {|value| comparison_value(value) }
           end
         end
 
@@ -715,11 +706,10 @@ module ActiveRecord
       # since a bare string beside JSON would be a JSON string, and every
       # string outranks every number in its ordering.
       class JsonLiteral < Node
-        attr_reader :value, :in_set
+        attr_reader :value
 
-        def initialize(value, in_set: false)
+        def initialize(value)
           @value = value
-          @in_set = in_set
         end
 
         def to_arel(_table, model)
@@ -733,15 +723,9 @@ module ActiveRecord
 
         private
 
-        # MySQL compares JSON with the six operators and leaves IN and
-        # BETWEEN out -- those fall back to another comparison entirely --
-        # and MariaDB, on the same adapter, has no JSON type at all.
+        # MariaDB answers to the same adapter and has no JSON type at all.
         def mysql_literal(json, model)
           refuse('MariaDB') if model.with_connection {|c| c.mariadb? }
-          if in_set
-            raise NotImplementedError,
-              'IN and BETWEEN do not compare JSON on MySQL; dig_text gives the value'
-          end
           Arel::Nodes::NamedFunction.new(
             'CAST', [Arel::Nodes::As.new(json, Arel::Nodes::SqlLiteral.new('JSON'))])
         end
@@ -1608,15 +1592,22 @@ module ActiveRecord
           arel_operand = to_arel_operand(operand, table, model)
           case values
           when Range, QuotedRange
-            range = QuotedRange.new(quote_value(values.begin, table, model),
-                                    quote_value(values.end, table, model),
-                                    values.exclude_end?)
+            lower = quote_value(values.begin, table, model)
+            upper = quote_value(values.end, table, model)
+            if json_between?(model) && lower && upper && !negated
+              return arel_operand.gteq(lower).and(
+                values.exclude_end? ? arel_operand.lt(upper) : arel_operand.lteq(upper))
+            end
+            range = QuotedRange.new(lower, upper, values.exclude_end?)
             arel_operand.public_send(negated ? :not_between : :between, range)
           when ActiveRecord::Relation
             arel_operand.public_send(negated ? :not_in : :in, set_subquery(values, 'IN'))
           else
             arg = values
-            arg = arg.map {|value| quote_value(value, table, model) } if arg.is_a?(::Array)
+            if arg.is_a?(::Array)
+              arg = arg.map {|value| quote_value(value, table, model) }
+              return json_list(arel_operand, arg) if json_list?(model)
+            end
             arel_operand.public_send(negated ? :not_in : :in, arg)
           end
         end
@@ -1632,6 +1623,34 @@ module ActiveRecord
           when ::Symbol then column_operand(value, table, model)
           else quote_number(value)
           end
+        end
+
+        # MySQL leaves IN and BETWEEN out of its JSON comparisons -- they
+        # fall back to another comparison entirely -- so on it a JSON set is
+        # spelled as the comparisons it means: the closed range as its two
+        # bounds, the list as one equality per element.  That names the dug
+        # value once per element, the price SQLite's XOR pays per operand;
+        # a negated range needs nothing, Arel writing it as two comparisons
+        # everywhere.  MariaDB never gets this far: the endpoints refuse as
+        # they resolve.
+        def json_between?(model)
+          (values.begin.is_a?(JsonLiteral) || values.end.is_a?(JsonLiteral)) &&
+            AST.adapter_family(model) == :mysql
+        end
+
+        def json_list?(model)
+          values.any? {|value| value.is_a?(JsonLiteral) } &&
+            AST.adapter_family(model) == :mysql
+        end
+
+        def json_list(arel_operand, elements)
+          comparisons = elements.map do |element|
+            negated ? arel_operand.not_eq(element) : arel_operand.eq(element)
+          end
+          joined = comparisons.inject do |so_far, piece|
+            negated ? so_far.and(piece) : so_far.or(piece)
+          end
+          negated ? Arel::Nodes::Grouping.new(joined) : joined
         end
       end
 

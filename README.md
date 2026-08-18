@@ -786,13 +786,15 @@ compare as numbers and documents structurally, key order and spelling aside,
 so a dug value compares with a Ruby one directly. SQLite and MariaDB have
 only the text of each, which is a different question, and raise
 `NotImplementedError` as the SQL is written. `in?` and `between?` are the
-two MySQL leaves out of its JSON comparisons, so those forms are `jsonb`'s
-alone:
+two MySQL leaves out of its JSON comparisons, so there they are spelled as
+the comparisons they mean — the range as its bounds, the list as one
+equality per element, which names the dug value once per element the way
+SQLite's XOR names its operands twice:
 
 ```ruby
 Post.where { :meta.dig(:stars) >= 10 }              # PostgreSQL and MySQL
 Post.where { :meta.dig(:author) == { 'name' => 'alice' } }
-Post.where { :meta.dig(:stars).in?([5, 10]) }       # PostgreSQL
+Post.where { :meta.dig(:stars).in?([5, 10]) }
 Post.where { cast(:meta.dig_text(:stars), 'integer') >= 10 }   # everywhere
 ```
 
