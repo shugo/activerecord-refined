@@ -465,6 +465,25 @@ show Doc.where { :meta.dig(:author).key?(:name) }
 show Doc.where { :meta.contains?(stars: 5) }
 show Doc.where { :meta.dig(:tags).contains?(['sql']) }`,
       },
+      {
+        title: 'json_arrayagg and json_objectagg',
+        slug: 'json-agg',
+        code: `# Rows gathered into one JSON document: a value from each row into an
+# array, a key and a value into an object.  PostgreSQL spells the pair
+# jsonb_agg and jsonb_object_agg, SQLite json_group_array and
+# json_group_object.
+show Doc.select { json_arrayagg(:name).as(:names) }
+
+# A dug value goes in as JSON: the stars land as numbers, and a whole
+# object nests.
+show Doc.select { json_objectagg(:name, :meta.dig(:stars)).as(:stars) }
+show Doc.select { json_arrayagg(:meta.dig(:author)).as(:authors) }
+
+# filter takes rows out of the aggregate before they land.
+show Doc.select {
+  json_arrayagg(:name).filter { cast(:meta.dig_text(:stars), 'integer') >= 10 }.as(:starred)
+}`,
+      },
     ],
   },
 

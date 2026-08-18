@@ -1225,6 +1225,10 @@ module ActiveRecord
           orders.each { |expr| window.order(to_arel_operand(expr, table, model)) }
           frame_arel(window) if frame
 
+          # The JSON aggregates cannot ride a window everywhere; the node
+          # itself says where, once the adapter is known.
+          function.check_window(model) if function.is_a?(JsonAggregate)
+
           # A window-only function refuses to build on its own; here is where
           # it is asked for the call itself.
           arel_function =
@@ -1322,6 +1326,83 @@ module ActiveRecord
             else
               arel_operand.public_send(function)
             end
+          end
+      end
+
+      # Rows gathered into one JSON document: json_arrayagg collects a value
+      # from each row into an array, json_objectagg a key and a value into an
+      # object.  Every adapter has the pair under a name of its own; what
+      # PostgreSQL gets is the jsonb one, whose documents the other JSON
+      # operations here read.
+      class JsonAggregate < Node
+        include Predications
+        include JsonComparable
+        include Windowing
+
+        # The standard names, which are also the DSL's own and MySQL's, serve
+        # any adapter the table does not list.
+        NAMES = {
+          arrayagg: { sqlite: "json_group_array", postgresql: "jsonb_agg" },
+          objectagg: { sqlite: "json_group_object",
+                       postgresql: "jsonb_object_agg" },
+        }.freeze
+
+        attr_reader :kind, :operands, :condition
+
+        def initialize(kind, operands, condition: nil)
+          @kind = kind
+          @operands = operands
+          @condition = condition
+        end
+
+        # Always JSON, which is what the comparison guard asks.
+        def json_value?
+          true
+        end
+
+        def filter(condition = nil, &block)
+          JsonAggregate.new(kind, operands,
+                            condition: Case.argument(:filter, condition, block))
+        end
+
+        # MariaDB takes every other aggregate as a window function, but not
+        # these two; Over asks here before writing one.
+        def check_window(model)
+          return unless AST.adapter_family(model) == :mysql
+          return unless model.with_connection { |connection| connection.mariadb? }
+          raise NotImplementedError,
+            "#{json_source} over a window has no equivalent on MariaDB"
+        end
+
+        def to_arel(table, model)
+          family = AST.adapter_family(model)
+          call = Arel::Nodes::NamedFunction.new(
+            NAMES.fetch(kind).fetch(family) { "JSON_#{kind.to_s.upcase}" },
+            operands.map { |operand| to_arel_argument(operand, table, model) })
+          return call unless condition
+
+          # The CASE that stands in for FILTER elsewhere hands the aggregate
+          # a NULL for every row the condition misses, and these two keep a
+          # NULL -- as JSON null -- rather than passing over it.
+          if family == :mysql
+            raise NotImplementedError,
+              "#{json_source}.filter has no equivalent on " \
+              "#{model.connection_db_config.adapter}; a CASE would leave a " \
+              "null in the document for every row it drops"
+          end
+          call.filter(condition.to_arel(table, model))
+        end
+
+        private
+          def json_source
+            "json_#{kind}"
+          end
+
+          # JsonComparable's own advice says to reach for dig_text, which an
+          # aggregate has no counterpart of.
+          def arithmetic_refusal(operator)
+            "#{json_source} gives JSON, and #{operator} on it means " \
+            "something different on every adapter"
           end
       end
 

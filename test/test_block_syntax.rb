@@ -2127,6 +2127,137 @@ class TestBlockSyntax < Minitest::Test
         select { (cast(:meta.dig_text(:n), type) + 1).as(:v) }.first.v.to_i)
   end
 
+  # Rows gathered into one JSON document.  What comes back decodes where the
+  # adapter's JSON type decodes and stays text elsewhere, like any other
+  # computed JSON value.
+  def json_aggregate(relation)
+    value = relation.to_a.first.v
+    value.is_a?(String) ? JSON.parse(value) : value
+  end
+
+  def test_json_arrayagg
+    seed_docs
+    assert_equal([5, 9],
+      json_aggregate(Doc.select { json_arrayagg(:meta.dig(:n)).as(:v) }).sort)
+    assert_equal(%w[one two],
+      json_aggregate(Doc.select { json_arrayagg(:name).as(:v) }).sort)
+  end
+
+  def test_json_objectagg
+    seed_docs
+    assert_equal({ "one" => 5, "two" => 9 },
+      json_aggregate(Doc.select { json_objectagg(:name, :meta.dig(:n)).as(:v) }))
+  end
+
+  def test_json_arrayagg_with_a_group
+    seed_docs
+    arrays = Doc.group { :name }.select { json_arrayagg(:meta.dig(:n)).as(:v) }.
+      map { |row| row.v.is_a?(String) ? JSON.parse(row.v) : row.v }
+    assert_equal([[5], [9]], arrays.sort)
+  end
+
+  def test_json_aggregates_are_spelled_per_adapter
+    arrayagg = Doc.select { json_arrayagg(:name) }
+    objectagg = Doc.select { json_objectagg(:name, :meta) }
+    case ADAPTER
+    when "sqlite3"
+      assert_sql(/json_group_array\("docs"."name"\)/, arrayagg)
+      assert_sql(/json_group_object\("docs"."name", "docs"."meta"\)/, objectagg)
+    when "postgresql"
+      assert_sql(/jsonb_agg\("docs"."name"\)/, arrayagg)
+      assert_sql(/jsonb_object_agg\("docs"."name", "docs"."meta"\)/, objectagg)
+    else
+      assert_sql(/JSON_ARRAYAGG\("docs"."name"\)/, arrayagg)
+      assert_sql(/JSON_OBJECTAGG\("docs"."name", "docs"."meta"\)/, objectagg)
+    end
+  end
+
+  # FILTER drops a row from the aggregate.  The CASE that stands in for it on
+  # the MySQL family hands the aggregate a NULL instead, which these keep as
+  # JSON null, so there the filter is refused rather than respelled.
+  def test_json_arrayagg_filter
+    if ADAPTER == "mysql2"
+      e = assert_raises(NotImplementedError) do
+        Doc.select { json_arrayagg(:name).filter { :name == "one" } }.to_sql
+      end
+      assert_match(/null in the document/, e.message)
+    else
+      seed_docs
+      assert_equal(["one"],
+        json_aggregate(Doc.select { json_arrayagg(:name).filter { :name == "one" }.as(:v) }))
+    end
+  end
+
+  # MariaDB has the JSON aggregates but no window form of them.
+  def test_json_arrayagg_over_a_window
+    seed_docs
+    if mariadb?
+      e = assert_raises(NotImplementedError) do
+        Doc.select { json_arrayagg(:name).over.as(:v) }.to_sql
+      end
+      assert_match(/window/, e.message)
+    else
+      values = Doc.select { json_arrayagg(:name).over.as(:v) }.
+        map { |row| (row.v.is_a?(String) ? JSON.parse(row.v) : row.v).sort }
+      assert_equal([%w[one two], %w[one two]], values)
+    end
+  end
+
+  # What the JSON aggregates give is JSON as dig's is, so a comparison is
+  # the JSON types' structural answer -- key order aside -- where there is
+  # such a type, and refused where there is not.
+  def test_json_aggregates_compare_as_json
+    skip_without_json_comparisons
+    seed_docs
+    matched = Doc.having { json_objectagg(:name, :meta.dig(:n)) == { "two" => 9, "one" => 5 } }.
+      select { count(:*).as(:v) }.to_a
+    assert_equal(1, matched.size)
+    assert_empty(
+      Doc.having { json_objectagg(:name, :meta.dig(:n)) == { "one" => 5 } }.
+        select { count(:*).as(:v) }.to_a)
+  end
+
+  def test_json_aggregate_comparisons_elsewhere_say_so
+    skip "this one has a JSON type" if ADAPTER == "postgresql" ||
+                                       (ADAPTER == "mysql2" && !mariadb?)
+    assert_raises(NotImplementedError) do
+      Doc.having { json_arrayagg(:name) == %w[one two] }.to_sql
+    end
+  end
+
+  def test_arithmetic_is_refused_on_a_json_aggregate
+    e = assert_raises(ArgumentError) { Doc.select { json_arrayagg(:name) + 1 } }
+    assert_match(/json_arrayagg gives JSON/, e.message)
+    assert_raises(ArgumentError) { Doc.select { ~json_objectagg(:name, :meta) } }
+  end
+
+  # The one place the adapters part company over what goes in: a bare JSON
+  # column is text to SQLite's json_group_array, so it lands as the string
+  # that spells the document, where the other three nest it.  A dug value
+  # nests everywhere, its JSON marker riding along.
+  def test_json_arrayagg_of_a_whole_column
+    seed_docs
+    array = json_aggregate(
+      Doc.where { :name == "two" }.select { json_arrayagg(:meta).as(:v) })
+    if ADAPTER == "sqlite3"
+      assert_equal(['{"n":9}'], array)
+    else
+      assert_equal([{ "n" => 9 }], array)
+    end
+  end
+
+  # Over no rows at all, SQLite alone answers the empty document; the other
+  # three answer NULL, as their aggregates do.
+  def test_json_aggregates_of_no_rows
+    Doc.delete_all
+    value = Doc.select { json_arrayagg(:name).as(:v) }.to_a.first.v
+    if ADAPTER == "sqlite3"
+      assert_equal("[]", value)
+    else
+      assert_nil(value)
+    end
+  end
+
   def test_dig_text_from_a_qualified_column
     seed_docs
     assert_equal(["one"], Doc.where { :docs[:meta].dig_text(:a, :b) == "deep" }.pluck(:name))

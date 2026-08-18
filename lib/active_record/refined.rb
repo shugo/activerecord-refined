@@ -60,6 +60,17 @@ module ActiveRecord
         AST::Aggregate.new(column, :count, distinct: distinct)
       end
 
+      # Rows gathered into one JSON document: json_arrayagg collects a value
+      # from each row into an array, json_objectagg a key and a value into an
+      # object.
+      def json_arrayagg(value)
+        AST::JsonAggregate.new(:arrayagg, [value])
+      end
+
+      def json_objectagg(key, value)
+        AST::JsonAggregate.new(:objectagg, [key, value])
+      end
+
       # Scalar functions, defined as real methods so that a typo is a
       # NoMethodError and a name Kernel also answers to (format, hash, test)
       # cannot quietly mean something else.

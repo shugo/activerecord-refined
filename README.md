@@ -878,6 +878,40 @@ built. On PostgreSQL, `dig` and `dig_text` are all the `json` type carries;
 A key that is not a plain name travels as itself rather than being refused:
 `dig(:'odd key')` becomes `'{odd key}'` or `$."odd key"`.
 
+`json_arrayagg` and `json_objectagg` gather rows into one JSON document — a
+value from each row into an array, a key and a value into an object. The
+names are the SQL standard's, which the MySQL family says as written;
+PostgreSQL is asked the `jsonb` pair and SQLite its own:
+
+```ruby
+Post.group { :author_id }.select { json_arrayagg(:title).as(:titles) }
+# jsonb_agg("title")          PostgreSQL
+# json_group_array("title")   SQLite
+# JSON_ARRAYAGG("title")      MySQL
+
+Post.select { json_objectagg(:title, :meta.dig(:stars)).as(:stars) }
+```
+
+What they give is JSON as `dig`'s is, so it compares the way a dug value
+does, and `filter` and `over` come along as with any aggregate — with two
+refusals where a respelling would change the meaning rather than the
+spelling. The MySQL family has no `FILTER`, and the `CASE` that stands in
+for it elsewhere would leave a JSON `null` in the document for every row it
+drops, so there `filter` raises `NotImplementedError`; MariaDB takes every
+other aggregate as a window function but not these two, so `over` raises
+there too.
+
+The documents agree across adapters, up to the edges of their JSON types.
+Over no rows at all SQLite answers `[]` and `{}` where the others answer
+`NULL`, as their aggregates do. A key aggregated twice keeps the last pair
+on the JSON types — `jsonb` and MySQL's — and every pair on the text ones,
+SQLite and MariaDB, and a `NULL` key is an error on the former pair and a
+dropped pair on the latter. And a bare JSON *column* is text to SQLite's
+`json_group_array`, so it lands as the string that spells the document
+rather than nesting as it does on the other three; a dug value nests
+everywhere, so `json_arrayagg(:meta.dig(:author))` is the portable way to
+collect part of a document.
+
 ### Window functions
 
 `over` gives a function a window, which is what turns an aggregate into a

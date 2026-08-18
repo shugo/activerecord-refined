@@ -122,3 +122,16 @@ Document.where { :name == "guide" }.
 puts "--- buried and excepted in one statement ---"
 puts "  #{Document.find_by(name: 'guide').meta.inspect}"
 puts
+
+# 5. Gathering rows into one JSON document.  json_arrayagg collects a value
+#    from each row into an array, json_objectagg a key and a value into an
+#    object; SQLite spells them json_group_array and json_group_object.
+show("json_arrayagg collects the names",
+  Document.select { json_arrayagg(:name).as(:names) },
+  Document.select { json_arrayagg(:name).as(:names) }.take.names)
+
+# A dug value goes in as JSON, so a document nests rather than landing as
+# the string that spells it.
+show("json_objectagg pairs each name with its author",
+  Document.select { json_objectagg(:name, :meta.dig(:author)).as(:authors) },
+  Document.select { json_objectagg(:name, :meta.dig(:author)).as(:authors) }.take.authors)
