@@ -226,11 +226,11 @@ module ActiveRecord
         # the JSON questions.  dig_text gives the value as text instead,
         # which is what a comparison wants.
         def dig(*path)
-          JsonPath.new(self, path, as_json: true)
+          JsonPath.new(self, path)
         end
 
         def dig_text(*path)
-          JsonPath.new(self, path)
+          JsonPath.new(self, path, json_value: false)
         end
 
         # Keys taken out of a JSON document, by the name of what Hash does,
@@ -656,7 +656,7 @@ module ActiveRecord
                             other.is_a?(Arel::Nodes::Node) ||
                             other.is_a?(Arel::Attributes::Attribute) ||
                             other.is_a?(ActiveRecord::Relation)
-            return json_literal(other) if as_json
+            return json_literal(other) if json_value?
             return other if other.is_a?(::String)
 
             raise ArgumentError,
@@ -689,7 +689,7 @@ module ActiveRecord
           end
 
           def arithmetic_refusal(operator)
-            as_json ?
+            json_value? ?
               "#{json_source} gives JSON, and #{operator} on it means something " \
               "different on every adapter; cast dig_text to the type meant" :
               "dig_text gives text, and #{operator} on it means something " \
@@ -745,7 +745,7 @@ module ActiveRecord
       module JsonDocument
         %i[dig dig_text key? contains? bury except].each do |name|
           define_method(name) do |*args|
-            unless as_json
+            unless json_value?
               raise ArgumentError,
                 "dig_text gives text, and #{name} reads JSON; dig keeps it"
             end
@@ -761,12 +761,16 @@ module ActiveRecord
         include JsonComparable
         include JsonDocument
 
-        attr_reader :operand, :path, :as_json
+        attr_reader :operand, :path
 
-        def initialize(operand, path, as_json: false)
+        def initialize(operand, path, json_value: true)
           @operand = operand
           @path = check_steps(path, "dig")
-          @as_json = as_json
+          @json_value = json_value
+        end
+
+        def json_value?
+          @json_value
         end
 
         def to_arel(table, model)
@@ -774,18 +778,18 @@ module ActiveRecord
           case AST.adapter_family(model)
           when :postgresql
             Arel::Nodes::InfixOperation.new(
-              as_json ? :"#>" : :"#>>", document, Arel::Nodes.build_quoted(steps_array))
+              json_value? ? :"#>" : :"#>>", document, Arel::Nodes.build_quoted(steps_array))
           when :mysql
             extracted = Arel::Nodes::NamedFunction.new(
               "JSON_EXTRACT", [document, Arel::Nodes.build_quoted(dollar_path)])
-            as_json ? extracted : Arel::Nodes::NamedFunction.new("JSON_UNQUOTE", [extracted])
+            json_value? ? extracted : Arel::Nodes::NamedFunction.new("JSON_UNQUOTE", [extracted])
           else
             extracted = Arel::Nodes::InfixOperation.new(
-              as_json ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
+              json_value? ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
             # SQLite's ->> gives back the value with its type, where the other
             # two give text.  Cast so that `dig_text(:n) == '5'` means the
             # same thing everywhere, and a number wants a cast everywhere too.
-            as_json ? extracted : Arel::Nodes::NamedFunction.new(
+            json_value? ? extracted : Arel::Nodes::NamedFunction.new(
               "CAST", [Arel::Nodes::As.new(extracted, Arel::Nodes::SqlLiteral.new("text"))])
           end
         end
@@ -813,7 +817,7 @@ module ActiveRecord
         end
 
         # Always JSON, which is what the comparison guard asks.
-        def as_json
+        def json_value?
           true
         end
 
@@ -884,7 +888,7 @@ module ActiveRecord
           @keys = check_keys(keys)
         end
 
-        def as_json
+        def json_value?
           true
         end
 
