@@ -56,14 +56,16 @@
 ```sh
 rake test                    # sqlite3, the default
 ADAPTER=postgresql rake test
-ADAPTER=mysql2 rake test
-rake test:all                # all three in turn
+ADAPTER=mysql2 rake test     # MariaDB
+rake test:mysql8             # Oracle's MySQL, on 3307
+rake test:all                # all of the above; MySQL skipped when 3307 is empty
 ```
 
-- Run all three before reporting anything about the DSL.  The skips are
+- Run all of them before reporting anything about the DSL.  The skips are
   adapter-specific and intended; PostgreSQL skips nothing.
-- `ADAPTER=mysql2` here reaches MariaDB; CI runs both it and `mysql:8`, so a
-  green run here is half the mysql job.  The two differ over JSON, where
+- `ADAPTER=mysql2` here reaches MariaDB; `rake test:mysql8` reaches Oracle's
+  MySQL on 3307, in a devcontainer rebuilt since it was added -- test:all
+  says so and moves on when it is not there.  The two differ over JSON, where
   MariaDB's json column is a checked longtext that Active Record will not
   serialise a hash into and MySQL's is a type of its own that wants one, and
   over cast, where MariaDB takes integer and MySQL knows only signed.

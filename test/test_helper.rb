@@ -15,8 +15,10 @@ require 'json'
 #
 #   rake test                  # sqlite3
 #   ADAPTER=postgresql rake test
-#   ADAPTER=mysql2 rake test
-#   rake test:all              # all three in turn
+#   ADAPTER=mysql2 rake test                # MariaDB, on 3306
+#   ADAPTER=mysql2 DB_PORT=3307 rake test   # MySQL, where the devcontainer
+#                                           # serves it (rake test:mysql8)
+#   rake test:all              # all of the above in turn
 ADAPTER = ENV.fetch('ADAPTER', 'sqlite3')
 
 DATABASE_NAME = 'activerecord_refined_test'.freeze
@@ -29,6 +31,7 @@ DATABASE_CONFIG =
     {
       adapter: ADAPTER,
       host: ENV.fetch('DB_HOST', '127.0.0.1'),
+      port: ENV['DB_PORT']&.to_i,
       username: ENV.fetch('DB_USERNAME') { Etc.getlogin },
       password: ENV['DB_PASSWORD'],
       database: DATABASE_NAME,

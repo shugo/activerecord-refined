@@ -1036,14 +1036,17 @@ the default; set `ADAPTER` to run the same suite against another one.
 ```sh
 rake test                    # sqlite3
 ADAPTER=postgresql rake test
-ADAPTER=mysql2 rake test
-rake test:all                # all three in turn
+ADAPTER=mysql2 rake test     # MariaDB
+rake test:mysql8             # Oracle's MySQL, on port 3307
+rake test:all                # all of the above; MySQL skipped when 3307 is empty
 ```
 
-PostgreSQL and MySQL are reached on `127.0.0.1` as the current user with no
-password, which is how the devcontainer sets them up. Override with
-`DB_HOST`, `DB_USERNAME` and `DB_PASSWORD`. The `activerecord_refined_test`
-database is created on first use.
+PostgreSQL and the MySQLs are reached on `127.0.0.1` as the current user with
+no password, which is how the devcontainer sets them up — MariaDB on its own
+port and Oracle's MySQL on 3307, since the two answer the `mysql2` adapter
+differently and CI runs both. Override with `DB_HOST`, `DB_PORT`,
+`DB_USERNAME` and `DB_PASSWORD`. The `activerecord_refined_test` database is
+created on first use.
 
 The `pg` and `mysql2` gems are in the Gemfile's `db` group, since building them
 needs the client libraries installed. Skip them if SQLite is all you need,
