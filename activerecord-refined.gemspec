@@ -15,9 +15,10 @@ Gem::Specification.new do |gem|
   gem.homepage      = "https://github.com/shugo/activerecord-refined"
 
   # sandbox/ is a site, not part of the library: its Gemfile.lock and
-  # package-lock.json have no business in anyone's bundle.  CLAUDE.md is
-  # addressed to whoever is working on the repository, not to anyone using it.
-  gem.files         = `git ls-files`.split($/).grep_v(%r{^sandbox/|^CLAUDE\.md$})
+  # package-lock.json have no business in anyone's bundle.  CLAUDE.md and
+  # .claude/ are addressed to whoever is working on the repository, not to
+  # anyone using it.
+  gem.files         = `git ls-files`.split($/).grep_v(%r{^sandbox/|^CLAUDE\.md$|^\.claude/})
   gem.executables   = gem.files.grep(%r{^bin/}).map { |f| File.basename(f) }
   gem.test_files    = gem.files.grep(%r{^(test|spec|features)/})
   gem.require_paths = ["lib"]
