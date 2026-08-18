@@ -878,6 +878,31 @@ built. On PostgreSQL, `dig` and `dig_text` are all the `json` type carries;
 A key that is not a plain name travels as itself rather than being refused:
 `dig(:'odd key')` becomes `'{odd key}'` or `$."odd key"`.
 
+`json_array` and `json_object` build a document in the row — `json_array`
+from the values given, `json_object` from a Ruby hash. The names are the
+standard's, which SQLite and the MySQL family say as written; PostgreSQL is
+asked to build `jsonb`. A hash rather than SQL's alternating keys and
+values, because a bare symbol means a column in every block here: the keys
+are Ruby's and the values are expressions, so `title: :title` reads the
+column in under its own name with no rule to remember:
+
+```ruby
+Post.select { json_object(title: :title, stars: :meta.dig(:stars)).as(:summary) }
+# jsonb_build_object('title', "title", 'stars', "meta" #> '{stars}')   PostgreSQL
+# JSON_OBJECT('title', "title", 'stars', JSON_EXTRACT(…))              elsewhere
+
+Post.where { :meta.dig(:author) == json_object(name: :name) }
+```
+
+A Ruby value among the arguments goes in as its JSON self — a string or a
+number as themselves, `nil` as `null`, and a boolean or a whole document
+through the same route `bury` takes them, so SQLite's `true` is not its
+`1`. A key that is not a string or a symbol is refused, before the
+adapters answer a NULL key three ways. The empty calls stand —
+`json_array()` is `[]` and `json_object()` is `{}` on all four — and what
+comes back is JSON as `dig`'s is, so the operations and comparisons above
+read it.
+
 `json_arrayagg` and `json_objectagg` gather rows into one JSON document — a
 value from each row into an array, a key and a value into an object. The
 names are the SQL standard's, which the MySQL family says as written;
@@ -890,6 +915,9 @@ Post.group { :author_id }.select { json_arrayagg(:title).as(:titles) }
 # JSON_ARRAYAGG("title")      MySQL
 
 Post.select { json_objectagg(:title, :meta.dig(:stars)).as(:stars) }
+
+Post.group { :author_id }.
+  select { json_arrayagg(json_object(title: :title, stars: :meta.dig(:stars))).as(:posts) }
 ```
 
 What they give is JSON as `dig`'s is, so it compares the way a dug value

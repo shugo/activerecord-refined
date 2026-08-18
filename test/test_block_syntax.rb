@@ -2258,6 +2258,99 @@ class TestBlockSyntax < Minitest::Test
     end
   end
 
+  # JSON documents built in the row.  json_object takes a Ruby hash rather
+  # than SQL's alternating keys and values, which is what keeps a bare
+  # symbol free to mean a column on the value side.
+  def test_json_array
+    seed_docs
+    value = json_aggregate(
+      Doc.where { :name == "one" }.
+        select { json_array(1, "x", :name, :meta.dig(:n), true, nil).as(:v) })
+    assert_equal([1, "x", "one", 5, true, nil], value)
+  end
+
+  def test_json_object
+    seed_docs
+    value = json_aggregate(
+      Doc.where { :name == "one" }.
+        select { json_object(name: :name, n: :meta.dig(:n), draft: false).as(:v) })
+    assert_equal({ "name" => "one", "n" => 5, "draft" => false }, value)
+  end
+
+  def test_json_build_takes_a_whole_document
+    seed_docs
+    value = json_aggregate(
+      Doc.select { json_object(author: { "name" => "alice" }, tags: %w[x]).as(:v) })
+    assert_equal({ "author" => { "name" => "alice" }, "tags" => ["x"] }, value)
+  end
+
+  # An empty document means the same thing on all four, so unlike dig and
+  # except the empty call stands.
+  def test_json_build_of_nothing
+    seed_docs
+    assert_equal([], json_aggregate(Doc.select { json_array.as(:v) }))
+    assert_equal({}, json_aggregate(Doc.select { json_object.as(:v) }))
+  end
+
+  def test_json_build_is_spelled_per_adapter
+    relation = Doc.select { [json_array(:name), json_object(a: :name)] }
+    if ADAPTER == "postgresql"
+      assert_sql(/jsonb_build_array\("docs"."name"\)/, relation)
+      assert_sql(/jsonb_build_object\('a', "docs"."name"\)/, relation)
+    else
+      assert_sql(/JSON_ARRAY\("docs"."name"\)/, relation)
+      assert_sql(/JSON_OBJECT\('a', "docs"."name"\)/, relation)
+    end
+  end
+
+  # A key that is not a Ruby name is refused before the adapters answer a
+  # NULL key three ways.
+  def test_json_object_takes_ruby_keys
+    e = assert_raises(ArgumentError) { Doc.select { json_object(1 => :name) } }
+    assert_match(/string or a symbol/, e.message)
+    e = assert_raises(ArgumentError) { Doc.select { json_object(nil => :name) } }
+    assert_match(/string or a symbol/, e.message)
+    e = assert_raises(ArgumentError) { Doc.select { json_object("a") } }
+    assert_match(/hash of keys to values/, e.message)
+  end
+
+  def test_json_build_compares_as_json
+    skip_without_json_comparisons
+    seed_docs
+    assert_equal(["one"],
+      Doc.where { :meta.dig(:a) == json_object(b: "deep") }.pluck(:name))
+    assert_equal(["one"],
+      Doc.where { :meta.dig(:tags) == json_array("x", "y") }.pluck(:name))
+  end
+
+  def test_json_build_comparisons_elsewhere_say_so
+    skip "this one has a JSON type" if ADAPTER == "postgresql" ||
+                                       (ADAPTER == "mysql2" && !mariadb?)
+    assert_raises(NotImplementedError) do
+      Doc.where { json_object(a: 1) == { "a" => 1 } }.to_sql
+    end
+  end
+
+  def test_arithmetic_is_refused_on_a_built_document
+    e = assert_raises(ArgumentError) { Doc.select { json_array(1) + 1 } }
+    assert_match(/json_array gives JSON/, e.message)
+  end
+
+  # A built document is JSON as dig's is, so the JSON operations read it,
+  # bury takes it whole as a value, and the aggregates collect it nested.
+  def test_json_build_composes
+    seed_docs
+    assert_equal(["one"],
+      Doc.where { json_array(:name).dig_text(0) == "one" }.pluck(:name))
+    value = buried { { meta: :meta.bury(:origin, json_object(host: "h")) } }
+    assert_equal({ "host" => "h" }, value["origin"])
+    seed_docs
+    rows = json_aggregate(
+      Doc.select { json_arrayagg(json_object(name: :name, n: :meta.dig(:n))).as(:v) })
+    assert_equal([{ "name" => "one", "n" => 5 }, { "name" => "two", "n" => 9 }],
+      rows.sort_by { |row| row["name"] })
+  end
+
   def test_dig_text_from_a_qualified_column
     seed_docs
     assert_equal(["one"], Doc.where { :docs[:meta].dig_text(:a, :b) == "deep" }.pluck(:name))

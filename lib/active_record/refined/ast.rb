@@ -38,6 +38,21 @@ module ActiveRecord
         raise ArgumentError, "#{name.inspect} is not a plain #{what}"
       end
 
+      # A Ruby document or boolean written where JSON is wanted.  Taken as it
+      # is, a document would be the string that spells it and a boolean
+      # SQLite's own 1.  SQLite's json() marks the literal for the JSON
+      # functions; the MySQL family, which has no json(), reads it with
+      # JSON_EXTRACT.
+      def self.json_argument(value, model)
+        json = Arel::Nodes.build_quoted(JSON.generate(value))
+        if adapter_family(model) == :sqlite
+          Arel::Nodes::NamedFunction.new("json", [json])
+        else
+          Arel::Nodes::NamedFunction.new(
+            "JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
+        end
+      end
+
       # Predicate builders shared by symbols, qualified columns and
       # expressions. Imported into the Symbol refinement with
       # Refinement#import_methods, so every method must be defined with def.
@@ -845,10 +860,7 @@ module ActiveRecord
           end
 
           # The others take the value as it is, except a whole document or a
-          # boolean, which go in as JSON: taken as they are, a document would
-          # be the string that spells it, and a boolean SQLite's own 1.
-          # SQLite's json() marks the literal for JSON_SET; the MySQL family,
-          # which has no json(), reads it with JSON_EXTRACT.
+          # boolean, which go in as JSON through json_argument.
           def other_value(table, model)
             return to_arel_operand(value, table, model) if expression?
             unless value.is_a?(::Hash) || value.is_a?(::Array) ||
@@ -856,13 +868,7 @@ module ActiveRecord
               return Arel::Nodes.build_quoted(value)
             end
 
-            json = Arel::Nodes.build_quoted(JSON.generate(value))
-            if AST.adapter_family(model) == :sqlite
-              Arel::Nodes::NamedFunction.new("json", [json])
-            else
-              Arel::Nodes::NamedFunction.new(
-                "JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
-            end
+            AST.json_argument(value, model)
           end
 
           def expression?
@@ -984,6 +990,99 @@ module ActiveRecord
             Arel::Nodes::NamedFunction.new("json_type", [document, path]).not_eq(nil)
           end
         end
+      end
+
+      # A JSON document built in the row: json_array from the values given,
+      # json_object from a Ruby hash.  SQLite and the MySQL family both say
+      # the standard names; PostgreSQL is asked to build jsonb, whose
+      # documents the other JSON operations here read.
+      class JsonBuild < Node
+        include Predications
+        include JsonComparable
+
+        NAMES = {
+          array: { postgresql: "jsonb_build_array" },
+          object: { postgresql: "jsonb_build_object" },
+        }.freeze
+
+        attr_reader :kind, :values
+
+        def initialize(kind, values)
+          @kind = kind
+          @values = kind == :object ? check_pairs(values) : values
+        end
+
+        # Always JSON, which is what the comparison guard asks.
+        def json_value?
+          true
+        end
+
+        def to_arel(table, model)
+          Arel::Nodes::NamedFunction.new(
+            NAMES.fetch(kind).fetch(AST.adapter_family(model)) { "JSON_#{kind.to_s.upcase}" },
+            arguments(table, model))
+        end
+
+        private
+          def arguments(table, model)
+            if kind == :array
+              values.map { |value| build_argument(value, table, model) }
+            else
+              values.flat_map do |key, value|
+                [Arel::Nodes.build_quoted(key.to_s),
+                 build_argument(value, table, model)]
+              end
+            end
+          end
+
+          # An expression is itself and a document or a boolean goes in as
+          # JSON, as bury takes them.  PostgreSQL builds from typed
+          # arguments, so its JSON literal is cast -- left untyped it would
+          # be text, and land as a string.
+          def build_argument(value, table, model)
+            case value
+            when Node, ::Symbol then to_arel_operand(value, table, model)
+            when ::Hash, ::Array, true, false
+              if AST.adapter_family(model) == :postgresql
+                Arel::Nodes::NamedFunction.new(
+                  "CAST", [Arel::Nodes::As.new(
+                    Arel::Nodes.build_quoted(JSON.generate(value)),
+                    Arel::Nodes::SqlLiteral.new("jsonb"))])
+              else
+                AST.json_argument(value, model)
+              end
+            when ::Rational then quote_number(value)
+            else Arel::Nodes.build_quoted(value)
+            end
+          end
+
+          # The keys come from Ruby as Hash keys rather than alternating with
+          # the values as SQL has them, which is what keeps a bare symbol
+          # free to mean a column on the value side.  Anything but a name is
+          # refused here, before the adapters answer a NULL key three ways.
+          def check_pairs(pairs)
+            unless pairs.is_a?(::Hash)
+              raise ArgumentError,
+                "json_object takes a hash of keys to values, not #{pairs.inspect}"
+            end
+            pairs.each_key do |key|
+              next if key.is_a?(::String) || key.is_a?(::Symbol)
+              raise ArgumentError,
+                "a key of json_object is a string or a symbol, not #{key.inspect}"
+            end
+            pairs
+          end
+
+          def json_source
+            "json_#{kind}"
+          end
+
+          # JsonComparable's own advice says to reach for dig_text, which a
+          # built document has no counterpart of.
+          def arithmetic_refusal(operator)
+            "#{json_source} gives JSON, and #{operator} on it means " \
+            "something different on every adapter"
+          end
       end
 
       # GROUP BY GROUPING SETS / ROLLUP / CUBE: several groupings asked for at

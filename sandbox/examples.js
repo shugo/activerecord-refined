@@ -484,6 +484,22 @@ show Doc.select {
   json_arrayagg(:name).filter { cast(:meta.dig_text(:stars), 'integer') >= 10 }.as(:starred)
 }`,
       },
+      {
+        title: 'json_array and json_object',
+        slug: 'json-build',
+        code: `# A document built in the row.  json_object takes a Ruby hash whose
+# values are expressions: the keys are Ruby's, so a bare symbol stays
+# free to mean a column on the value side.
+show Doc.select { json_object(name: :name, stars: :meta.dig(:stars)).as(:summary) }
+
+# A Ruby value goes in as its JSON self -- a boolean or a whole document
+# included, the route bury takes them.
+show Doc.select { json_array(:name, true, ['x', 'y']).as(:mixed) }
+
+# Built and gathered: one document per row, collected into one per
+# query.
+show Doc.select { json_arrayagg(json_object(name: :name, tags: :meta.dig(:tags))).as(:docs) }`,
+      },
     ],
   },
 

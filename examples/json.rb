@@ -135,3 +135,16 @@ show("json_arrayagg collects the names",
 show("json_objectagg pairs each name with its author",
   Document.select { json_objectagg(:name, :meta.dig(:author)).as(:authors) },
   Document.select { json_objectagg(:name, :meta.dig(:author)).as(:authors) }.take.authors)
+
+# 6. Building a document in the row.  json_array takes values, json_object
+#    a Ruby hash whose values are expressions -- the keys are Ruby's, so a
+#    bare symbol stays free to mean a column on the value side.
+show("json_object builds a document from columns",
+  Document.select { json_object(name: :name, author: :meta.dig(:author, :name)).as(:summary) },
+  Document.select { json_object(name: :name, author: :meta.dig(:author, :name)).as(:summary) }.
+    map(&:summary))
+
+# Built and gathered: one document per row, collected into one per query.
+show("json_arrayagg collects built documents",
+  Document.select { json_arrayagg(json_object(name: :name)).as(:docs) },
+  Document.select { json_arrayagg(json_object(name: :name)).as(:docs) }.take.docs)

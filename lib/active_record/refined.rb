@@ -71,6 +71,16 @@ module ActiveRecord
         AST::JsonAggregate.new(:objectagg, [key, value])
       end
 
+      # A JSON document built in the row: json_array from the values given,
+      # json_object from a Ruby hash whose values are expressions.
+      def json_array(*values)
+        AST::JsonBuild.new(:array, values)
+      end
+
+      def json_object(pairs = {})
+        AST::JsonBuild.new(:object, pairs)
+      end
+
       # Scalar functions, defined as real methods so that a typo is a
       # NoMethodError and a name Kernel also answers to (format, hash, test)
       # cannot quietly mean something else.
