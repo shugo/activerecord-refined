@@ -2354,12 +2354,26 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_rollup
-    skip_without_grouping_sets
+    skip_without_rollup
     seed_for_grouping
     rows = grouped { rollup(:author_id, :title) }
+    assert_equal(6, rows.size)   # by both (3), by author (2), the whole (1)
     assert_includes(rows, [nil, nil, 3])
-    assert_sql(/GROUP BY ROLLUP\( "posts"."author_id", "posts"."title" \)/,
-      Post.group { rollup(:author_id, :title) }.to_sql)
+    if ADAPTER == 'postgresql'
+      assert_sql(/GROUP BY ROLLUP\( "posts"."author_id", "posts"."title" \)/,
+        Post.group { rollup(:author_id, :title) }.to_sql)
+    else
+      assert_sql(/GROUP BY "posts"."author_id", "posts"."title" WITH ROLLUP/,
+        Post.group { rollup(:author_id, :title) }.to_sql)
+    end
+  end
+
+  # WITH ROLLUP trails the whole group list, so on the MySQL family a rollup
+  # cannot stand beside other group entries the way ROLLUP(...) can.
+  def test_rollup_stands_alone_on_mysql
+    skip 'only MySQL spells it WITH ROLLUP' unless ADAPTER == 'mysql2'
+    e = assert_raises(ArgumentError) { Post.group { [:author_id, rollup(:title)] } }
+    assert_match(/whole group list/, e.message)
   end
 
   def test_cube
@@ -2374,8 +2388,8 @@ class TestBlockSyntax < Minitest::Test
   def test_grouping_sets_say_where_they_cannot_go
     skip 'PostgreSQL has them' if ADAPTER == 'postgresql'
     assert_raises(NotImplementedError) { Post.group { grouping_sets([:title]) } }
-    assert_raises(NotImplementedError) { Post.group { rollup(:title) } }
     assert_raises(NotImplementedError) { Post.group { cube(:title) } }
+    assert_raises(NotImplementedError) { Post.group { rollup(:title) } } if ADAPTER == 'sqlite3'
   end
 
   def test_grouping_sets_need_something_to_group_by

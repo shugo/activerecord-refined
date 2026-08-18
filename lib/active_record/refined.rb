@@ -154,11 +154,12 @@ module ActiveRecord
         node
       end
 
-      # GROUP BY GROUPING SETS / ROLLUP / CUBE, which PostgreSQL has and the
-      # others do not -- MySQL's WITH ROLLUP says one of the three and says it
-      # somewhere else in the clause.  Arel has the nodes and writes them for
-      # PostgreSQL alone, so what it would raise elsewhere says nothing; this
-      # says it here, as extract does, while the block is being read.
+      # GROUP BY GROUPING SETS / ROLLUP / CUBE.  PostgreSQL has all three;
+      # the MySQL family has WITH ROLLUP, which says rollup and only rollup,
+      # trailing the group list -- the node spells it there.  Arel has the
+      # nodes and writes them for PostgreSQL alone, so what it would raise
+      # elsewhere says nothing; this says it here, as extract does, while
+      # the block is being read.
       #
       #   Sale.group { grouping_sets([:region], [:product], []) }
       #   Sale.group { rollup(:region, :product) }
@@ -304,11 +305,11 @@ module ActiveRecord
 
       def grouping(kind, sets)
         node = AST::GroupingSets.new(kind, sets)
-        unless adapter_family == :postgresql
-          raise NotImplementedError,
-            "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
-        end
-        node
+        return node if adapter_family == :postgresql
+        return node if kind == :rollup && adapter_family == :mysql
+
+        raise NotImplementedError,
+          "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
       end
 
       def function_name(name, functions)
@@ -364,6 +365,7 @@ module ActiveRecord
       def group(*args, &block)
         if block
           result = evaluate_block(&block)
+          check_rollup_stands_alone(result)
           arel = Array(result).map {|node| to_arel_field(node) }
           super(*arel, &nil)
         else
@@ -553,6 +555,19 @@ module ActiveRecord
       def evaluate_block(&block)
         refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
         BlockContext.new(klass).instance_exec(&refined_block)
+      end
+
+      # WITH ROLLUP trails the whole group list, so on the MySQL family a
+      # rollup cannot stand beside other group entries the way PostgreSQL's
+      # ROLLUP(...) can.
+      def check_rollup_stands_alone(result)
+        entries = Array(result)
+        return if entries.size == 1
+        return unless entries.any? {|node| node.is_a?(AST::GroupingSets) }
+        return unless AST.adapter_family(klass) == :mysql
+
+        raise ArgumentError,
+          'WITH ROLLUP takes the whole group list; group by the rollup alone'
       end
 
       def to_arel_field(node)

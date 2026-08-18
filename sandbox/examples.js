@@ -594,8 +594,9 @@ show Author.distinct_on { :country }.order { [:country, :age.desc] }`,
         title: 'grouping_sets, rollup and cube',
         slug: 'grouping-sets',
         code: `# More than one grouping in a single query, the totals of each coming
-# back beside the rows.  An empty set is the grand total.  MySQL has only
-# WITH ROLLUP, which is a clause of its own, and SQLite has none of it.
+# back beside the rows.  An empty set is the grand total.  SQLite has
+# none of the three; MySQL and MariaDB have rollup alone, spelled as
+# their WITH ROLLUP.
 show Post.group { grouping_sets([:author_id], [:published], []) }.
   select { [:author_id, :published, count(:*).as(:posts)] }`,
       },

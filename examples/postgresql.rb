@@ -143,6 +143,8 @@ show('by country, by writer, and both together',
   sets,
   sets.map {|a| [a.country, a.writer_id, a.likes] })
 
+# rollup runs on MySQL and MariaDB too, as their WITH ROLLUP; the other two
+# groupings are PostgreSQL's alone.
 show('rollup is the nested case of the same thing',
   Article.group { rollup(:writer_id, :flags) }.select { [:writer_id, :flags, count(:*).as(:n)] })
 

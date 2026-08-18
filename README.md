@@ -372,9 +372,12 @@ Sale.group { cube(:region, :product) }     # GROUP BY CUBE( "region", "product" 
 A row that a set did not group by comes back with NULL there, which is also
 what a real NULL looks like; `fn(:grouping, :region)` tells the two apart.
 
-These are PostgreSQL's. SQLite has none of them, and MySQL has only `WITH
-ROLLUP`, which says one of the three and says it elsewhere in the clause, so
-the block raises `NotImplementedError` on both.
+`grouping_sets` and `cube` are PostgreSQL's; SQLite has none of the three and
+both raise `NotImplementedError` elsewhere. `rollup` runs on MySQL and
+MariaDB too, spelled as their `WITH ROLLUP` — which trails the whole group
+list, so there a rollup cannot stand beside other group entries the way
+`ROLLUP(...)` can, and the block says so. MariaDB is also the one that
+refuses `ORDER BY` next to it, and the one without `fn(:grouping, ...)`.
 
 ### Lateral joins
 

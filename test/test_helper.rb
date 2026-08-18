@@ -108,9 +108,13 @@ module SqlAssertions
   end
 
   # GROUPING SETS, ROLLUP and CUBE are PostgreSQL's; MySQL has only WITH
-  # ROLLUP, which is a different clause, and SQLite has none.
+  # ROLLUP, which carries rollup and only rollup, and SQLite has none.
   def skip_without_grouping_sets
     skip "#{ADAPTER} has no GROUPING SETS" unless ADAPTER == 'postgresql'
+  end
+
+  def skip_without_rollup
+    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == 'sqlite3'
   end
 
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
