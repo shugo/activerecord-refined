@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require "bundler/gem_tasks"
 require "rake/testtask"
 require "socket"
@@ -14,7 +16,7 @@ rescue SystemCallError
 end
 
 Rake::TestTask.new do |t|
-  t.test_files = FileList['test/test_*.rb']
+  t.test_files = FileList["test/test_*.rb"]
 end
 
 namespace :test do
@@ -22,8 +24,8 @@ namespace :test do
     desc "Run the tests against #{adapter}"
     task adapter do
       puts "==== #{adapter} ===="
-      ENV['ADAPTER'] = adapter
-      ENV.delete('DB_PORT')
+      ENV["ADAPTER"] = adapter
+      ENV.delete("DB_PORT")
       Rake::Task[:test].reenable
       Rake::Task[:test].invoke
     end
@@ -32,8 +34,8 @@ namespace :test do
   desc "Run the tests against MySQL, which the devcontainer serves on 3307"
   task :mysql8 do
     puts "==== mysql2 (MySQL, port 3307) ===="
-    ENV['ADAPTER'] = 'mysql2'
-    ENV['DB_PORT'] = '3307'
+    ENV["ADAPTER"] = "mysql2"
+    ENV["DB_PORT"] = "3307"
     Rake::Task[:test].reenable
     Rake::Task[:test].invoke
   end
@@ -41,9 +43,9 @@ namespace :test do
   desc "Run the tests against every adapter in turn"
   task all: ADAPTERS do
     if mysql8_reachable?
-      Rake::Task['test:mysql8'].invoke
+      Rake::Task["test:mysql8"].invoke
     else
-      puts 'MySQL is not listening on 3307; skipped'
+      puts "MySQL is not listening on 3307; skipped"
     end
   end
 end

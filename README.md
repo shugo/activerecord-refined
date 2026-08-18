@@ -70,7 +70,7 @@ Just require the gem, and `where`, `select`, `joins`, `left_outer_joins`, `havin
 `order` and `group` will accept a block.
 
 ```ruby
-require 'activerecord-refined'
+require "activerecord-refined"
 ```
 
 Inside the block, symbols denote columns of the receiver's table, and `:table[:column]`
@@ -83,7 +83,7 @@ the model is refused rather than compared against nothing anyone meant.
 
 ```ruby
 Author.where { :age >= 18 }
-Author.where { :name.like?('A%') }          # LIKE
+Author.where { :name.like?("A%") }          # LIKE
 Author.where { :age.in?(20..40) }           # BETWEEN
 Author.where { :age.between?(20, 40) }      # BETWEEN
 Author.where { :age.in?(18..) }             # >= 18
@@ -98,10 +98,10 @@ block, which is the same rows written the way they would be written by hand:
 Author.where { :country.not_null? }             # IS NOT NULL
 Author.where { :country.not_in?(%w[JP US]) }    # NOT IN
 Author.where { :age.not_between?(20, 40) }      # not between 20 and 40
-Author.where { :name.not_like?('A%') }          # NOT LIKE
-Author.where { :name.not_ilike?('a%') }         # NOT ILIKE / NOT LIKE
+Author.where { :name.not_like?("A%") }          # NOT LIKE
+Author.where { :name.not_ilike?("a%") }         # NOT ILIKE / NOT LIKE
 
-Author.where { !:name.start_with?('A') }        # NOT (name LIKE 'A%')
+Author.where { !:name.start_with?("A") }        # NOT (name LIKE 'A%')
 ```
 
 Nothing turns on the choice: `NOT (country IS NULL)` and `country IS NOT NULL`
@@ -157,7 +157,7 @@ one-row rule: `> any` asks whether the subquery holds a smaller value anywhere,
 `>= all` whether it holds a larger one nowhere.
 
 ```ruby
-Author.where { :age > any(Author.where(country: 'JP').select(:age)) }
+Author.where { :age > any(Author.where(country: "JP").select(:age)) }
 # "authors"."age" > ANY(SELECT "authors"."age" FROM "authors" WHERE ...)
 
 Author.where { :age >= all(Author.select(:age)) }
@@ -190,8 +190,8 @@ case-insensitive equality, folded on both sides rather than left to the
 collation, so it means the same thing everywhere:
 
 ```ruby
-Author.where { :name.ilike?('ma%') }        # ILIKE 'ma%' / LIKE 'ma%'
-Author.where { :name.casecmp?('Alice') }     # LOWER(name) = LOWER('Alice')
+Author.where { :name.ilike?("ma%") }        # ILIKE 'ma%' / LIKE 'ma%'
+Author.where { :name.casecmp?("Alice") }     # LOWER(name) = LOWER('Alice')
 ```
 
 `not_distinct_from?` and `distinct_from?` compare with NULL treated as a
@@ -201,7 +201,7 @@ and MySQL `<=>`, and the rows that come back are the same on all three:
 
 ```ruby
 Author.where { :country.not_distinct_from?(params[:country]) }  # matches NULL to nil
-Author.where { :country.distinct_from?('JP') }                  # keeps the NULL rows
+Author.where { :country.distinct_from?("JP") }                  # keeps the NULL rows
 ```
 
 `start_with?`, `end_with?` and `include?` are shortcuts for the usual `like?`
@@ -209,16 +209,16 @@ patterns. Unlike `like?`, they treat their argument as a literal string, so `%`
 and `_` in it are escaped rather than matched as wildcards:
 
 ```ruby
-Author.where { :name.start_with?('A') }     # LIKE 'A%'
-Author.where { :name.end_with?('son') }     # LIKE '%son'
-Author.where { :name.include?('test') }     # LIKE '%test%'
+Author.where { :name.start_with?("A") }     # LIKE 'A%'
+Author.where { :name.end_with?("son") }     # LIKE '%son'
+Author.where { :name.include?("test") }     # LIKE '%test%'
 ```
 
 Like their String namesakes, `start_with?` and `end_with?` take any number of
 literals; matching any one of them is enough:
 
 ```ruby
-Author.where { :name.start_with?('A', 'B') }
+Author.where { :name.start_with?("A", "B") }
 # (name LIKE 'A%' OR name LIKE 'B%')
 ```
 
@@ -229,7 +229,7 @@ what separates it from `include?`), `superset?` and `subset?` are Set's
 whole-array containment, and `intersect?` is Array's "any element in common":
 
 ```ruby
-Article.where { :tags.member?('ruby') }            # tags @> '{ruby}'
+Article.where { :tags.member?("ruby") }            # tags @> '{ruby}'
 Article.where { :scores.member?(80) }              # scores @> '{80}'
 Article.where { :tags.superset?(%w[ruby rails]) }  # tags @> '{ruby,rails}'
 Article.where { :tags.subset?(%w[ruby rails go]) } # tags <@ '{ruby,rails,go}'
@@ -245,8 +245,8 @@ something `Array#member?` does not. Requiring every element is `superset?`.
 raises there.
 
 ```ruby
-Author.where { :name =~ '^A' }              # REGEXP / ~
-Author.where { :name !~ '^A' }              # NOT REGEXP / !~
+Author.where { :name =~ "^A" }              # REGEXP / ~
+Author.where { :name !~ "^A" }              # NOT REGEXP / !~
 Author.where { :name =~ /son$/ }            # a Regexp literal works too
 ```
 
@@ -279,10 +279,10 @@ parentheses around each comparison necessary, though the `?` methods above need
 none:
 
 ```ruby
-Author.where { (:age >= 18) & ((:country == 'JP') | (:country == 'US')) }
+Author.where { (:age >= 18) & ((:country == "JP") | (:country == "US")) }
 Author.where { !(:age.in?(0..17) | :country.null?) }
 Author.where { !:country.in?(%w[JP US]) }   # NOT (country IN ('JP', 'US'))
-Author.where { !:name.like?('%test%') }     # NOT (name LIKE '%test%')
+Author.where { !:name.like?("%test%") }     # NOT (name LIKE '%test%')
 ```
 
 ### Joins
@@ -487,7 +487,7 @@ Author.select { count(:*).filter { :age < 50 }.as(:young) }
 # COUNT(*) FILTER (WHERE "age" < 50) AS "young"
 
 Author.select {
-  [count(:*).as(:all), sum(:age).filter { :country == 'JP' }.as(:jp_years)]
+  [count(:*).as(:all), sum(:age).filter { :country == "JP" }.as(:jp_years)]
 }
 ```
 
@@ -543,7 +543,7 @@ Post.select { fn(:format, :amount, 2) }   # MySQL's, on purpose
 written, so a case-sensitive one can be spelled exactly:
 
 ```ruby
-Post.select { fn(:date_trunc, 'day', :created_at).as(:day) }
+Post.select { fn(:date_trunc, "day", :created_at).as(:day) }
 # SELECT date_trunc('day', "posts"."created_at") AS day
 ```
 
@@ -599,7 +599,7 @@ raises there:
 Post.where { extract(:year, :created_at) == 2026 }
 # SELECT "posts".* FROM "posts" WHERE EXTRACT(YEAR FROM "posts"."created_at") = 2026
 
-Post.select { cast(:price, 'decimal(10,2)').as(:price) }
+Post.select { cast(:price, "decimal(10,2)").as(:price) }
 # SELECT CAST("posts"."price" AS decimal(10,2)) AS price
 ```
 
@@ -621,7 +621,7 @@ decimal spells `1/3r` exactly, and `to_d` is what says the decimal meant.
 
 ```ruby
 Item.select { greatest(20 - :quantity, 0).as(:shortfall) }
-Item.where { BigDecimal('1.08') * :price > 500 }
+Item.where { BigDecimal("1.08") * :price > 500 }
 ```
 
 `&`, `|`, `^`, `~`, `<<` and `>>` are SQL's bitwise operators. Between
@@ -686,7 +686,7 @@ Node.select { [:id, value(0).as(:depth)] }
 
 Node.select { [:id, 0.as(:depth)] }         # the same thing
 
-Post.select { [:title, value('draft').as(:state)] }
+Post.select { [:title, value("draft").as(:state)] }
 # SELECT "posts"."title", 'draft' AS state FROM "posts"
 ```
 
@@ -702,13 +702,13 @@ reachable through the receiver — `self.case` — and each shape has a shorthan
 that does not need it:
 
 ```ruby
-Author.select { :country.when('JP').then('Japan').else('elsewhere').as(:where) }
+Author.select { :country.when("JP").then("Japan").else("elsewhere").as(:where) }
 # CASE "country" WHEN 'JP' THEN 'Japan' ELSE 'elsewhere' END AS where
 
-Author.select { case_when { :age >= 60 }.then('senior').else('adult').as(:band) }
+Author.select { case_when { :age >= 60 }.then("senior").else("adult").as(:band) }
 # CASE WHEN "age" >= 60 THEN 'senior' ELSE 'adult' END AS band
 
-Author.select { self.case(mod(:age, 10)).when(0).then('round').else('not').as(:v) }
+Author.select { self.case(mod(:age, 10)).when(0).then("round").else("not").as(:v) }
 ```
 
 A `when` takes a value or a block, and so do `then` and `else`; the block is
@@ -720,9 +720,9 @@ something that reaches the database:
 
 ```ruby
 Author.select {
-  case_when { :age < 18 }.then('minor').
-    when { :age >= 60 }.then('senior').
-    else('adult').as(:band)
+  case_when { :age < 18 }.then("minor").
+    when { :age >= 60 }.then("senior").
+    else("adult").as(:band)
 }
 
 Author.select { sum(case_when { :age >= 60 }.then(1).else(0)).as(:seniors) }
@@ -738,10 +738,10 @@ document to be dug into further or asked the JSON questions. `dig_text` gives
 the value as text instead, which is what a comparison wants:
 
 ```ruby
-Post.where { :meta.dig_text(:author, :name) == 'alice' }
+Post.where { :meta.dig_text(:author, :name) == "alice" }
 Post.select { :meta.dig(:author).as(:author) }
 Post.where { :meta.key?(:draft) }
-Post.where { :meta.contains?(status: 'open') }
+Post.where { :meta.contains?(status: "open") }
 ```
 
 No two adapters spell any of this alike, and the block is the same on all
@@ -762,8 +762,8 @@ value with its type, so a comparison that worked there would fail on the other
 two; a number is compared through a `cast` on all three:
 
 ```ruby
-Post.where { :meta.dig_text(:n) == '5' }
-Post.where { cast(:meta.dig_text(:n), 'integer') > 6 }   # 'signed' on MySQL
+Post.where { :meta.dig_text(:n) == "5" }
+Post.where { cast(:meta.dig_text(:n), "integer") > 6 }   # 'signed' on MySQL
 ```
 
 The type is the adapter's own name for it, here as everywhere `cast` is used.
@@ -793,9 +793,9 @@ SQLite's XOR names its operands twice:
 
 ```ruby
 Post.where { :meta.dig(:stars) >= 10 }              # PostgreSQL and MySQL
-Post.where { :meta.dig(:author) == { 'name' => 'alice' } }
+Post.where { :meta.dig(:author) == { "name" => "alice" } }
 Post.where { :meta.dig(:stars).in?([5, 10]) }
-Post.where { cast(:meta.dig_text(:stars), 'integer') >= 10 }   # everywhere
+Post.where { cast(:meta.dig_text(:stars), "integer") >= 10 }   # everywhere
 ```
 
 A column, a function or another dug value on the right goes through untouched
@@ -808,11 +808,11 @@ the path to it. The document comes back changed rather than being written
 anywhere, so `update_all` is what makes it stick:
 
 ```ruby
-Post.update_all { { meta: :meta.bury(:author, :name, 'alice') } }
+Post.update_all { { meta: :meta.bury(:author, :name, "alice") } }
 # SET "meta" = jsonb_set("meta", '{author,name}', '"alice"')
 # ...          JSON_SET("meta", '$.author.name', 'alice')   elsewhere
 
-Post.update_all { { meta: :meta.bury(:tags, ['ruby', 'sql']) } }
+Post.update_all { { meta: :meta.bury(:tags, ["ruby", "sql"]) } }
 Post.update_all { { meta: :meta.bury(:copy, :meta.dig(:n)) } }
 ```
 
@@ -834,7 +834,7 @@ Post.update_all { { meta: :meta.except(:draft) } }
 # SET "meta" = "meta" - CAST('{"draft"}' AS text[])
 # ...          JSON_REMOVE("meta", '$.draft')   elsewhere
 
-Post.update_all { { meta: :meta.bury(:author, :name, 'alice').except(:tmp) } }
+Post.update_all { { meta: :meta.bury(:author, :name, "alice").except(:tmp) } }
 ```
 
 A key that is not there is not an error, as it is not to `Hash#except`. The
@@ -855,14 +855,14 @@ question asked of a part of the document rather than of all of it:
 
 ```ruby
 Post.where { :meta.dig(:author).key?(:email) }
-Post.where { :meta.dig(:author).dig_text(:name) == 'alice' }
-Post.update_all { { meta: :meta.dig(:author).bury(:name, 'alice') } }
+Post.where { :meta.dig(:author).dig_text(:name) == "alice" }
+Post.update_all { { meta: :meta.dig(:author).bury(:name, "alice") } }
 ```
 
 Containment reads it too, on the adapters that have containment at all:
 
 ```ruby
-Post.where { :meta.dig(:tags).contains?(['ruby']) }
+Post.where { :meta.dig(:tags).contains?(["ruby"]) }
 ```
 
 Asking the same of `dig_text` raises `ArgumentError`: what it gives is text,

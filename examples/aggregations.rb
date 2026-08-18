@@ -1,16 +1,18 @@
-$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
+# frozen_string_literal: true
 
-require 'active_record'
-require 'activerecord-refined'
+$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), "..", "lib"))
 
-ActiveRecord::Base.establish_connection(adapter: 'sqlite3', database: ':memory:')
+require "active_record"
+require "activerecord-refined"
+
+ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Migration.verbose = false
 
 class Setup < ActiveRecord::Migration[8.1]
   def up
-    create_table(:authors) {|t| t.string :name; t.integer :age; t.string :country }
-    create_table(:posts)   {|t| t.string :title; t.integer :author_id; t.integer :likes; t.boolean :published }
-    create_table(:comments){|t| t.string :body; t.integer :post_id; t.integer :score }
+    create_table(:authors) { |t| t.string :name; t.integer :age; t.string :country }
+    create_table(:posts)   { |t| t.string :title; t.integer :author_id; t.integer :likes; t.boolean :published }
+    create_table(:comments) { |t| t.string :body; t.integer :post_id; t.integer :score }
   end
 end
 Setup.new.up
@@ -54,11 +56,11 @@ puts
 #    coalesce function + GROUP BY + aggregates + multiple ORDER BY
 query2 =
   Author.
-    group { coalesce(:country, 'unknown') }.
-    order { [count(:id).desc, coalesce(:country, 'unknown').asc] }.
+    group { coalesce(:country, "unknown") }.
+    order { [count(:id).desc, coalesce(:country, "unknown").asc] }.
     select {
       [
-        coalesce(:country, 'unknown').as(:country),
+        coalesce(:country, "unknown").as(:country),
         count(:id).as(:author_count),
         avg(:age).as(:avg_age),
       ]
@@ -74,7 +76,7 @@ query3 =
   Author.
     joins(:posts) { :posts[:author_id] == :authors[:id] }.
     joins(:comments) { :comments[:post_id] == :posts[:id] }.
-    where { !:posts[:title].include?('draft') & (:comments[:score] >= 0) }.
+    where { !:posts[:title].include?("draft") & (:comments[:score] >= 0) }.
     group { :authors[:id] }.
     having { sum(:comments[:score]) > 10 }.
     order { sum(:comments[:score]).desc }.

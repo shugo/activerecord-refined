@@ -1,16 +1,18 @@
-$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
+# frozen_string_literal: true
 
-require 'active_record'
-require 'activerecord-refined'
+$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), "..", "lib"))
 
-ActiveRecord::Base.establish_connection(adapter: 'sqlite3', database: ':memory:')
+require "active_record"
+require "activerecord-refined"
+
+ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Migration.verbose = false
 
 class Setup < ActiveRecord::Migration[8.1]
   def up
-    create_table(:authors) {|t| t.string :name; t.integer :age; t.string :country; t.integer :mentor_id }
-    create_table(:posts)   {|t| t.string :title; t.integer :author_id; t.integer :likes; t.boolean :published }
-    create_table(:comments){|t| t.string :body; t.integer :post_id; t.integer :score }
+    create_table(:authors) { |t| t.string :name; t.integer :age; t.string :country; t.integer :mentor_id }
+    create_table(:posts)   { |t| t.string :title; t.integer :author_id; t.integer :likes; t.boolean :published }
+    create_table(:comments) { |t| t.string :body; t.integer :post_id; t.integer :score }
   end
 end
 Setup.new.up
@@ -47,7 +49,7 @@ query2 =
     joins(:posts) { :posts[:author_id] == :authors[:id] }.
     joins(:comments) { :comments[:post_id] == :posts[:id] }.
     where {
-      !:posts[:title].include?('draft') &
+      !:posts[:title].include?("draft") &
         !:comments[:score].in?([0, -1]) &
         (:authors[:age] >= 18)
     }
@@ -98,14 +100,14 @@ puts
 begin
   Author.right_outer_joins(:posts)
 rescue ArgumentError => e
-  puts '--- and it says so without one ---'
+  puts "--- and it says so without one ---"
   puts "  #{e.message}"
   puts
 end
 
 # 6. CROSS JOIN: every row against every row, so there is no condition to
 #    give and no block to write it in.  `as` still names the table.
-puts '--- 6. CROSS JOIN ---'
+puts "--- 6. CROSS JOIN ---"
 puts Author.cross_joins(:posts).to_sql
 puts Author.cross_joins(:authors, as: :others).
   select { [:authors[:name].as(:a), :others[:name].as(:b)] }.to_sql

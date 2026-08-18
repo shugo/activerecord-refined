@@ -1,9 +1,11 @@
-require 'activerecord-refined/version'
-require 'active_record'
-require 'bigdecimal'
-require 'active_record/relation'
-require 'active_record/refined/ast'
-require 'active_record/refined'
+# frozen_string_literal: true
+
+require "activerecord-refined/version"
+require "active_record"
+require "bigdecimal"
+require "active_record/relation"
+require "active_record/refined/ast"
+require "active_record/refined"
 
 ActiveRecord::QueryMethods.prepend ActiveRecord::Refined::QueryMethods
 

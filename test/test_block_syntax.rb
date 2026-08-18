@@ -1,12 +1,14 @@
-require_relative 'test_helper'
+# frozen_string_literal: true
+
+require_relative "test_helper"
 
 class TestBlockSyntax < Minitest::Test
   def test_equal
-    assert_sql(/WHERE "users"."name" = 'alice'/, User.where { :name == 'alice' }.to_sql)
+    assert_sql(/WHERE "users"."name" = 'alice'/, User.where { :name == "alice" }.to_sql)
   end
 
   def test_not_equal
-    assert_sql(/WHERE "users"."name" != 'bob'/, User.where { :name != 'bob' }.to_sql)
+    assert_sql(/WHERE "users"."name" != 'bob'/, User.where { :name != "bob" }.to_sql)
   end
 
   def test_greater_than
@@ -26,7 +28,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_like
-    assert_sql(/WHERE "users"."name" LIKE 'tender%'/, User.where { :name.like?('tender%') }.to_sql)
+    assert_sql(/WHERE "users"."name" LIKE 'tender%'/, User.where { :name.like?("tender%") }.to_sql)
   end
 
   def test_outside_of_where_block
@@ -35,21 +37,21 @@ class TestBlockSyntax < Minitest::Test
 
   def test_and
     assert_sql(/WHERE "users"."name" = 'alice' AND "users"."age" > 18/,
-      User.where { (:name == 'alice') & (:age > 18) }.to_sql)
+      User.where { (:name == "alice") & (:age > 18) }.to_sql)
   end
 
   def test_or
-    assert_sql(/WHERE \(?\"users\".\"name\" = 'alice' OR \"users\".\"name\" = 'bob'\)?/,
-      User.where { (:name == 'alice') | (:name == 'bob') }.to_sql)
+    assert_sql(/WHERE \(?"users"."name" = 'alice' OR "users"."name" = 'bob'\)?/,
+      User.where { (:name == "alice") | (:name == "bob") }.to_sql)
   end
 
   def test_not
-    assert_sql(/WHERE NOT \(?\"users\".\"name\" = 'alice'\)?/,
-      User.where { !(:name == 'alice') }.to_sql)
+    assert_sql(/WHERE NOT \(?"users"."name" = 'alice'\)?/,
+      User.where { !(:name == "alice") }.to_sql)
   end
 
   def test_complex_combination
-    sql = User.where { ((:name == 'alice') & (:age > 18)) | !(:name == 'bob') }.to_sql
+    sql = User.where { ((:name == "alice") & (:age > 18)) | !(:name == "bob") }.to_sql
     assert_sql(/"users"."name" = 'alice'/, sql)
     assert_sql(/"users"."age" > 18/, sql)
     assert_sql(/NOT/, sql)
@@ -58,25 +60,25 @@ class TestBlockSyntax < Minitest::Test
 
   def test_like_qualified
     assert_sql(/WHERE "users"."name" LIKE 'tender%'/,
-      User.where { :users[:name].like?('tender%') }.to_sql)
+      User.where { :users[:name].like?("tender%") }.to_sql)
   end
 
   # ILIKE is PostgreSQL's; elsewhere Arel emits LIKE, which those adapters
   # already match case-insensitively by default.
   def test_ilike
-    expected = ADAPTER == 'postgresql' ? 'ILIKE' : 'LIKE'
+    expected = ADAPTER == "postgresql" ? "ILIKE" : "LIKE"
     assert_sql(/WHERE "users"."name" #{expected} 'ma%'/,
-      User.where { :name.ilike?('ma%') }.to_sql)
+      User.where { :name.ilike?("ma%") }.to_sql)
   end
 
   def test_casecmp
     assert_sql(/WHERE LOWER\("users"."name"\) = LOWER\('Alice'\)/,
-      User.where { :name.casecmp?('Alice') }.to_sql)
+      User.where { :name.casecmp?("Alice") }.to_sql)
   end
 
   def test_casecmp_qualified
     assert_sql(/WHERE LOWER\("users"."name"\) = LOWER\('Alice'\)/,
-      User.where { :users[:name].casecmp?('Alice') }.to_sql)
+      User.where { :users[:name].casecmp?("Alice") }.to_sql)
   end
 
   def test_casecmp_nil_is_rejected
@@ -86,40 +88,40 @@ class TestBlockSyntax < Minitest::Test
 
   def test_casecmp_execution
     User.delete_all
-    User.create!(name: 'Alice')
-    User.create!(name: 'bob')
-    assert_equal(['Alice'], User.where { :name.casecmp?('aLiCe') }.pluck(:name))
+    User.create!(name: "Alice")
+    User.create!(name: "bob")
+    assert_equal(["Alice"], User.where { :name.casecmp?("aLiCe") }.pluck(:name))
   end
 
   def test_bang_negates_like
     assert_sql(/WHERE NOT \("users"."name" LIKE 'tender%'\)/,
-      User.where { !:name.like?('tender%') }.to_sql)
+      User.where { !:name.like?("tender%") }.to_sql)
   end
 
   def test_not_like
     assert_sql(/WHERE "users"."name" NOT LIKE 'tender%'/,
-      User.where { :name.not_like?('tender%') }.to_sql)
+      User.where { :name.not_like?("tender%") }.to_sql)
   end
 
   def test_not_ilike
-    expected = ADAPTER == 'postgresql' ? 'ILIKE' : 'LIKE'
+    expected = ADAPTER == "postgresql" ? "ILIKE" : "LIKE"
     assert_sql(/WHERE "users"."name" NOT #{expected} 'tender%'/,
-      User.where { :name.not_ilike?('tender%') }.to_sql)
+      User.where { :name.not_ilike?("tender%") }.to_sql)
   end
 
   def test_start_with
     assert_sql(/WHERE "users"."name" LIKE 'tender%' ESCAPE '\\'/,
-      User.where { :name.start_with?('tender') }.to_sql)
+      User.where { :name.start_with?("tender") }.to_sql)
   end
 
   def test_end_with
     assert_sql(/WHERE "users"."name" LIKE '%love' ESCAPE '\\'/,
-      User.where { :name.end_with?('love') }.to_sql)
+      User.where { :name.end_with?("love") }.to_sql)
   end
 
   def test_include
     assert_sql(/WHERE "users"."name" LIKE '%der%' ESCAPE '\\'/,
-      User.where { :name.include?('der') }.to_sql)
+      User.where { :name.include?("der") }.to_sql)
   end
 
   # Like their String namesakes, start_with? and end_with? take any number
@@ -127,20 +129,20 @@ class TestBlockSyntax < Minitest::Test
   def test_start_with_multiple
     assert_sql(
       /WHERE \("users"."name" LIKE 'al%' ESCAPE '\\' OR "users"."name" LIKE 'bo%' ESCAPE '\\'\)/,
-      User.where { :name.start_with?('al', 'bo') }.to_sql)
+      User.where { :name.start_with?("al", "bo") }.to_sql)
   end
 
   def test_end_with_multiple
     assert_sql(
       /WHERE \("users"."name" LIKE '%z' ESCAPE '\\' OR "users"."name" LIKE '%love' ESCAPE '\\'\)/,
-      User.where { :name.end_with?('z', 'love') }.to_sql)
+      User.where { :name.end_with?("z", "love") }.to_sql)
   end
 
   # The OR arrives grouped, so a following & applies to the whole list.
   def test_start_with_multiple_combined
     assert_sql(
       /WHERE \("users"."name" LIKE 'al%' ESCAPE '\\' OR "users"."name" LIKE 'bo%' ESCAPE '\\'\) AND "users"."age" > 18/,
-      User.where { :name.start_with?('al', 'bo') & (:age > 18) }.to_sql)
+      User.where { :name.start_with?("al", "bo") & (:age > 18) }.to_sql)
   end
 
   def test_start_with_no_arguments
@@ -153,27 +155,27 @@ class TestBlockSyntax < Minitest::Test
 
   def test_start_with_escapes_wildcards
     assert_sql(/WHERE "users"."name" LIKE '100\\%\\_%' ESCAPE '\\'/,
-      User.where { :name.start_with?('100%_') }.to_sql)
+      User.where { :name.start_with?("100%_") }.to_sql)
   end
 
   def test_include_escapes_wildcards
     assert_sql(/WHERE "users"."name" LIKE '%100\\%%' ESCAPE '\\'/,
-      User.where { :name.include?('100%') }.to_sql)
+      User.where { :name.include?("100%") }.to_sql)
   end
 
   def test_member
     assert_sql(/WHERE "users"."tags" @> '\{ruby\}'/,
-      User.where { :tags.member?('ruby') }.to_sql)
+      User.where { :tags.member?("ruby") }.to_sql)
   end
 
   def test_member_qualified
     assert_sql(/WHERE "users"."tags" @> '\{ruby\}'/,
-      User.where { :users[:tags].member?('ruby') }.to_sql)
+      User.where { :users[:tags].member?("ruby") }.to_sql)
   end
 
   def test_member_negated
     assert_sql(/WHERE NOT \("users"."tags" @> '\{ruby\}'\)/,
-      User.where { !:tags.member?('ruby') }.to_sql)
+      User.where { !:tags.member?("ruby") }.to_sql)
   end
 
   # Ruby's [1, 2].member?([1]) is false: member? tests one element, and an
@@ -190,11 +192,11 @@ class TestBlockSyntax < Minitest::Test
 
   def test_superset_takes_a_set
     assert_sql(/WHERE "users"."tags" @> '\{ruby,rails\}'/,
-      User.where { :tags.superset?(Set['ruby', 'rails']) }.to_sql)
+      User.where { :tags.superset?(Set["ruby", "rails"]) }.to_sql)
   end
 
   def test_superset_rejects_a_scalar
-    assert_raises(ArgumentError) { User.where { :tags.superset?('ruby') } }
+    assert_raises(ArgumentError) { User.where { :tags.superset?("ruby") } }
   end
 
   def test_subset
@@ -215,11 +217,11 @@ class TestBlockSyntax < Minitest::Test
   def test_array_comparisons_execution
     skip_without_array_columns
     User.delete_all
-    User.create!(name: 'both', tags: %w[ruby rails])
-    User.create!(name: 'one', tags: %w[ruby go])
-    User.create!(name: 'neither', tags: %w[python])
-    assert_equal(['both'], User.where { :tags.superset?(%w[ruby rails]) }.pluck(:name))
-    assert_equal(['neither'], User.where { :tags.subset?(%w[python js]) }.pluck(:name))
+    User.create!(name: "both", tags: %w[ruby rails])
+    User.create!(name: "one", tags: %w[ruby go])
+    User.create!(name: "neither", tags: %w[python])
+    assert_equal(["both"], User.where { :tags.superset?(%w[ruby rails]) }.pluck(:name))
+    assert_equal(["neither"], User.where { :tags.subset?(%w[python js]) }.pluck(:name))
     assert_equal(%w[both one],
       User.where { :tags.intersect?(%w[ruby js]) }.pluck(:name).sort)
   end
@@ -229,7 +231,7 @@ class TestBlockSyntax < Minitest::Test
   def test_member_quotes_special_elements
     skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{"with,comma"\}'/,
-      User.where { :tags.member?('with,comma') }.to_sql)
+      User.where { :tags.member?("with,comma") }.to_sql)
   end
 
   # include? is a substring match even on an array column; only member?
@@ -237,7 +239,7 @@ class TestBlockSyntax < Minitest::Test
   def test_include_is_like_even_on_array_columns
     skip_without_array_columns
     assert_sql(/WHERE "users"."tags" LIKE '%ruby%' ESCAPE '\\'/,
-      User.where { :tags.include?('ruby') }.to_sql)
+      User.where { :tags.include?("ruby") }.to_sql)
   end
 
   # Elements survive the trip through the array literal: % is an ordinary
@@ -246,36 +248,36 @@ class TestBlockSyntax < Minitest::Test
   def test_member_matches_elements_literally
     skip_without_array_columns
     User.delete_all
-    User.create!(name: 'literal', tags: ['100%', 'with,comma', 'q"uote', 'back\\slash'])
-    User.create!(name: 'lookalike', tags: ['100200', 'with', 'comma'])
-    assert_equal(['literal'], User.where { :tags.member?('100%') }.pluck(:name))
-    assert_equal(['literal'], User.where { :tags.member?('with,comma') }.pluck(:name))
-    assert_equal(['literal'], User.where { :tags.member?('q"uote') }.pluck(:name))
-    assert_equal(['literal'], User.where { :tags.member?('back\\slash') }.pluck(:name))
+    User.create!(name: "literal", tags: ["100%", "with,comma", 'q"uote', 'back\\slash'])
+    User.create!(name: "lookalike", tags: ["100200", "with", "comma"])
+    assert_equal(["literal"], User.where { :tags.member?("100%") }.pluck(:name))
+    assert_equal(["literal"], User.where { :tags.member?("with,comma") }.pluck(:name))
+    assert_equal(["literal"], User.where { :tags.member?('q"uote') }.pluck(:name))
+    assert_equal(["literal"], User.where { :tags.member?('back\\slash') }.pluck(:name))
   end
 
   def test_regexp
     skip_without_regexp_support
     assert_sql(/WHERE "users"."name" #{regexp_operator} '\^ma'/,
-      User.where { :name =~ '^ma' }.to_sql)
+      User.where { :name =~ "^ma" }.to_sql)
   end
 
   def test_not_regexp
     skip_without_regexp_support
     assert_sql(/WHERE "users"."name" #{not_regexp_operator} '\^ma'/,
-      User.where { :name !~ '^ma' }.to_sql)
+      User.where { :name !~ "^ma" }.to_sql)
   end
 
   def test_regexp_qualified
     skip_without_regexp_support
     assert_sql(/WHERE "users"."name" #{regexp_operator} '\^ma'/,
-      User.where { :users[:name] =~ '^ma' }.to_sql)
+      User.where { :users[:name] =~ "^ma" }.to_sql)
   end
 
   def test_regexp_on_function
     skip_without_regexp_support
     assert_sql(/WHERE UPPER\("users"."name"\) #{regexp_operator} '\^MA'/,
-      User.where { upper(:name) =~ '^MA' }.to_sql)
+      User.where { upper(:name) =~ "^MA" }.to_sql)
   end
 
   def test_regexp_literal
@@ -350,18 +352,18 @@ class TestBlockSyntax < Minitest::Test
   # `when` against, or a condition on every `when`.
   def test_case_with_an_operand
     assert_sql(/SELECT CASE "users"."age" WHEN 10 THEN 'ten' ELSE 'other' END AS "v"/,
-      User.select { self.case(:age).when(10).then('ten').else('other').as(:v) }.to_sql)
+      User.select { self.case(:age).when(10).then("ten").else("other").as(:v) }.to_sql)
   end
 
   def test_when_on_a_column_is_the_same_case
     assert_equal(
-      User.select { self.case(:age).when(10).then('ten').else('other').as(:v) }.to_sql,
-      User.select { :age.when(10).then('ten').else('other').as(:v) }.to_sql)
+      User.select { self.case(:age).when(10).then("ten").else("other").as(:v) }.to_sql,
+      User.select { :age.when(10).then("ten").else("other").as(:v) }.to_sql)
   end
 
   def test_searched_case
     assert_sql(/SELECT CASE WHEN "users"."age" >= 60 THEN 'senior' ELSE 'other' END AS "v"/,
-      User.select { case_when { :age >= 60 }.then('senior').else('other').as(:v) }.to_sql)
+      User.select { case_when { :age >= 60 }.then("senior").else("other").as(:v) }.to_sql)
   end
 
   def test_case_when_is_the_same_as_case_with_no_operand
@@ -382,15 +384,15 @@ class TestBlockSyntax < Minitest::Test
     assert_sql(
       /CASE WHEN "users"."age" < 18 THEN 'minor' WHEN "users"."age" >= 60 THEN 'senior' ELSE 'adult' END/,
       User.select {
-        case_when { :age < 18 }.then('minor').
-          when { :age >= 60 }.then('senior').
-          else('adult').as(:v)
+        case_when { :age < 18 }.then("minor").
+          when { :age >= 60 }.then("senior").
+          else("adult").as(:v)
       }.to_sql)
   end
 
   # Leaving the ELSE off is SQL's own default rather than an omission.
   def test_case_without_an_else
-    sql = User.select { case_when { :age >= 60 }.then('senior').as(:v) }.to_sql
+    sql = User.select { case_when { :age >= 60 }.then("senior").as(:v) }.to_sql
     assert_sql(/CASE WHEN "users"."age" >= 60 THEN 'senior' END/, sql)
     refute_match(/ELSE/, sql)
   end
@@ -399,7 +401,7 @@ class TestBlockSyntax < Minitest::Test
     assert_sql(/THEN \("users"."age" - 60\)/,
       User.select { case_when { :age >= 60 }.then { :age - 60 }.else(0).as(:v) }.to_sql)
     assert_sql(/THEN "users"."name"/,
-      User.select { case_when { :age >= 60 }.then(:name).else('x').as(:v) }.to_sql)
+      User.select { case_when { :age >= 60 }.then(:name).else("x").as(:v) }.to_sql)
   end
 
   def test_case_is_an_expression_like_any_other
@@ -411,14 +413,14 @@ class TestBlockSyntax < Minitest::Test
 
   def test_case_execution
     User.delete_all
-    User.create!(name: 'senior', age: 70)
-    User.create!(name: 'adult', age: 30)
-    User.create!(name: 'minor', age: 10)
+    User.create!(name: "senior", age: 70)
+    User.create!(name: "adult", age: 30)
+    User.create!(name: "minor", age: 10)
     assert_equal(%w[adult minor senior],
       User.select {
-        case_when { :age < 18 }.then('minor').
-          when { :age >= 60 }.then('senior').
-          else('adult').as(:v)
+        case_when { :age < 18 }.then("minor").
+          when { :age >= 60 }.then("senior").
+          else("adult").as(:v)
       }.map(&:v).sort)
   end
 
@@ -500,13 +502,13 @@ class TestBlockSyntax < Minitest::Test
 
   def test_window_execution
     User.delete_all
-    User.create!(name: 'a', age: 20)
-    User.create!(name: 'b', age: 30)
-    User.create!(name: 'c', age: 40)
+    User.create!(name: "a", age: 20)
+    User.create!(name: "b", age: 30)
+    User.create!(name: "c", age: 40)
     assert_equal([1, 2, 3],
-      User.select { row_number.over.order(:age).as(:v) }.map {|u| u.v.to_i })
+      User.select { row_number.over.order(:age).as(:v) }.map { |u| u.v.to_i })
     assert_equal([20, 50, 90],
-      User.select { sum(:age).over.order(:age).rows(..0).as(:v) }.map {|u| u.v.to_i })
+      User.select { sum(:age).over.order(:age).rows(..0).as(:v) }.map { |u| u.v.to_i })
   end
 
   # One window finished two ways: the methods return new nodes.
@@ -530,7 +532,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_a_frame_is_a_range_of_rows
     assert_raises(ArgumentError) { User.select { sum(:age).over.rows(3) } }
-    assert_raises(ArgumentError) { User.select { sum(:age).over.rows('a'..'b') } }
+    assert_raises(ArgumentError) { User.select { sum(:age).over.rows("a".."b") } }
     e = assert_raises(ArgumentError) { User.select { sum(:age).over.rows(-2...0) } }
     assert_match(/ends on a row/, e.message)
   end
@@ -550,14 +552,14 @@ class TestBlockSyntax < Minitest::Test
   # if there were one.
   def test_the_negations_match_what_bang_selects
     User.delete_all
-    User.create!(name: 'alice', age: 60, active: true)
-    User.create!(name: 'bob', age: 20, active: false)
+    User.create!(name: "alice", age: 60, active: true)
+    User.create!(name: "bob", age: 20, active: false)
     User.create!(name: nil, age: 40)
     [
       [-> { :name.not_null? },          -> { !:name.null? }],
       [-> { :age.not_in?([20, 30]) },   -> { !:age.in?([20, 30]) }],
       [-> { :age.not_between?(20, 30) }, -> { !:age.between?(20, 30) }],
-      [-> { :name.not_like?('a%') },    -> { !:name.like?('a%') }],
+      [-> { :name.not_like?("a%") },    -> { !:name.like?("a%") }],
       [-> { :active.not_true? },        -> { !:active.true? }],
       [-> { :active.not_false? },       -> { !:active.false? }],
     ].each do |direct, negated|
@@ -597,12 +599,12 @@ class TestBlockSyntax < Minitest::Test
   # included, which is what makes them worth having over = TRUE.
   def test_truth_values_execution
     User.delete_all
-    User.create!([{name: 'yes', active: true}, {name: 'no', active: false},
-                  {name: 'unset', active: nil}])
+    User.create!([{ name: "yes", active: true }, { name: "no", active: false },
+                  { name: "unset", active: nil }])
     order = ->(relation) { relation.order(:name).pluck(:name) }
-    assert_equal(['yes'], order.(User.where { :active.true? }))
+    assert_equal(["yes"], order.(User.where { :active.true? }))
     assert_equal(%w[no unset], order.(User.where { :active.not_true? }))
-    assert_equal(['no'], order.(User.where { :active.false? }))
+    assert_equal(["no"], order.(User.where { :active.false? }))
     assert_equal(%w[unset yes], order.(User.where { :active.not_false? }))
   end
 
@@ -610,9 +612,9 @@ class TestBlockSyntax < Minitest::Test
   # is NULL for a NULL row, and negating it leaves that row out.
   def test_not_true_keeps_the_nulls_equality_drops
     User.delete_all
-    User.create!([{name: 'no', active: false}, {name: 'unset', active: nil}])
+    User.create!([{ name: "no", active: false }, { name: "unset", active: nil }])
     assert_equal(%w[no unset], User.where { :active.not_true? }.order(:name).pluck(:name))
-    assert_equal(['no'], User.where { !(:active == true) }.order(:name).pluck(:name))
+    assert_equal(["no"], User.where { !(:active == true) }.order(:name).pluck(:name))
   end
 
   def test_in
@@ -644,27 +646,27 @@ class TestBlockSyntax < Minitest::Test
   # <=> on MySQL, so only the resulting rows are portable.
   def test_not_distinct_from_execution
     User.delete_all
-    User.create!(name: 'named')
+    User.create!(name: "named")
     User.create!(name: nil)
     assert_equal([nil], User.where { :name.not_distinct_from?(nil) }.pluck(:name))
-    assert_equal(['named'], User.where { :name.distinct_from?(nil) }.pluck(:name))
+    assert_equal(["named"], User.where { :name.distinct_from?(nil) }.pluck(:name))
   end
 
   def test_not_distinct_from_a_value_execution
     User.delete_all
-    User.create!(name: 'alice')
+    User.create!(name: "alice")
     User.create!(name: nil)
-    assert_equal(['alice'], User.where { :name.not_distinct_from?('alice') }.pluck(:name))
+    assert_equal(["alice"], User.where { :name.not_distinct_from?("alice") }.pluck(:name))
     # Unlike !=, this keeps the NULL row.
-    assert_equal([nil], User.where { :name.distinct_from?('alice') }.pluck(:name))
+    assert_equal([nil], User.where { :name.distinct_from?("alice") }.pluck(:name))
   end
 
   def test_distinct_from_postgresql_syntax
-    skip "#{ADAPTER} spells it differently" unless ADAPTER == 'postgresql'
+    skip "#{ADAPTER} spells it differently" unless ADAPTER == "postgresql"
     assert_sql(/WHERE "users"."name" IS NOT DISTINCT FROM 'x'/,
-      User.where { :name.not_distinct_from?('x') }.to_sql)
+      User.where { :name.not_distinct_from?("x") }.to_sql)
     assert_sql(/WHERE "users"."name" IS DISTINCT FROM 'x'/,
-      User.where { :name.distinct_from?('x') }.to_sql)
+      User.where { :name.distinct_from?("x") }.to_sql)
   end
 
   def test_comparison_with_scalar_subquery
@@ -685,15 +687,15 @@ class TestBlockSyntax < Minitest::Test
 
   def test_scalar_subquery_execution
     User.delete_all
-    User.create!(name: 'young', age: 20)
-    User.create!(name: 'old', age: 60)
-    assert_equal(['old'], User.where { :age >= User.select { avg(:age) } }.pluck(:name))
+    User.create!(name: "young", age: 20)
+    User.create!(name: "old", age: 60)
+    assert_equal(["old"], User.where { :age >= User.select { avg(:age) } }.pluck(:name))
   end
 
   def test_in_subquery
     assert_sql(
       /WHERE "authors"."id" IN \(SELECT "posts"."author_id" FROM "posts" WHERE "posts"."title" = 'pub'\)/,
-      Author.where { :id.in?(Post.where(title: 'pub').select(:author_id)) }.to_sql)
+      Author.where { :id.in?(Post.where(title: "pub").select(:author_id)) }.to_sql)
   end
 
   # A relation without an explicit select list selects its primary key, the
@@ -712,7 +714,7 @@ class TestBlockSyntax < Minitest::Test
     skip_without_quantifiers
     assert_sql(
       /WHERE "users"."age" > ANY\(SELECT "users"."age" FROM "users" WHERE "users"."name" = 'alice'\)/,
-      User.where { :age > any(User.where(name: 'alice').select(:age)) }.to_sql)
+      User.where { :age > any(User.where(name: "alice").select(:age)) }.to_sql)
   end
 
   def test_all_subquery
@@ -736,7 +738,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_quantifier_is_unsupported_on_sqlite
-    if ADAPTER == 'sqlite3'
+    if ADAPTER == "sqlite3"
       e = assert_raises(NotImplementedError) { User.where { :age > any(User.select(:age)) } }
       assert_match(/ANY/, e.message)
     else
@@ -749,12 +751,12 @@ class TestBlockSyntax < Minitest::Test
   def test_quantifier_execution
     skip_without_quantifiers
     User.delete_all
-    User.create!([{name: 'young', age: 20}, {name: 'middle', age: 40},
-                  {name: 'old', age: 60}])
+    User.create!([{ name: "young", age: 20 }, { name: "middle", age: 40 },
+                  { name: "old", age: 60 }])
     ages = -> { User.select(:age) }
     assert_equal(%w[middle old], User.where { :age > any(ages.call) }.order(:age).pluck(:name))
-    assert_equal(['old'], User.where { :age >= all(ages.call) }.pluck(:name))
-    assert_equal(['young'], User.where { :age <= all(ages.call) }.pluck(:name))
+    assert_equal(["old"], User.where { :age >= all(ages.call) }.pluck(:name))
+    assert_equal(["young"], User.where { :age <= all(ages.call) }.pluck(:name))
   end
 
   # = ANY is IN and != ALL is NOT IN, which is worth a test because it is the
@@ -762,10 +764,10 @@ class TestBlockSyntax < Minitest::Test
   def test_quantifier_equality_execution
     skip_without_quantifiers
     User.delete_all
-    User.create!([{name: 'young', age: 20}, {name: 'old', age: 60}])
-    young = -> { User.where(name: 'young').select(:age) }
-    assert_equal(['young'], User.where { :age == any(young.call) }.pluck(:name))
-    assert_equal(['old'], User.where { :age != all(young.call) }.pluck(:name))
+    User.create!([{ name: "young", age: 20 }, { name: "old", age: 60 }])
+    young = -> { User.where(name: "young").select(:age) }
+    assert_equal(["young"], User.where { :age == any(young.call) }.pluck(:name))
+    assert_equal(["old"], User.where { :age != all(young.call) }.pluck(:name))
   end
 
   # The subquery correlates with the outer table through qualified columns,
@@ -784,33 +786,33 @@ class TestBlockSyntax < Minitest::Test
   def test_exists_combined
     assert_sql(
       /WHERE "authors"."name" = 'alice' AND EXISTS \(SELECT "posts"\.\* FROM "posts" WHERE "posts"."title" = 'pub'\)/,
-      Author.where { (:name == 'alice') & exists?(Post.where(title: 'pub')) }.to_sql)
+      Author.where { (:name == "alice") & exists?(Post.where(title: "pub")) }.to_sql)
   end
 
   def test_exists_execution
     Author.delete_all
     Post.delete_all
-    with_post = Author.create!(name: 'with_post')
-    Author.create!(name: 'without')
-    Post.create!(title: 'pub', author_id: with_post.id)
+    with_post = Author.create!(name: "with_post")
+    Author.create!(name: "without")
+    Post.create!(title: "pub", author_id: with_post.id)
     correlated = -> { Post.where { :posts[:author_id] == :authors[:id] } }
-    assert_equal(['with_post'],
+    assert_equal(["with_post"],
       Author.where { exists?(correlated.call) }.pluck(:name))
-    assert_equal(['without'],
+    assert_equal(["without"],
       Author.where { !exists?(correlated.call) }.pluck(:name))
   end
 
   def test_in_subquery_execution
     Author.delete_all
     Post.delete_all
-    published = Author.create!(name: 'published')
-    drafting = Author.create!(name: 'drafting')
-    Post.create!(title: 'pub', author_id: published.id)
-    Post.create!(title: 'draft', author_id: drafting.id)
-    subquery = -> { Post.where(title: 'pub').select(:author_id) }
-    assert_equal(['published'],
+    published = Author.create!(name: "published")
+    drafting = Author.create!(name: "drafting")
+    Post.create!(title: "pub", author_id: published.id)
+    Post.create!(title: "draft", author_id: drafting.id)
+    subquery = -> { Post.where(title: "pub").select(:author_id) }
+    assert_equal(["published"],
       Author.where { :id.in?(subquery.call) }.pluck(:name))
-    assert_equal(['drafting'],
+    assert_equal(["drafting"],
       Author.where { !:id.in?(subquery.call) }.pluck(:name))
   end
 
@@ -840,7 +842,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_qualified_column
     assert_sql(/WHERE "users"."name" = 'alice'/,
-      User.where { :users[:name] == 'alice' }.to_sql)
+      User.where { :users[:name] == "alice" }.to_sql)
   end
 
   def test_column_to_column_comparison
@@ -892,7 +894,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_full_outer_joins_says_where_it_cannot_go
-    skip "#{ADAPTER} has FULL OUTER JOIN" unless ADAPTER == 'mysql2'
+    skip "#{ADAPTER} has FULL OUTER JOIN" unless ADAPTER == "mysql2"
     e = assert_raises(NotImplementedError) do
       Author.full_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
     end
@@ -910,7 +912,7 @@ class TestBlockSyntax < Minitest::Test
   def test_the_other_outer_joins_need_a_block
     e = assert_raises(ArgumentError) { Author.right_outer_joins(:posts) }
     assert_match(/takes a table and the block/, e.message)
-    unless ADAPTER == 'mysql2'
+    unless ADAPTER == "mysql2"
       assert_raises(ArgumentError) { Author.full_outer_joins(:posts) }
     end
   end
@@ -933,21 +935,21 @@ class TestBlockSyntax < Minitest::Test
   def test_cross_joins_execution
     Author.delete_all
     Post.delete_all
-    Author.create!(name: 'a')
-    Author.create!(name: 'b')
-    Post.create!(title: 'one')
-    Post.create!(title: 'two')
-    Post.create!(title: 'three')
+    Author.create!(name: "a")
+    Author.create!(name: "b")
+    Post.create!(title: "one")
+    Post.create!(title: "two")
+    Post.create!(title: "three")
     assert_equal(6, Author.cross_joins(:posts).count)
   end
 
   def test_right_outer_joins_execution
     Author.delete_all
     Post.delete_all
-    author = Author.create!(name: 'a')
-    Post.create!(title: 'hers', author_id: author.id)
-    Post.create!(title: 'nobody\'s', author_id: nil)
-    assert_equal(['a', nil],
+    author = Author.create!(name: "a")
+    Post.create!(title: "hers", author_id: author.id)
+    Post.create!(title: "nobody's", author_id: nil)
+    assert_equal(["a", nil],
       Author.right_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }.
         order { :posts[:title] }.pluck(:'authors.name'))
   end
@@ -959,8 +961,8 @@ class TestBlockSyntax < Minitest::Test
 
   def test_self_join_execution
     Author.delete_all
-    Author.create!(name: 'shared')
-    Author.create!(name: 'other')
+    Author.create!(name: "shared")
+    Author.create!(name: "other")
     assert_equal(%w[other shared],
       Author.joins(:authors, as: :mentors) { :mentors[:name] == :authors[:name] }.
         pluck(:name).sort)
@@ -976,11 +978,11 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_from_string_still_delegates
-    assert_sql(/FROM subq/, Node.from('subq').to_sql)
+    assert_sql(/FROM subq/, Node.from("subq").to_sql)
   end
 
   def test_from_alias_needs_a_symbol
-    assert_raises(ArgumentError) { Node.from('tree', as: :nodes) }
+    assert_raises(ArgumentError) { Node.from("tree", as: :nodes) }
   end
 
   def test_from_cte_takes_the_alias_from_the_model
@@ -991,7 +993,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_from_cte_needs_a_symbol
-    assert_raises(ArgumentError) { Node.from_cte('tree') }
+    assert_raises(ArgumentError) { Node.from_cte("tree") }
   end
 
   # The name has to be one `with` declares, or the query is against a table
@@ -1025,10 +1027,10 @@ class TestBlockSyntax < Minitest::Test
   # from_cte exists; without it the SQL names a table the query does not have.
   def test_from_cte_leaves_where_able_to_qualify
     Node.delete_all
-    root = Node.create!(name: 'root')
-    Node.create!(name: 'child', parent_id: root.id)
-    other = Node.create!(name: 'other root')
-    Node.create!(name: 'other child', parent_id: other.id)
+    root = Node.create!(name: "root")
+    Node.create!(name: "child", parent_id: root.id)
+    other = Node.create!(name: "other root")
+    Node.create!(name: "other child", parent_id: other.id)
     forest = Node.with_recursive(
       tree: [
         Node.where { :parent_id.null? }.
@@ -1046,10 +1048,10 @@ class TestBlockSyntax < Minitest::Test
   # ON clause is a block rather than the string join Rails' own docs use.
   def test_recursive_cte
     Node.delete_all
-    root = Node.create!(name: 'root')
-    child = Node.create!(name: 'child', parent_id: root.id)
-    Node.create!(name: 'grandchild', parent_id: child.id)
-    Node.create!(name: 'unrelated', parent_id: nil)
+    root = Node.create!(name: "root")
+    child = Node.create!(name: "child", parent_id: root.id)
+    Node.create!(name: "grandchild", parent_id: child.id)
+    Node.create!(name: "unrelated", parent_id: nil)
     descendants = Node.with_recursive(
       tree: [
         Node.where { :id == root.id },
@@ -1061,12 +1063,12 @@ class TestBlockSyntax < Minitest::Test
 
   def test_cte_joined_by_name
     Node.delete_all
-    root = Node.create!(name: 'root')
-    Node.create!(name: 'child', parent_id: root.id)
-    Node.create!(name: 'orphan', parent_id: nil)
+    root = Node.create!(name: "root")
+    Node.create!(name: "child", parent_id: root.id)
+    Node.create!(name: "orphan", parent_id: nil)
     q = Node.with(roots: Node.where { :parent_id.null? }).
       joins(:roots) { :roots[:id] == :nodes[:parent_id] }
-    assert_equal(['child'], q.pluck(:name))
+    assert_equal(["child"], q.pluck(:name))
   end
 
   def test_select_sum
@@ -1200,7 +1202,7 @@ class TestBlockSyntax < Minitest::Test
   # exactly.
   def test_fn
     assert_sql(/SELECT date_trunc\('day', "users"."name"\)/,
-      User.select { fn(:date_trunc, 'day', :name) }.to_sql)
+      User.select { fn(:date_trunc, "day", :name) }.to_sql)
   end
 
   def test_fn_is_comparable
@@ -1210,13 +1212,13 @@ class TestBlockSyntax < Minitest::Test
 
   def test_fn_alias
     assert_sql(/SELECT date_trunc\('day', "users"."name"\) AS "d"/,
-      User.select { fn(:date_trunc, 'day', :name).as(:d) }.to_sql)
+      User.select { fn(:date_trunc, "day", :name).as(:d) }.to_sql)
   end
 
   # Aliases and function names are written into the SQL where a value would
   # have been quoted, so a name that is not plain is refused rather than
   # given the chance to close the identifier and carry on.
-  INJECTION = %q{a" AS x, (SELECT 1) AS "y}
+  INJECTION = 'a" AS x, (SELECT 1) AS "y'
 
   # An alias that is not a plain name is quoted by the adapter rather than
   # refused, so an injected one becomes an alias with a strange name and
@@ -1224,10 +1226,10 @@ class TestBlockSyntax < Minitest::Test
   # that the payload arrived as the name of the column it labelled.
   def test_an_injected_alias_is_quoted_rather_than_refused
     User.delete_all
-    User.create!(name: 'alice')
+    User.create!(name: "alice")
     payload = 'a" FROM users; --'
     row = User.select { :name.as(payload.to_sym) }.first
-    assert_equal('alice', row[payload])
+    assert_equal("alice", row[payload])
     assert_equal(1, User.count)
   end
 
@@ -1243,8 +1245,8 @@ class TestBlockSyntax < Minitest::Test
   def test_an_alias_keeps_the_name_as_written
     assert_sql(/AS "postCount"/, User.select { :name.as(:postCount) }.to_sql)
     User.delete_all
-    User.create!(name: 'alice')
-    assert_equal('alice', User.select { :name.as(:postCount) }.first['postCount'])
+    User.create!(name: "alice")
+    assert_equal("alice", User.select { :name.as(:postCount) }.first["postCount"])
   end
 
   def test_quote_false_asks_for_the_name_as_it_is
@@ -1277,8 +1279,8 @@ class TestBlockSyntax < Minitest::Test
   # rather than opening the condition up.
   def test_values_are_quoted
     User.delete_all
-    User.create!(name: 'alice')
-    User.create!(name: 'bob')
+    User.create!(name: "alice")
+    User.create!(name: "bob")
     payload = "x' OR 1=1 --"
     assert_empty(User.where { :name == payload }.pluck(:name))
     assert_empty(User.where { :name.like?(payload) }.pluck(:name))
@@ -1296,7 +1298,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_scalar_functions_shared_by_every_adapter
     assert_sql(/SELECT CONCAT\(UPPER\("users"."name"\), 'x'\)/,
-      User.select { concat(upper(:name), 'x') }.to_sql)
+      User.select { concat(upper(:name), "x") }.to_sql)
     assert_sql(/WHERE MOD\("users"."age", 7\) = 0/,
       User.where { mod(:age, 7) == 0 }.to_sql)
   end
@@ -1304,7 +1306,7 @@ class TestBlockSyntax < Minitest::Test
   # SQLite has no CHAR_LENGTH, GREATEST or LEAST, but LENGTH, MAX and MIN
   # mean the same thing there.
   def test_scalar_functions_spelled_differently_on_sqlite
-    expected = ADAPTER == 'sqlite3' ? %w[LENGTH MAX MIN] : %w[CHAR_LENGTH GREATEST LEAST]
+    expected = ADAPTER == "sqlite3" ? %w[LENGTH MAX MIN] : %w[CHAR_LENGTH GREATEST LEAST]
     assert_sql(/SELECT #{expected[0]}\("users"."name"\)/,
       User.select { char_length(:name) }.to_sql)
     assert_sql(/SELECT #{expected[1]}\("users"."age", 18\)/,
@@ -1315,8 +1317,8 @@ class TestBlockSyntax < Minitest::Test
 
   def test_scalar_functions_run
     User.delete_all
-    User.create!(name: 'alice', age: 60)
-    assert_equal(['ALICE-x'], User.select { concat(upper(:name), '-x').as(:v) }.map(&:v))
+    User.create!(name: "alice", age: 60)
+    assert_equal(["ALICE-x"], User.select { concat(upper(:name), "-x").as(:v) }.map(&:v))
     assert_equal([5], User.select { char_length(:name).as(:v) }.map(&:v))
     assert_equal([60], User.select { greatest(:age, 18).as(:v) }.map(&:v))
   end
@@ -1324,18 +1326,18 @@ class TestBlockSyntax < Minitest::Test
   # rand takes the name back from Kernel#rand, which would otherwise answer
   # inside the block and never reach the database.
   def test_rand
-    expected = ADAPTER == 'mysql2' ? 'RAND' : 'RANDOM'
+    expected = ADAPTER == "mysql2" ? "RAND" : "RANDOM"
     assert_sql(/ORDER BY #{expected}\(\)/, User.order { rand }.to_sql)
   end
 
   # Where an adapter has no equivalent, the block raises instead of leaving
   # the database to reject the SQL.
   def test_unsupported_function_raises
-    if ADAPTER == 'postgresql'
+    if ADAPTER == "postgresql"
       assert_sql(/SELECT DATE_TRUNC\('day', "users"."name"\)/,
-        User.select { date_trunc('day', :name) }.to_sql)
+        User.select { date_trunc("day", :name) }.to_sql)
     else
-      e = assert_raises(NotImplementedError) { User.select { date_trunc('day', :name) } }
+      e = assert_raises(NotImplementedError) { User.select { date_trunc("day", :name) } }
       assert_match(/date_trunc/, e.message)
     end
   end
@@ -1344,12 +1346,12 @@ class TestBlockSyntax < Minitest::Test
   # and reads a printf template as the number zero rather than complaining,
   # so the name carries the printf one and MySQL raises.
   def test_format_is_printf_and_unsupported_on_mysql
-    if ADAPTER == 'mysql2'
-      assert_raises(NotImplementedError) { User.select { format('%s!', :name) } }
+    if ADAPTER == "mysql2"
+      assert_raises(NotImplementedError) { User.select { format("%s!", :name) } }
     else
       User.delete_all
-      User.create!(name: 'alice')
-      assert_equal(['alice!'], User.select { format('%s!', :name).as(:v) }.map(&:v))
+      User.create!(name: "alice")
+      assert_equal(["alice!"], User.select { format("%s!", :name).as(:v) }.map(&:v))
     end
   end
 
@@ -1360,7 +1362,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_now_is_unsupported_on_sqlite
-    if ADAPTER == 'sqlite3'
+    if ADAPTER == "sqlite3"
       assert_raises(NotImplementedError) { User.select { now } }
     else
       assert_sql(/SELECT NOW\(\)/, User.select { now }.to_sql)
@@ -1385,14 +1387,14 @@ class TestBlockSyntax < Minitest::Test
 
   def test_current_timestamp_runs
     User.delete_all
-    User.create!(name: 'alice')
+    User.create!(name: "alice")
     refute_nil(User.select { current_timestamp.as(:v) }.sole.v)
   end
 
   # The one thing that does go into the parentheses is a precision, which
   # current_date never takes and SQLite never accepts.
   def test_datetime_value_function_with_precision
-    if ADAPTER == 'sqlite3'
+    if ADAPTER == "sqlite3"
       e = assert_raises(NotImplementedError) { User.select { current_timestamp(3) } }
       assert_match(/precision/, e.message)
     else
@@ -1401,7 +1403,7 @@ class TestBlockSyntax < Minitest::Test
       assert_sql(/SELECT CURRENT_TIME\(0\) FROM/,
         User.select { current_time(0) }.to_sql)
       User.delete_all
-      User.create!(name: 'alice')
+      User.create!(name: "alice")
       refute_nil(User.select { current_timestamp(0).as(:v) }.sole.v)
     end
   end
@@ -1419,7 +1421,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_localtime_is_unsupported_on_sqlite
-    if ADAPTER == 'sqlite3'
+    if ADAPTER == "sqlite3"
       assert_raises(NotImplementedError) { User.select { localtime } }
       assert_raises(NotImplementedError) { User.select { localtimestamp } }
     else
@@ -1440,7 +1442,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_math_functions_run
     User.delete_all
-    User.create!(name: 'alice', age: 60)
+    User.create!(name: "alice", age: 60)
     assert_equal(1, User.select { sign(:age).as(:v) }.sole.v.to_i)
     assert_equal(60,
       User.select { round(degrees(radians(:age))).as(:v) }.sole.v.to_i)
@@ -1448,7 +1450,7 @@ class TestBlockSyntax < Minitest::Test
 
   # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
   def test_log2_is_unsupported_on_postgresql
-    if ADAPTER == 'postgresql'
+    if ADAPTER == "postgresql"
       assert_raises(NotImplementedError) { User.select { log2(:age) } }
     else
       assert_sql(/SELECT LOG2\("users"."age"\)/, User.select { log2(:age) }.to_sql)
@@ -1458,7 +1460,7 @@ class TestBlockSyntax < Minitest::Test
   # MySQL spells trunc TRUNCATE, and insists on the second argument the
   # others default to zero.
   def test_trunc
-    expected = ADAPTER == 'mysql2' ? 'TRUNCATE' : 'TRUNC'
+    expected = ADAPTER == "mysql2" ? "TRUNCATE" : "TRUNC"
     assert_sql(/SELECT #{expected}\("users"."age", 0\)/,
       User.select { trunc(:age, 0) }.to_sql)
   end
@@ -1467,7 +1469,7 @@ class TestBlockSyntax < Minitest::Test
   # SQLite spells all of this as strftime formats, which no renaming
   # carries.
   def test_extract
-    if ADAPTER == 'sqlite3'
+    if ADAPTER == "sqlite3"
       e = assert_raises(NotImplementedError) { User.select { extract(:year, :name) } }
       assert_match(/extract/, e.message)
     else
@@ -1485,11 +1487,11 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_extract_runs
-    skip "#{ADAPTER} has no extract" if ADAPTER == 'sqlite3'
+    skip "#{ADAPTER} has no extract" if ADAPTER == "sqlite3"
     User.delete_all
-    User.create!(name: 'alice')
+    User.create!(name: "alice")
     assert_equal(2026,
-      User.select { extract(:year, cast('2026-01-05', :date)).as(:v) }.sole.v.to_i)
+      User.select { extract(:year, cast("2026-01-05", :date)).as(:v) }.sole.v.to_i)
   end
 
   def test_cast
@@ -1499,9 +1501,9 @@ class TestBlockSyntax < Minitest::Test
 
   def test_cast_runs
     User.delete_all
-    User.create!(name: 'alice')
+    User.create!(name: "alice")
     assert_equal(12.5,
-      User.select { cast('12.5', 'decimal(10,2)').as(:v) }.sole.v.to_f)
+      User.select { cast("12.5", "decimal(10,2)").as(:v) }.sole.v.to_f)
   end
 
   # The type is written into the SQL as given, so it has to look like one:
@@ -1509,12 +1511,12 @@ class TestBlockSyntax < Minitest::Test
   # spellings with a space in them pass too.
   def test_cast_type_names
     assert_sql(/AS double precision\)/,
-      User.select { cast(:age, 'double precision') }.to_sql)
+      User.select { cast(:age, "double precision") }.to_sql)
     assert_sql(/AS decimal\(10,2\)\)/,
-      User.select { cast(:age, 'decimal(10,2)') }.to_sql)
+      User.select { cast(:age, "decimal(10,2)") }.to_sql)
     assert_raises(ArgumentError) { User.select { cast(:age, INJECTION.to_sym) } }
     assert_raises(ArgumentError) do
-      User.select { cast(:age, 'integer); DROP TABLE users --') }
+      User.select { cast(:age, "integer); DROP TABLE users --") }
     end
   end
 
@@ -1557,7 +1559,7 @@ class TestBlockSyntax < Minitest::Test
   # 10 + 20 here reaches the SQL as 30.
   def test_arithmetic_with_the_number_on_the_left
     User.delete_all
-    User.create!(name: 'a', age: 30, flags: 3)
+    User.create!(name: "a", age: 30, flags: 3)
     assert_sql(/\(100 - "users"."age"\)/, User.select { (100 - :age).as(:v) })
     assert_equal(70, User.select { (100 - :age).as(:v) }.first.v.to_i)
     assert_equal(15, User.select { (0.5 * :age).as(:v) }.first.v.to_f.to_i)
@@ -1569,11 +1571,11 @@ class TestBlockSyntax < Minitest::Test
   # and is quoted as the exact decimal on either side.
   def test_arithmetic_with_a_bigdecimal
     User.delete_all
-    User.create!(name: 'a', age: 30)
-    assert_sql(/1\.5 \* "users"\."age"/, User.select { (BigDecimal('1.5') * :age).as(:v) })
-    assert_equal(45, User.select { (BigDecimal('1.5') * :age).as(:v) }.first.v.to_f.to_i)
-    assert_equal(45, User.select { (:age * BigDecimal('1.5')).as(:v) }.first.v.to_f.to_i)
-    assert_sql(/9\.9 AS "v"/, User.select { BigDecimal('9.9').as(:v) })
+    User.create!(name: "a", age: 30)
+    assert_sql(/1\.5 \* "users"\."age"/, User.select { (BigDecimal("1.5") * :age).as(:v) })
+    assert_equal(45, User.select { (BigDecimal("1.5") * :age).as(:v) }.first.v.to_f.to_i)
+    assert_equal(45, User.select { (:age * BigDecimal("1.5")).as(:v) }.first.v.to_f.to_i)
+    assert_sql(/9\.9 AS "v"/, User.select { BigDecimal("9.9").as(:v) })
   end
 
   # No decimal spells 1/3r exactly, and choosing the precision is not this
@@ -1592,7 +1594,7 @@ class TestBlockSyntax < Minitest::Test
   # always an enum value spelled as a symbol.
   def test_a_symbol_on_the_right_is_a_column
     User.delete_all
-    User.create!(name: 'a', age: 30, flags: 30)
+    User.create!(name: "a", age: 30, flags: 30)
     assert_sql(/"users"\."age" = "users"\."flags"/, User.where { :age == :flags })
     assert_equal(1, User.where { :age == :flags }.count)
     assert_equal(1, User.where { :age.in?([:flags]) }.count)
@@ -1607,7 +1609,7 @@ class TestBlockSyntax < Minitest::Test
   # serialization, along with everything else that is not a number.
   def test_a_number_compares_as_itself
     User.delete_all
-    User.create!(name: 'a', age: 99)
+    User.create!(name: "a", age: 99)
     assert_sql(/"age" >= 99\.5/, User.where { :age >= 99.5 })
     assert_equal(0, User.where { :age >= 99.5 }.count)
     assert_equal(1, User.where { :age <= 99.5 }.count)
@@ -1615,7 +1617,7 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(0, User.where { :age.in?(99.5..) }.count)
     assert_equal(1, User.where { :age.between?(98.5, 99.5) }.count)
     assert_equal(0, User.where { :age.not_between?(98.5, 99.5) }.count)
-    assert_sql(/"age" = 99\z/, User.where { :age == '99' })
+    assert_sql(/"age" = 99\z/, User.where { :age == "99" })
   end
 
   def test_bitwise_and_or
@@ -1648,8 +1650,8 @@ class TestBlockSyntax < Minitest::Test
   def test_bitwise_xor_is_spelled_per_adapter
     sql = User.select { :flags ^ 10 }.to_sql
     case ADAPTER
-    when 'postgresql' then assert_sql(/SELECT \("users"."flags" # 10\)/, sql)
-    when 'mysql2' then assert_sql(/SELECT \("users"."flags" \^ 10\)/, sql)
+    when "postgresql" then assert_sql(/SELECT \("users"."flags" # 10\)/, sql)
+    when "mysql2" then assert_sql(/SELECT \("users"."flags" \^ 10\)/, sql)
     else assert_sql(
       /SELECT \(\("users"."flags" \| 10\) - \("users"."flags" & 10\)\)/, sql)
     end
@@ -1658,7 +1660,7 @@ class TestBlockSyntax < Minitest::Test
   # Whatever the spelling, the answers agree.
   def test_bitwise_execution
     User.delete_all
-    User.create!(name: 'a', flags: 12)
+    User.create!(name: "a", flags: 12)
     assert_equal(8, User.select { (:flags & 10).as(:v) }.take.v.to_i)
     assert_equal(14, User.select { (:flags | 10).as(:v) }.take.v.to_i)
     assert_equal(6, User.select { (:flags ^ 10).as(:v) }.take.v.to_i)
@@ -1686,13 +1688,13 @@ class TestBlockSyntax < Minitest::Test
 
   def test_conditions_still_and_with_the_same_operators
     assert_sql(/WHERE "users"."age" = 1 AND "users"."name" = 'a'/,
-      User.where { (:age == 1) & (:name == 'a') }.to_sql)
+      User.where { (:age == 1) & (:name == "a") }.to_sql)
   end
 
   def test_bit_aggregates
     skip_without_bit_aggregates
     User.delete_all
-    User.create!([{name: 'a', flags: 12}, {name: 'b', flags: 10}, {name: 'c', flags: 3}])
+    User.create!([{ name: "a", flags: 12 }, { name: "b", flags: 10 }, { name: "c", flags: 3 }])
     assert_equal(0, User.select { bit_and(:flags).as(:v) }.take.v.to_i)
     assert_equal(15, User.select { bit_or(:flags).as(:v) }.take.v.to_i)
     assert_equal(5, User.select { bit_xor(:flags).as(:v) }.take.v.to_i)
@@ -1701,20 +1703,20 @@ class TestBlockSyntax < Minitest::Test
   # PostgreSQL counts the bits of a bit string rather than of a number, so the
   # argument is cast there; bit(64) is what makes a negative answer alike.
   def test_bit_count
-    if ADAPTER == 'sqlite3'
+    if ADAPTER == "sqlite3"
       assert_raises(NotImplementedError) { User.select { bit_count(:flags) } }
       return
     end
     User.delete_all
-    User.create!(name: 'a', flags: 12)
-    User.create!(name: 'b', flags: -1)
-    assert_equal([2, 64], User.select { bit_count(:flags).as(:v) }.order(:name).map {|u| u.v.to_i })
+    User.create!(name: "a", flags: 12)
+    User.create!(name: "b", flags: -1)
+    assert_equal([2, 64], User.select { bit_count(:flags).as(:v) }.order(:name).map { |u| u.v.to_i })
     assert_sql(/BIT_COUNT\(CAST\("users"."flags" AS bit\(64\)\)\)/,
-      User.select { bit_count(:flags) }.to_sql) if ADAPTER == 'postgresql'
+      User.select { bit_count(:flags) }.to_sql) if ADAPTER == "postgresql"
   end
 
   def test_bit_aggregates_are_unsupported_on_sqlite
-    if ADAPTER == 'sqlite3'
+    if ADAPTER == "sqlite3"
       e = assert_raises(NotImplementedError) { User.select { bit_or(:flags) } }
       assert_match(/bit_or/, e.message)
     else
@@ -1724,17 +1726,17 @@ class TestBlockSyntax < Minitest::Test
 
   def test_coalesce_function_with_literal
     assert_sql(/SELECT COALESCE\("users"."name", 'unknown'\)/,
-      User.select { coalesce(:name, 'unknown') }.to_sql)
+      User.select { coalesce(:name, "unknown") }.to_sql)
   end
 
   def test_function_comparison
     assert_sql(/WHERE UPPER\("users"."name"\) = 'MATZ'/,
-      User.where { upper(:name) == 'MATZ' }.to_sql)
+      User.where { upper(:name) == "MATZ" }.to_sql)
   end
 
   def test_function_like
     assert_sql(/WHERE UPPER\("users"."name"\) LIKE 'MA%'/,
-      User.where { upper(:name).like?('MA%') }.to_sql)
+      User.where { upper(:name).like?("MA%") }.to_sql)
   end
 
   def test_function_in
@@ -1749,7 +1751,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_nested_function
     assert_sql(/SELECT UPPER\(COALESCE\("users"."name", 'x'\)\)/,
-      User.select { upper(coalesce(:name, 'x')) }.to_sql)
+      User.select { upper(coalesce(:name, "x")) }.to_sql)
   end
 
   def test_function_qualified_column_arg
@@ -1827,9 +1829,9 @@ class TestBlockSyntax < Minitest::Test
   # The order itself is portable even where the syntax is not.
   def test_order_nulls_execution
     User.delete_all
-    User.create!(name: 'null_age', age: nil)
-    User.create!(name: 'young', age: 20)
-    User.create!(name: 'old', age: 60)
+    User.create!(name: "null_age", age: nil)
+    User.create!(name: "young", age: 20)
+    User.create!(name: "old", age: 60)
     assert_equal(%w[null_age young old],
       User.order { :age.asc.nulls_first }.pluck(:name))
     assert_equal(%w[young old null_age],
@@ -1866,36 +1868,36 @@ class TestBlockSyntax < Minitest::Test
   # the column it names, which is what lets the new value be built from the old.
   def test_update_all_from_the_column
     Tally.delete_all
-    Tally.create!(page: '/a', hits: 1)
-    Tally.create!(page: '/b', hits: 2)
+    Tally.create!(page: "/a", hits: 1)
+    Tally.create!(page: "/b", hits: 2)
     Tally.update_all { { hits: :hits + 1 } }
     assert_equal([2, 3], Tally.order(:page).pluck(:hits))
   end
 
   def test_update_all_takes_any_expression
     Tally.delete_all
-    Tally.create!(page: '/a', hits: 5)
+    Tally.create!(page: "/a", hits: 5)
     Tally.update_all { { hits: case_when { :hits > 4 }.then(0).else(:hits), page: upper(:page) } }
-    assert_equal([['/A', 0]], Tally.pluck(:page, :hits))
+    assert_equal([["/A", 0]], Tally.pluck(:page, :hits))
   end
 
   def test_update_all_within_a_scope
     Tally.delete_all
-    Tally.create!(page: '/a', hits: 1)
-    Tally.create!(page: '/b', hits: 1)
-    Tally.where { :page == '/a' }.update_all { { hits: 9 } }
+    Tally.create!(page: "/a", hits: 1)
+    Tally.create!(page: "/b", hits: 1)
+    Tally.where { :page == "/a" }.update_all { { hits: 9 } }
     assert_equal([9, 1], Tally.order(:page).pluck(:hits))
   end
 
   def test_update_all_without_a_block_is_unchanged
     Tally.delete_all
-    Tally.create!(page: '/a', hits: 1)
+    Tally.create!(page: "/a", hits: 1)
     Tally.update_all(hits: 4)
     assert_equal([4], Tally.pluck(:hits))
   end
 
   def test_update_all_takes_updates_or_a_block
-    assert_raises(ArgumentError) { Tally.update_all({hits: 1}) { { hits: 2 } } }
+    assert_raises(ArgumentError) { Tally.update_all({ hits: 1 }) { { hits: 2 } } }
     e = assert_raises(ArgumentError) { Tally.update_all { :hits + 1 } }
     assert_match(/hash of column/, e.message)
   end
@@ -1904,8 +1906,8 @@ class TestBlockSyntax < Minitest::Test
   # some.  `excluded` is the row that could not be inserted.
   def test_upsert_all_adds_to_what_is_there
     Tally.delete_all
-    Tally.upsert_all([{page: '/a', hits: 1}], **upsert_target)
-    Tally.upsert_all([{page: '/a', hits: 10}], **upsert_target) {
+    Tally.upsert_all([{ page: "/a", hits: 1 }], **upsert_target)
+    Tally.upsert_all([{ page: "/a", hits: 10 }], **upsert_target) {
       { hits: :hits + excluded(:hits) }
     }
     assert_equal([11], Tally.pluck(:hits))
@@ -1913,7 +1915,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_upsert_all_inserts_when_there_is_no_conflict
     Tally.delete_all
-    Tally.upsert_all([{page: '/new', hits: 3}], **upsert_target) {
+    Tally.upsert_all([{ page: "/new", hits: 3 }], **upsert_target) {
       { hits: :hits + excluded(:hits) }
     }
     assert_equal([3], Tally.pluck(:hits))
@@ -1921,8 +1923,8 @@ class TestBlockSyntax < Minitest::Test
 
   def test_upsert_all_takes_any_expression
     Tally.delete_all
-    Tally.upsert_all([{page: '/a', hits: 7}], **upsert_target)
-    Tally.upsert_all([{page: '/a', hits: 2}], **upsert_target) {
+    Tally.upsert_all([{ page: "/a", hits: 7 }], **upsert_target)
+    Tally.upsert_all([{ page: "/a", hits: 2 }], **upsert_target) {
       { hits: greatest(:hits, excluded(:hits)) }
     }
     assert_equal([7], Tally.pluck(:hits))
@@ -1930,18 +1932,18 @@ class TestBlockSyntax < Minitest::Test
 
   def test_upsert_all_without_a_block_is_unchanged
     Tally.delete_all
-    Tally.upsert_all([{page: '/a', hits: 1}], **upsert_target)
-    Tally.upsert_all([{page: '/a', hits: 6}], **upsert_target)
+    Tally.upsert_all([{ page: "/a", hits: 1 }], **upsert_target)
+    Tally.upsert_all([{ page: "/a", hits: 6 }], **upsert_target)
     assert_equal([6], Tally.pluck(:hits))
   end
 
   def test_upsert_all_takes_on_duplicate_or_a_block
     assert_raises(ArgumentError) do
-      Tally.upsert_all([{page: '/a', hits: 1}],
-                       on_duplicate: Arel.sql('hits = 1'), **upsert_target) { { hits: 2 } }
+      Tally.upsert_all([{ page: "/a", hits: 1 }],
+                       on_duplicate: Arel.sql("hits = 1"), **upsert_target) { { hits: 2 } }
     end
     e = assert_raises(ArgumentError) do
-      Tally.upsert_all([{page: '/a', hits: 1}], **upsert_target) { {} }
+      Tally.upsert_all([{ page: "/a", hits: 1 }], **upsert_target) { {} }
     end
     assert_match(/at least one column/, e.message)
   end
@@ -1951,10 +1953,10 @@ class TestBlockSyntax < Minitest::Test
   # back rather than the SQL.
   def seed_docs
     Doc.delete_all
-    Doc.create!(name: 'one',
-                meta: json_document({ 'a' => { 'b' => 'deep' }, 'n' => 5,
-                                      'tags' => %w[x y], 'odd key' => 1 }))
-    Doc.create!(name: 'two', meta: json_document({ 'n' => 9 }))
+    Doc.create!(name: "one",
+                meta: json_document({ "a" => { "b" => "deep" }, "n" => 5,
+                                      "tags" => %w[x y], "odd key" => 1 }))
+    Doc.create!(name: "two", meta: json_document({ "n" => 9 }))
   end
 
   def test_dig_text_a_key
@@ -1964,20 +1966,20 @@ class TestBlockSyntax < Minitest::Test
 
   def test_dig_text_a_path
     seed_docs
-    assert_equal(['deep', nil],
+    assert_equal(["deep", nil],
       Doc.order(:name).select { :meta.dig_text(:a, :b).as(:v) }.map(&:v))
   end
 
   def test_dig_text_an_array_index
     seed_docs
-    assert_equal(['x', nil],
+    assert_equal(["x", nil],
       Doc.order(:name).select { :meta.dig_text(:tags, 0).as(:v) }.map(&:v))
   end
 
   # A key that is not a plain name travels as itself rather than being refused.
   def test_dig_text_a_key_that_needs_quoting
     seed_docs
-    assert_equal(['1', nil],
+    assert_equal(["1", nil],
       Doc.order(:name).select { :meta.dig_text(:'odd key').as(:v) }.map(&:v))
   end
 
@@ -1985,14 +1987,14 @@ class TestBlockSyntax < Minitest::Test
   # value with its type -- so a number is compared through a cast.
   def test_dig_text_is_text_everywhere
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.dig_text(:n) == '5' }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.dig_text(:n) == "5" }.pluck(:name))
     type = integer_type
-    assert_equal(['two'], Doc.where { cast(:meta.dig_text(:n), type) > 6 }.pluck(:name))
+    assert_equal(["two"], Doc.where { cast(:meta.dig_text(:n), type) > 6 }.pluck(:name))
   end
 
   def test_dig_keeps_the_json
     seed_docs
-    value = Doc.where { :name == 'one' }.select { :meta.dig(:tags).as(:v) }.first.v
+    value = Doc.where { :name == "one" }.select { :meta.dig(:tags).as(:v) }.first.v
     assert_equal(%w[x y], value.is_a?(String) ? JSON.parse(value) : value)
   end
 
@@ -2014,11 +2016,11 @@ class TestBlockSyntax < Minitest::Test
   # rather than wrote as a literal, since that is nobody's guess to make.
   def test_dig_text_compares_with_text_and_with_expressions
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.dig_text(:n) == '5' }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.dig_text(:n) == "5" }.pluck(:name))
     assert_equal([], Doc.where { :meta.dig_text(:n) == :name }.pluck(:name))
-    assert_equal(['one'], Doc.where { :meta.dig_text(:n) == upper('5') }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.dig_text(:n) == upper("5") }.pluck(:name))
     type = integer_type
-    assert_equal(['one'], Doc.where { cast(:meta.dig_text(:n), type) == 5 }.pluck(:name))
+    assert_equal(["one"], Doc.where { cast(:meta.dig_text(:n), type) == 5 }.pluck(:name))
   end
 
   # A JSON comparison belongs to the JSON types: numbers compare as numbers
@@ -2026,21 +2028,21 @@ class TestBlockSyntax < Minitest::Test
   def test_json_comparisons_are_the_json_types_answers
     skip_without_json_comparisons
     seed_docs
-    assert_equal(['two'], Doc.where { :meta.dig(:n) >= 6 }.pluck(:name))
-    assert_equal(['one'], Doc.where { :meta.dig(:a) == { 'b' => 'deep' } }.pluck(:name))
-    assert_equal(['one'], Doc.where { :meta.dig(:tags, 0) == 'x' }.pluck(:name))
-    assert_equal(['one'],
-      Doc.where { :meta.except(:a, :tags, :'odd key') == { 'n' => 5 } }.pluck(:name))
+    assert_equal(["two"], Doc.where { :meta.dig(:n) >= 6 }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.dig(:a) == { "b" => "deep" } }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.dig(:tags, 0) == "x" }.pluck(:name))
+    assert_equal(["one"],
+      Doc.where { :meta.except(:a, :tags, :'odd key') == { "n" => 5 } }.pluck(:name))
     assert_equal(%w[one two], Doc.where { :meta.dig(:n).in?([5, 9]) }.order(:name).pluck(:name))
-    assert_equal(['two'], Doc.where { :meta.dig(:n).not_in?([5]) }.pluck(:name))
-    assert_equal(['one'], Doc.where { :meta.dig(:n).between?(1, 6) }.pluck(:name))
-    assert_equal(['two'], Doc.where { :meta.dig(:n).not_between?(1, 6) }.pluck(:name))
+    assert_equal(["two"], Doc.where { :meta.dig(:n).not_in?([5]) }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.dig(:n).between?(1, 6) }.pluck(:name))
+    assert_equal(["two"], Doc.where { :meta.dig(:n).not_between?(1, 6) }.pluck(:name))
   end
 
   # MySQL leaves IN and BETWEEN out of its JSON comparisons, so there the
   # set forms are spelled as the comparisons they mean.
   def test_json_sets_expand_on_mysql
-    skip 'MySQL is the one that expands them' unless ADAPTER == 'mysql2' && !mariadb?
+    skip "MySQL is the one that expands them" unless ADAPTER == "mysql2" && !mariadb?
     assert_sql(/ = CAST.+ OR .+ = CAST/, Doc.where { :meta.dig(:n).in?([5, 9]) })
     assert_sql(/>= CAST.+<= CAST/, Doc.where { :meta.dig(:n).between?(1, 6) })
     assert_sql(/!= CAST.+ AND .+!= CAST/, Doc.where { :meta.dig(:n).not_in?([5, 9]) })
@@ -2048,8 +2050,8 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_comparisons_elsewhere_say_so
-    skip 'this one has a JSON type' if ADAPTER == 'postgresql' ||
-                                       (ADAPTER == 'mysql2' && !mariadb?)
+    skip "this one has a JSON type" if ADAPTER == "postgresql" ||
+                                       (ADAPTER == "mysql2" && !mariadb?)
     e = assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n) >= 6 } }
     assert_match(/JSON comparison has no equivalent/, e.message)
     assert_raises(NotImplementedError) { Doc.where { :meta.bury(:a, 1) == '{"a": 1}' } }
@@ -2068,20 +2070,20 @@ class TestBlockSyntax < Minitest::Test
   # same question asked of a part rather than of the whole.
   def test_the_json_operations_read_what_dig_kept
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.dig(:a).key?(:b) }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.dig(:a).key?(:b) }.pluck(:name))
     assert_equal(%w[one two], Doc.where { :meta.dig(:n).not_null? }.order(:name).pluck(:name))
-    assert_equal(['one'],
-      Doc.where { :meta.dig(:a).dig_text(:b) == 'deep' }.pluck(:name))
-    value = Doc.where { :name == 'one' }.
-      select { :meta.dig(:a).bury(:b, 'x').as(:v) }.first.v
-    assert_equal('x', (value.is_a?(String) ? JSON.parse(value) : value)['b'])
+    assert_equal(["one"],
+      Doc.where { :meta.dig(:a).dig_text(:b) == "deep" }.pluck(:name))
+    value = Doc.where { :name == "one" }.
+      select { :meta.dig(:a).bury(:b, "x").as(:v) }.first.v
+    assert_equal("x", (value.is_a?(String) ? JSON.parse(value) : value)["b"])
   end
 
   def test_containment_reads_what_dig_kept
     skip_without_json_containment
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.dig(:tags).contains?(['x']) }.pluck(:name))
-    assert_equal([], Doc.where { :meta.dig(:tags).contains?(['z']) }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.dig(:tags).contains?(["x"]) }.pluck(:name))
+    assert_equal([], Doc.where { :meta.dig(:tags).contains?(["z"]) }.pluck(:name))
   end
 
   # Reading text back as a document is where the adapters part company:
@@ -2093,7 +2095,7 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { Doc.where { :meta.dig_text(:a).contains?(b: 1) } }
     assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).dig_text(:b) } }
     assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).dig(:b) } }
-    assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).bury(:b, 'x') } }
+    assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).bury(:b, "x") } }
     assert_raises(ArgumentError) { Doc.select { :meta.dig_text(:a).except(:b) } }
   end
 
@@ -2104,7 +2106,7 @@ class TestBlockSyntax < Minitest::Test
     assert_sql(/ = /, Doc.where { :meta.except(:a) == :meta.except(:b) })
     skip_without_json_comparisons
     seed_docs
-    assert_equal(['two'], Doc.where { :meta.bury(:n, 9) == :docs[:meta] }.pluck(:name))
+    assert_equal(["two"], Doc.where { :meta.bury(:n, 9) == :docs[:meta] }.pluck(:name))
   end
 
   # Arithmetic is refused like a literal comparison is: text plus one is 6
@@ -2121,30 +2123,30 @@ class TestBlockSyntax < Minitest::Test
     seed_docs
     type = integer_type
     assert_equal(6,
-      Doc.where { :name == 'one' }.
+      Doc.where { :name == "one" }.
         select { (cast(:meta.dig_text(:n), type) + 1).as(:v) }.first.v.to_i)
   end
 
   def test_dig_text_from_a_qualified_column
     seed_docs
-    assert_equal(['one'], Doc.where { :docs[:meta].dig_text(:a, :b) == 'deep' }.pluck(:name))
+    assert_equal(["one"], Doc.where { :docs[:meta].dig_text(:a, :b) == "deep" }.pluck(:name))
   end
 
   def test_key
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.key?(:tags) }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.key?(:tags) }.pluck(:name))
     assert_equal(%w[one two], Doc.where { :meta.key?(:n) }.order(:name).pluck(:name))
   end
 
   def test_contains
     skip_without_json_containment
     seed_docs
-    assert_equal(['one'], Doc.where { :meta.contains?(n: 5) }.pluck(:name))
+    assert_equal(["one"], Doc.where { :meta.contains?(n: 5) }.pluck(:name))
     assert_equal([], Doc.where { :meta.contains?(n: 1) }.pluck(:name))
   end
 
   def test_contains_says_where_it_cannot_go
-    skip "#{ADAPTER} has JSON containment" unless ADAPTER == 'sqlite3'
+    skip "#{ADAPTER} has JSON containment" unless ADAPTER == "sqlite3"
     assert_raises(NotImplementedError) { Doc.where { :meta.contains?(n: 5) }.to_sql }
   end
 
@@ -2159,9 +2161,9 @@ class TestBlockSyntax < Minitest::Test
   # comes back rather than the SQL.
   def seed_for_filter
     User.delete_all
-    User.create!(name: 'a', age: 10)
-    User.create!(name: 'a', age: 20)
-    User.create!(name: 'b', age: 100)
+    User.create!(name: "a", age: 10)
+    User.create!(name: "a", age: 20)
+    User.create!(name: "b", age: 100)
   end
 
   def aggregate(&block)
@@ -2190,7 +2192,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_filter_is_a_clause_where_there_is_one
-    skip "#{ADAPTER} has no FILTER" if ADAPTER == 'mysql2'
+    skip "#{ADAPTER} has no FILTER" if ADAPTER == "mysql2"
     assert_sql(/COUNT\(\*\) FILTER \(WHERE "users"."age" < 50\)/,
       User.select { count(:*).filter { :age < 50 } }.to_sql)
   end
@@ -2198,7 +2200,7 @@ class TestBlockSyntax < Minitest::Test
   # Where there is not, the same rows are reached through a case: an aggregate
   # passes over a NULL, so a row the condition misses is a row it does not see.
   def test_filter_becomes_a_case_where_there_is_no_clause
-    skip "#{ADAPTER} has FILTER" unless ADAPTER == 'mysql2'
+    skip "#{ADAPTER} has FILTER" unless ADAPTER == "mysql2"
     assert_sql(/COUNT\(CASE WHEN "users"."age" < 50 THEN 1 END\)/,
       User.select { count(:*).filter { :age < 50 } }.to_sql)
     assert_sql(/SUM\(CASE WHEN "users"."age" < 50 THEN "users"."age" END\)/,
@@ -2214,9 +2216,9 @@ class TestBlockSyntax < Minitest::Test
   # DISTINCT ON keeps the first row of each group the order brings up.
   def seed_for_distinct_on
     Author.delete_all
-    Author.create!(name: 'a')
-    Author.create!(name: 'a')
-    Author.create!(name: 'b')
+    Author.create!(name: "a")
+    Author.create!(name: "a")
+    Author.create!(name: "b")
   end
 
   def test_distinct_on
@@ -2247,7 +2249,7 @@ class TestBlockSyntax < Minitest::Test
   # Arel carries the node and refuses to write it elsewhere, as it does a
   # regexp, so the gem has nothing of its own to say.
   def test_distinct_on_says_where_it_cannot_go
-    skip "#{ADAPTER} has DISTINCT ON" if ADAPTER == 'postgresql'
+    skip "#{ADAPTER} has DISTINCT ON" if ADAPTER == "postgresql"
     assert_raises(NotImplementedError) { Author.distinct_on { :name }.to_sql }
   end
 
@@ -2272,18 +2274,18 @@ class TestBlockSyntax < Minitest::Test
   def seed_for_lateral
     Author.delete_all
     Post.delete_all
-    author = Author.create!(name: 'writes')
-    Author.create!(name: 'does not')
-    Post.create!(author_id: author.id, title: 'a')
-    Post.create!(author_id: author.id, title: 'b')
+    author = Author.create!(name: "writes")
+    Author.create!(name: "does not")
+    Post.create!(author_id: author.id, title: "a")
+    Post.create!(author_id: author.id, title: "b")
   end
 
   def test_lateral_join
     skip_without_lateral
     seed_for_lateral
     rows = Author.joins(top_post.lateral, as: :top).
-      select { [:name, :top[:title].as(:v)] }.map {|r| [r.name, r.v] }
-    assert_equal([['writes', 'b']], rows)
+      select { [:name, :top[:title].as(:v)] }.map { |r| [r.name, r.v] }
+    assert_equal([["writes", "b"]], rows)
   end
 
   # Left, so that a row with nothing to join to is kept.
@@ -2291,8 +2293,8 @@ class TestBlockSyntax < Minitest::Test
     skip_without_lateral
     seed_for_lateral
     rows = Author.left_outer_joins(top_post.lateral, as: :top).
-      select { [:name, :top[:title].as(:v)] }.order { :name }.map {|r| [r.name, r.v] }
-    assert_equal([['does not', nil], ['writes', 'b']], rows)
+      select { [:name, :top[:title].as(:v)] }.order { :name }.map { |r| [r.name, r.v] }
+    assert_equal([["does not", nil], ["writes", "b"]], rows)
   end
 
   # Without a block the join is ON TRUE; what the subquery may see is said
@@ -2301,7 +2303,7 @@ class TestBlockSyntax < Minitest::Test
     skip_without_lateral
     seed_for_lateral
     assert_equal(0, Author.joins(top_post.lateral, as: :top) {
-      :top[:title] == 'nothing'
+      :top[:title] == "nothing"
     }.count)
     assert_sql(/ON TRUE/, Author.joins(top_post.lateral, as: :top).to_sql)
   end
@@ -2320,7 +2322,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_lateral_join_says_where_it_cannot_go
-    skip 'this one has LATERAL' if ADAPTER == 'postgresql' || (ADAPTER == 'mysql2' && !mariadb?)
+    skip "this one has LATERAL" if ADAPTER == "postgresql" || (ADAPTER == "mysql2" && !mariadb?)
     e = assert_raises(NotImplementedError) { Author.joins(top_post.lateral, as: :top) }
     assert_match(/lateral join has no equivalent/, e.message)
   end
@@ -2331,24 +2333,24 @@ class TestBlockSyntax < Minitest::Test
   def seed_for_grouping
     Post.delete_all
     Author.delete_all
-    a = Author.create!(name: 'a')
-    b = Author.create!(name: 'b')
-    Post.create!(author_id: a.id, title: 'x')
-    Post.create!(author_id: a.id, title: 'y')
-    Post.create!(author_id: b.id, title: 'x')
+    a = Author.create!(name: "a")
+    b = Author.create!(name: "b")
+    Post.create!(author_id: a.id, title: "x")
+    Post.create!(author_id: a.id, title: "y")
+    Post.create!(author_id: b.id, title: "x")
   end
 
   def grouped(&block)
     Post.group(&block).select { [:author_id, :title, count(:*).as(:n)] }.
-      map {|r| [r.author_id, r.title, r.n.to_i] }.sort_by(&:to_s)
+      map { |r| [r.author_id, r.title, r.n.to_i] }.sort_by(&:to_s)
   end
 
   def test_grouping_sets
     skip_without_grouping_sets
     seed_for_grouping
     rows = grouped { grouping_sets([:author_id], [:title], []) }
-    assert_equal(3, rows.count {|_, title, _| title.nil? })      # by author
-    assert_includes(rows, [nil, 'x', 2])                          # by title
+    assert_equal(3, rows.count { |_, title, _| title.nil? })      # by author
+    assert_includes(rows, [nil, "x", 2])                          # by title
     assert_includes(rows, [nil, nil, 3])                          # the whole
   end
 
@@ -2358,7 +2360,7 @@ class TestBlockSyntax < Minitest::Test
     rows = grouped { rollup(:author_id, :title) }
     assert_equal(6, rows.size)   # by both (3), by author (2), the whole (1)
     assert_includes(rows, [nil, nil, 3])
-    if ADAPTER == 'postgresql'
+    if ADAPTER == "postgresql"
       assert_sql(/GROUP BY ROLLUP\( "posts"."author_id", "posts"."title" \)/,
         Post.group { rollup(:author_id, :title) }.to_sql)
     else
@@ -2370,7 +2372,7 @@ class TestBlockSyntax < Minitest::Test
   # WITH ROLLUP trails the whole group list, so on the MySQL family a rollup
   # cannot stand beside other group entries the way ROLLUP(...) can.
   def test_rollup_stands_alone_on_mysql
-    skip 'only MySQL spells it WITH ROLLUP' unless ADAPTER == 'mysql2'
+    skip "only MySQL spells it WITH ROLLUP" unless ADAPTER == "mysql2"
     e = assert_raises(ArgumentError) { Post.group { [:author_id, rollup(:title)] } }
     assert_match(/whole group list/, e.message)
   end
@@ -2385,10 +2387,10 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_grouping_sets_say_where_they_cannot_go
-    skip 'PostgreSQL has them' if ADAPTER == 'postgresql'
+    skip "PostgreSQL has them" if ADAPTER == "postgresql"
     assert_raises(NotImplementedError) { Post.group { grouping_sets([:title]) } }
     assert_raises(NotImplementedError) { Post.group { cube(:title) } }
-    assert_raises(NotImplementedError) { Post.group { rollup(:title) } } if ADAPTER == 'sqlite3'
+    assert_raises(NotImplementedError) { Post.group { rollup(:title) } } if ADAPTER == "sqlite3"
   end
 
   def test_grouping_sets_need_something_to_group_by
@@ -2400,65 +2402,65 @@ class TestBlockSyntax < Minitest::Test
   # being written anywhere, so update_all is what makes it stick.
   def buried(&block)
     seed_docs
-    Doc.where { :name == 'one' }.update_all(&block)
-    value = Doc.find_by(name: 'one').meta
+    Doc.where { :name == "one" }.update_all(&block)
+    value = Doc.find_by(name: "one").meta
     value.is_a?(String) ? JSON.parse(value) : value
   end
 
   def test_bury_a_nested_key
-    assert_equal('new', buried { { meta: :meta.bury(:a, :b, 'new') } }.dig('a', 'b'))
+    assert_equal("new", buried { { meta: :meta.bury(:a, :b, "new") } }.dig("a", "b"))
   end
 
   def test_bury_a_key_that_is_not_there_yet
-    assert_equal(9, buried { { meta: :meta.bury(:fresh, 9) } }['fresh'])
+    assert_equal(9, buried { { meta: :meta.bury(:fresh, 9) } }["fresh"])
   end
 
   # A whole document, which each adapter takes its own way round.
   def test_bury_an_object_and_an_array
-    assert_equal({ 'x' => 1 }, buried { { meta: :meta.bury(:obj, { 'x' => 1 }) } }['obj'])
-    assert_equal([1, 2], buried { { meta: :meta.bury(:arr, [1, 2]) } }['arr'])
+    assert_equal({ "x" => 1 }, buried { { meta: :meta.bury(:obj, { "x" => 1 }) } }["obj"])
+    assert_equal([1, 2], buried { { meta: :meta.bury(:arr, [1, 2]) } }["arr"])
   end
 
   # A boolean goes in as JSON too: taken as it is, SQLite would write its 1.
   def test_bury_a_boolean
-    assert_equal(true, buried { { meta: :meta.bury(:flag, true) } }['flag'])
-    assert_equal(false, buried { { meta: :meta.bury(:flag, false) } }['flag'])
+    assert_equal(true, buried { { meta: :meta.bury(:flag, true) } }["flag"])
+    assert_equal(false, buried { { meta: :meta.bury(:flag, false) } }["flag"])
   end
 
   def test_bury_a_null
     document = buried { { meta: :meta.bury(:gone, nil) } }
-    assert(document.key?('gone'))
-    assert_nil(document['gone'])
+    assert(document.key?("gone"))
+    assert_nil(document["gone"])
   end
 
   def test_bury_an_array_index
-    assert_equal(%w[7 y], buried { { meta: :meta.bury(:tags, 0, '7') } }['tags'])
+    assert_equal(%w[7 y], buried { { meta: :meta.bury(:tags, 0, "7") } }["tags"])
   end
 
   # The value can be read out of the document it is going into: dig keeps
   # the number a number, dig_text makes it the text of one.
   def test_bury_an_expression
-    assert_equal(5, buried { { meta: :meta.bury(:copy, :meta.dig(:n)) } }['copy'])
-    assert_equal('5', buried { { meta: :meta.bury(:copy, :meta.dig_text(:n)) } }['copy'])
+    assert_equal(5, buried { { meta: :meta.bury(:copy, :meta.dig(:n)) } }["copy"])
+    assert_equal("5", buried { { meta: :meta.bury(:copy, :meta.dig_text(:n)) } }["copy"])
   end
 
   # It is an expression, so it does not have to be written anywhere.
   def test_bury_in_a_select
     seed_docs
-    value = Doc.where { :name == 'one' }.select { :meta.bury(:a, :b, 'x').as(:v) }.first.v
-    assert_equal('x', (value.is_a?(String) ? JSON.parse(value) : value).dig('a', 'b'))
+    value = Doc.where { :name == "one" }.select { :meta.bury(:a, :b, "x").as(:v) }.first.v
+    assert_equal("x", (value.is_a?(String) ? JSON.parse(value) : value).dig("a", "b"))
   end
 
   def test_bury_needs_a_path
-    assert_raises(ArgumentError) { Doc.select { :meta.bury('v') } }
-    assert_raises(ArgumentError) { Doc.select { :meta.bury(1.5, 'v') } }
+    assert_raises(ArgumentError) { Doc.select { :meta.bury("v") } }
+    assert_raises(ArgumentError) { Doc.select { :meta.bury(1.5, "v") } }
   end
 
   # except takes keys out, by the name of what Hash does.  PostgreSQL
   # subtracts them where the others remove a path apiece, and what comes back
   # is the same document on all three.
   def test_except_a_key
-    assert_equal({ 'a' => { 'b' => 'deep' }, 'tags' => %w[x y], 'odd key' => 1 },
+    assert_equal({ "a" => { "b" => "deep" }, "tags" => %w[x y], "odd key" => 1 },
       buried { { meta: :meta.except(:n) } })
   end
 
@@ -2466,30 +2468,30 @@ class TestBlockSyntax < Minitest::Test
   # except takes the key from it, and bury puts it back.  The dug document
   # needs its parentheses on PostgreSQL, where - binds tighter than #>.
   def test_except_a_nested_key_through_the_chain
-    assert_equal({}, buried { { meta: :meta.bury(:a, :meta.dig(:a).except(:b)) } }['a'])
+    assert_equal({}, buried { { meta: :meta.bury(:a, :meta.dig(:a).except(:b)) } }["a"])
   end
 
   def test_except_several_keys
-    assert_equal({ 'a' => { 'b' => 'deep' } },
+    assert_equal({ "a" => { "b" => "deep" } },
       buried { { meta: :meta.except(:n, :tags, :'odd key') } })
   end
 
   # A key that is not there is not an error, as Hash#except has none for it.
   def test_except_a_key_that_is_not_there
-    assert_equal(5, buried { { meta: :meta.except(:nothing) } }['n'])
+    assert_equal(5, buried { { meta: :meta.except(:nothing) } }["n"])
   end
 
   # The document a bury gives back is one to take keys out of.
   def test_except_after_bury
     document = buried { { meta: :meta.bury(:fresh, 9).except(:n) } }
-    assert_equal(9, document['fresh'])
-    assert_nil(document['n'])
+    assert_equal(9, document["fresh"])
+    assert_nil(document["n"])
   end
 
   def test_except_in_a_select
     seed_docs
-    value = Doc.where { :name == 'one' }.select { :meta.except(:n).as(:v) }.first.v
-    assert_nil((value.is_a?(String) ? JSON.parse(value) : value)['n'])
+    value = Doc.where { :name == "one" }.select { :meta.except(:n).as(:v) }.first.v
+    assert_nil((value.is_a?(String) ? JSON.parse(value) : value)["n"])
   end
 
   # An index is not what the name says anywhere, and a path is bury's.
@@ -2501,7 +2503,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_default_where_syntax
     assert_sql(/WHERE "users"."name" = 'Ruby' AND "users"."age" = 19/,
-      User.where(name: 'Ruby', age: 19).to_sql)
+      User.where(name: "Ruby", age: 19).to_sql)
   end
 
   def test_value_in_a_select_list
@@ -2513,17 +2515,17 @@ class TestBlockSyntax < Minitest::Test
   # that the string stays a value rather than reaching the SQL as written.
   def test_value_is_quoted
     User.delete_all
-    User.create!(name: 'alice')
+    User.create!(name: "alice")
     payload = "it's a value"
     assert_sql(/SELECT 'draft' AS "state"/,
-      User.select { value('draft').as(:state) }.to_sql)
+      User.select { value("draft").as(:state) }.to_sql)
     assert_equal([payload],
       User.select { value(payload).as(:note) }.map(&:note))
   end
 
   def test_a_bare_string_is_still_sql
     assert_sql(/SELECT "users"."name", 1 \+ 1 AS two/,
-      User.select { [:name, '1 + 1 AS two'] }.to_sql)
+      User.select { [:name, "1 + 1 AS two"] }.to_sql)
   end
 
   def test_value_takes_the_predications
@@ -2559,7 +2561,7 @@ class TestBlockSyntax < Minitest::Test
   # plain one arrives as itself rather than as SQL.
   def test_a_value_alias_is_quoted_rather_than_refused
     User.delete_all
-    User.create!(name: 'alice')
+    User.create!(name: "alice")
     payload = 'a" FROM users; --'
     assert_equal(0, User.select { value(0).as(payload.to_sym) }.first[payload].to_i)
     assert_equal(0, User.select { 0.as(payload.to_sym) }.first[payload].to_i)
@@ -2568,9 +2570,9 @@ class TestBlockSyntax < Minitest::Test
 
   def test_a_value_selected_reaches_the_row
     User.delete_all
-    User.create!(name: 'alice', age: 60)
-    assert_equal([['alice', 0]],
-      User.select { [:name, 0.as(:depth)] }.map {|u| [u.name, u.depth] })
+    User.create!(name: "alice", age: 60)
+    assert_equal([["alice", 0]],
+      User.select { [:name, 0.as(:depth)] }.map { |u| [u.name, u.depth] })
   end
 
   def test_numeric_shorthand_is_confined_to_the_block
@@ -2590,13 +2592,13 @@ class TestBlockSyntax < Minitest::Test
     end
 
     {
-      'sqlite3' => :sqlite,
-      'postgresql' => :postgresql,
-      'postgis' => :postgresql,
-      'pglite' => :postgresql,
-      'mysql2' => :mysql,
-      'trilogy' => :mysql,
-      'nothing_of_the_sort' => :unknown,
+      "sqlite3" => :sqlite,
+      "postgresql" => :postgresql,
+      "postgis" => :postgresql,
+      "pglite" => :postgresql,
+      "mysql2" => :mysql,
+      "trilogy" => :mysql,
+      "nothing_of_the_sort" => :unknown,
     }.each do |adapter, family|
       assert_equal(family,
         ActiveRecord::Refined::AST.adapter_family(model.with_adapter(adapter)),

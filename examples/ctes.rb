@@ -1,15 +1,17 @@
-$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
+# frozen_string_literal: true
 
-require 'active_record'
-require 'activerecord-refined'
+$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), "..", "lib"))
 
-ActiveRecord::Base.establish_connection(adapter: 'sqlite3', database: ':memory:')
+require "active_record"
+require "activerecord-refined"
+
+ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Migration.verbose = false
 
 class Setup < ActiveRecord::Migration[8.1]
   def up
-    create_table(:categories) {|t| t.string :name; t.integer :parent_id }
-    create_table(:products)   {|t| t.string :name; t.integer :category_id; t.integer :price }
+    create_table(:categories) { |t| t.string :name; t.integer :parent_id }
+    create_table(:products)   { |t| t.string :name; t.integer :category_id; t.integer :price }
   end
 end
 Setup.new.up
@@ -20,14 +22,14 @@ end
 class Product < ActiveRecord::Base
 end
 
-electronics = Category.create!(name: 'electronics')
-computers   = Category.create!(name: 'computers', parent_id: electronics.id)
-laptops     = Category.create!(name: 'laptops', parent_id: computers.id)
-groceries   = Category.create!(name: 'groceries')
+electronics = Category.create!(name: "electronics")
+computers   = Category.create!(name: "computers", parent_id: electronics.id)
+laptops     = Category.create!(name: "laptops", parent_id: computers.id)
+groceries   = Category.create!(name: "groceries")
 
-Product.create!(name: 'ultrabook', category_id: laptops.id, price: 1200)
-Product.create!(name: 'keyboard', category_id: computers.id, price: 80)
-Product.create!(name: 'apple', category_id: groceries.id, price: 2)
+Product.create!(name: "ultrabook", category_id: laptops.id, price: 1200)
+Product.create!(name: "keyboard", category_id: computers.id, price: 80)
+Product.create!(name: "apple", category_id: groceries.id, price: 2)
 
 # 1. Recursive CTE: every category below 'electronics', itself included.
 #    The recursive member joins the CTE by name, so its ON clause is a block
@@ -47,7 +49,7 @@ subtree =
     ]
   ).from_cte(:tree)
 
-puts '--- 1. Recursive CTE walking a category tree ---'
+puts "--- 1. Recursive CTE walking a category tree ---"
 puts subtree.to_sql
 puts subtree.order { :name }.pluck(:name).inspect
 puts
@@ -68,14 +70,14 @@ forest =
     ]
   ).from_cte(:tree).order { [:depth, :id] }
 
-puts '--- 2. Recursive CTE carrying the root and the depth down ---'
+puts "--- 2. Recursive CTE carrying the root and the depth down ---"
 puts forest.to_sql
-puts forest.map {|c| [c.name, c.root_id, c.depth] }.inspect
+puts forest.map { |c| [c.name, c.root_id, c.depth] }.inspect
 
 # The alias from_cte puts on the CTE is what lets this `where` qualify
 # root_id; without it the column would be looked for in a table the query no
 # longer has.
-puts forest.where { :root_id == electronics.id }.map {|c| [c.name, c.depth] }.inspect
+puts forest.where { :root_id == electronics.id }.map { |c| [c.name, c.depth] }.inspect
 puts
 
 # 3. The same CTE as a subquery: products anywhere under 'electronics'.
@@ -88,7 +90,7 @@ products_below =
     ]
   ).joins(:tree) { :tree[:id] == :products[:category_id] }
 
-puts '--- 3. Recursive CTE joined from the outer query ---'
+puts "--- 3. Recursive CTE joined from the outer query ---"
 puts products_below.to_sql
 puts products_below.order { :name }.pluck(:name).inspect
 puts
@@ -107,7 +109,7 @@ expensive =
       ]
     }
 
-puts '--- 4. Plain CTE joined and aggregated ---'
+puts "--- 4. Plain CTE joined and aggregated ---"
 puts expensive.to_sql
-puts expensive.map {|c| [c.category, c.pricey_count, c.top_price] }.inspect
+puts expensive.map { |c| [c.category, c.pricey_count, c.top_price] }.inspect
 puts

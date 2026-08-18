@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module ActiveRecord
   module Refined
     module BlockSyntax
@@ -51,7 +53,7 @@ module ActiveRecord
       }.freeze
 
       AGGREGATE_FUNCTIONS.each do |name, arel_func|
-        define_method(name) {|column| AST::Aggregate.new(column, arel_func) }
+        define_method(name) { |column| AST::Aggregate.new(column, arel_func) }
       end
 
       def count(column, distinct: false)
@@ -76,27 +78,27 @@ module ActiveRecord
         mod: {}, nullif: {}, pi: {}, power: {}, radians: {}, replace: {},
         round: {}, rtrim: {}, sign: {}, sin: {}, sqrt: {}, substr: {},
         tan: {}, trim: {}, upper: {},
-        char_length: {sqlite: 'LENGTH'},
-        greatest: {sqlite: 'MAX'},
-        least: {sqlite: 'MIN'},
+        char_length: { sqlite: "LENGTH" },
+        greatest: { sqlite: "MAX" },
+        least: { sqlite: "MIN" },
         # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
-        log2: {postgresql: nil},
+        log2: { postgresql: nil },
         # MySQL's TRUNCATE insists on the second argument, where the others
         # default it to zero; SQLite's trunc takes only the one.
-        trunc: {mysql: 'TRUNCATE'},
-        now: {sqlite: nil},
+        trunc: { mysql: "TRUNCATE" },
+        now: { sqlite: nil },
         # The bit aggregates, which PostgreSQL and MySQL spell alike and
         # SQLite has none of.  PostgreSQL gained bit_xor in 14.
-        bit_and: {sqlite: nil}, bit_or: {sqlite: nil}, bit_xor: {sqlite: nil},
-        date_trunc: {sqlite: nil, mysql: nil},
+        bit_and: { sqlite: nil }, bit_or: { sqlite: nil }, bit_xor: { sqlite: nil },
+        date_trunc: { sqlite: nil, mysql: nil },
         # Named for Kernel#rand, which it also takes back: a block calling
         # rand would otherwise get Ruby's and never reach the database.
-        rand: {sqlite: 'RANDOM', postgresql: 'RANDOM'},
+        rand: { sqlite: "RANDOM", postgresql: "RANDOM" },
         # Two different functions share this name: printf formatting here, and
         # on MySQL the one that puts separators in a number, which reads a
         # printf template as the number zero rather than complaining.  The
         # name keeps the one meaning; fn(:format, ...) reaches MySQL's.
-        format: {mysql: nil},
+        format: { mysql: nil },
       }.freeze
 
       SCALAR_FUNCTIONS.each_key do |name|
@@ -116,8 +118,8 @@ module ActiveRecord
         current_date: {},
         current_time: {},
         current_timestamp: {},
-        localtime: {sqlite: nil},
-        localtimestamp: {sqlite: nil},
+        localtime: { sqlite: nil },
+        localtimestamp: { sqlite: nil },
       }.freeze
 
       def current_date
@@ -191,21 +193,21 @@ module ActiveRecord
       end
 
       %i[ntile first_value last_value].each do |name|
-        define_method(name) {|arg| AST::WindowFunction.new(name.to_s.upcase, [arg]) }
+        define_method(name) { |arg| AST::WindowFunction.new(name.to_s.upcase, [arg]) }
       end
 
       def nth_value(expr, nth)
-        AST::WindowFunction.new('NTH_VALUE', [expr, nth])
+        AST::WindowFunction.new("NTH_VALUE", [expr, nth])
       end
 
       # The offset is written out rather than left to default, so that a
       # default value cannot end up where the offset belongs.
       def lag(expr, offset = 1, default = nil)
-        AST::WindowFunction.new('LAG', default.nil? ? [expr, offset] : [expr, offset, default])
+        AST::WindowFunction.new("LAG", default.nil? ? [expr, offset] : [expr, offset, default])
       end
 
       def lead(expr, offset = 1, default = nil)
-        AST::WindowFunction.new('LEAD', default.nil? ? [expr, offset] : [expr, offset, default])
+        AST::WindowFunction.new("LEAD", default.nil? ? [expr, offset] : [expr, offset, default])
       end
 
       # Escape hatch for functions without a method of their own.  The name is
@@ -223,9 +225,9 @@ module ActiveRecord
       # complement rather than as many as the column happens to be wide.
       def bit_count(expr)
         case adapter_family
-        when :mysql then AST::Function.new('BIT_COUNT', [expr])
+        when :mysql then AST::Function.new("BIT_COUNT", [expr])
         when :postgresql
-          AST::Function.new('BIT_COUNT', [AST::Cast.new(expr, 'bit(64)')])
+          AST::Function.new("BIT_COUNT", [AST::Cast.new(expr, "bit(64)")])
         else
           raise NotImplementedError,
             "bit_count has no equivalent on #{@model.connection_db_config.adapter}"
@@ -245,11 +247,11 @@ module ActiveRecord
       # `== any` is IN and `!= all` is NOT IN, so what these add is the four
       # comparisons IN has no spelling for.
       def any(relation)
-        quantified('ANY', relation)
+        quantified("ANY", relation)
       end
 
       def all(relation)
-        quantified('ALL', relation)
+        quantified("ALL", relation)
       end
 
       # A literal where an expression is expected, quoted like any other value:
@@ -269,8 +271,8 @@ module ActiveRecord
       def excluded(column)
         return AST::Column.new(:excluded, column) unless adapter_family == :mysql
 
-        quoted = @model.with_connection {|c| c.quote_column_name(column) }
-        AST::Function.new('VALUES', [Arel::Nodes::SqlLiteral.new(quoted)])
+        quoted = @model.with_connection { |c| c.quote_column_name(column) }
+        AST::Function.new("VALUES", [Arel::Nodes::SqlLiteral.new(quoted)])
       end
 
       # CASE.  `case` is a keyword, so Ruby only reaches this one through the
@@ -292,37 +294,36 @@ module ActiveRecord
       end
 
       private
+        # SQLite is the one adapter with no quantifier at all, and what it says
+        # when it meets one is a syntax error at the SELECT.
+        def quantified(kind, relation)
+          if adapter_family == :sqlite
+            raise NotImplementedError,
+              "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
+          end
+          AST::Quantified.new(kind, relation)
+        end
 
-      # SQLite is the one adapter with no quantifier at all, and what it says
-      # when it meets one is a syntax error at the SELECT.
-      def quantified(kind, relation)
-        if adapter_family == :sqlite
+        def grouping(kind, sets)
+          node = AST::GroupingSets.new(kind, sets)
+          return node if adapter_family == :postgresql
+          return node if kind == :rollup && adapter_family == :mysql
+
           raise NotImplementedError,
             "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
         end
-        AST::Quantified.new(kind, relation)
-      end
 
-      def grouping(kind, sets)
-        node = AST::GroupingSets.new(kind, sets)
-        return node if adapter_family == :postgresql
-        return node if kind == :rollup && adapter_family == :mysql
+        def function_name(name, functions)
+          spellings = functions.fetch(name)
+          return name.to_s.upcase unless spellings.key?(adapter_family)
+          spellings.fetch(adapter_family) ||
+            raise(NotImplementedError,
+                  "#{name} has no equivalent on #{@model.connection_db_config.adapter}")
+        end
 
-        raise NotImplementedError,
-          "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
-      end
-
-      def function_name(name, functions)
-        spellings = functions.fetch(name)
-        return name.to_s.upcase unless spellings.key?(adapter_family)
-        spellings.fetch(adapter_family) ||
-          raise(NotImplementedError,
-                "#{name} has no equivalent on #{@model.connection_db_config.adapter}")
-      end
-
-      def adapter_family
-        @adapter_family ||= AST.adapter_family(@model)
-      end
+        def adapter_family
+          @adapter_family ||= AST.adapter_family(@model)
+        end
     end
 
     module QueryMethods
@@ -337,7 +338,7 @@ module ActiveRecord
       def select(*fields, &block)
         if block
           result = evaluate_block(&block)
-          arel = Array(result).map {|node| to_arel_field(node) }
+          arel = Array(result).map { |node| to_arel_field(node) }
           super(*arel, &nil)
         else
           super
@@ -355,7 +356,7 @@ module ActiveRecord
       def order(*args, &block)
         if block
           result = evaluate_block(&block)
-          arel = Array(result).map {|node| to_arel_field(node) }
+          arel = Array(result).map { |node| to_arel_field(node) }
           super(*arel, &nil)
         else
           super
@@ -366,7 +367,7 @@ module ActiveRecord
         if block
           result = evaluate_block(&block)
           check_rollup_stands_alone(result)
-          arel = Array(result).map {|node| to_arel_field(node) }
+          arel = Array(result).map { |node| to_arel_field(node) }
           super(*arel, &nil)
         else
           super
@@ -520,143 +521,142 @@ module ActiveRecord
       def cross_joins(*args, as: nil, &block)
         if block
           raise ArgumentError,
-            'a cross join has no condition; joins is the one that takes a block'
+            "a cross join has no condition; joins is the one that takes a block"
         end
         joins(build_cross_join(args.first, as))
       end
 
       private
-
-      def build_arel(...)
-        check_from_cte
-        arel = super
-        unless distinct_on_values.empty?
-          arel.distinct_on(distinct_on_values.map {|column| to_arel_field(column) })
+        def build_arel(...)
+          check_from_cte
+          arel = super
+          unless distinct_on_values.empty?
+            arel.distinct_on(distinct_on_values.map { |column| to_arel_field(column) })
+          end
+          arel
         end
-        arel
-      end
 
-      # Only when every `with` is one this can read the names out of; anything
-      # else and there is nothing to be sure about, so nothing is said.
-      def check_from_cte
-        name = from_cte_value
-        return unless name
-        return unless with_values.all? {|value| value.is_a?(::Hash) }
+        # Only when every `with` is one this can read the names out of; anything
+        # else and there is nothing to be sure about, so nothing is said.
+        def check_from_cte
+          name = from_cte_value
+          return unless name
+          return unless with_values.all? { |value| value.is_a?(::Hash) }
 
-        declared = with_values.flat_map {|value| value.keys.map(&:to_sym) }
-        return if declared.include?(name)
+          declared = with_values.flat_map { |value| value.keys.map(&:to_sym) }
+          return if declared.include?(name)
 
-        raise ArgumentError,
-          "from_cte(#{name.inspect}) names no CTE; " +
-          (declared.empty? ? "this query declares none" :
-                             "this query declares #{declared.map(&:inspect).join(', ')}")
-      end
-
-      def evaluate_block(&block)
-        refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
-        BlockContext.new(klass).instance_exec(&refined_block)
-      end
-
-      # WITH ROLLUP trails the whole group list, so on the MySQL family a
-      # rollup cannot stand beside other group entries the way PostgreSQL's
-      # ROLLUP(...) can.
-      def check_rollup_stands_alone(result)
-        entries = Array(result)
-        return if entries.size == 1
-        return unless entries.any? {|node| node.is_a?(AST::GroupingSets) }
-        return unless AST.adapter_family(klass) == :mysql
-
-        raise ArgumentError,
-          'WITH ROLLUP takes the whole group list; group by the rollup alone'
-      end
-
-      def to_arel_field(node)
-        case node
-        when AST::Node then node.to_arel(table, klass)
-        when Symbol then table[node]
-        else node
-        end
-      end
-
-      def reject_join_alias(alias_name)
-        return unless alias_name
-        raise ArgumentError, "as: needs a block to write the ON clause with"
-      end
-
-      # The subquery is written out rather than handed over as a tree: Arel has
-      # a LATERAL node but only PostgreSQL's visitor writes it, and MySQL can
-      # read what it will not write.  Without a block the join is ON TRUE,
-      # which is the usual shape -- what the subquery is allowed to see is
-      # what makes it lateral, and that is said inside it.
-      def build_lateral_join(relation, join_class, alias_name, &block)
-        unless relation.lateral_value
           raise ArgumentError,
-            "a relation joins laterally; mark it: joins(sub.lateral, as: :top)"
+            "from_cte(#{name.inspect}) names no CTE; " +
+            (declared.empty? ? "this query declares none" :
+                               "this query declares #{declared.map(&:inspect).join(', ')}")
         end
-        unless alias_name
-          raise ArgumentError, "a lateral join needs a name: joins(..., as: :top)"
+
+        def evaluate_block(&block)
+          refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
+          BlockContext.new(klass).instance_exec(&refined_block)
         end
-        check_lateral_support
 
-        aliased = Arel::Nodes::TableAlias.new(
-          Arel::Nodes::SqlLiteral.new("LATERAL (#{relation.to_sql})"), alias_name)
-        on = block ? evaluate_block(&block).to_arel(table, klass) : Arel::Nodes::True.new
-        join_class.new(aliased, Arel::Nodes::On.new(on))
-      end
+        # WITH ROLLUP trails the whole group list, so on the MySQL family a
+        # rollup cannot stand beside other group entries the way PostgreSQL's
+        # ROLLUP(...) can.
+        def check_rollup_stands_alone(result)
+          entries = Array(result)
+          return if entries.size == 1
+          return unless entries.any? { |node| node.is_a?(AST::GroupingSets) }
+          return unless AST.adapter_family(klass) == :mysql
 
-      # PostgreSQL has LATERAL and so does MySQL, from 8.0.14.  SQLite has
-      # none, and neither has MariaDB, which answers to the same adapter as
-      # MySQL.  An adapter nobody has classified is left to say for itself.
-      def check_lateral_support
-        case AST.adapter_family(klass)
-        when :sqlite
-          refuse_lateral('sqlite3')
-        when :mysql
-          refuse_lateral('MariaDB') if klass.with_connection {|c| c.mariadb? }
+          raise ArgumentError,
+            "WITH ROLLUP takes the whole group list; group by the rollup alone"
         end
-      end
 
-      def refuse_lateral(database)
-        raise NotImplementedError, "a lateral join has no equivalent on #{database}"
-      end
-
-      # MySQL has no FULL OUTER JOIN, and neither has MariaDB; SQLite has had
-      # one since 3.39 and PostgreSQL always.
-      def check_full_outer_support
-        return unless AST.adapter_family(klass) == :mysql
-        raise NotImplementedError, 'a full outer join has no equivalent on MySQL'
-      end
-
-      def outer_joins(called, join_class, args, alias_name, &block)
-        if args.first.is_a?(ActiveRecord::Relation)
-          return joins(build_lateral_join(args.first, join_class, alias_name, &block))
+        def to_arel_field(node)
+          case node
+          when AST::Node then node.to_arel(table, klass)
+          when Symbol then table[node]
+          else node
+          end
         end
-        return joins(build_join_node(args.first, join_class, alias_name, &block)) if block
 
-        raise ArgumentError,
-          "#{called} takes a table and the block that joins it; an association " \
-          'is what joins and left_outer_joins read'
-      end
-
-      # Arel has a node for every other join and none for this one, and INNER
-      # JOIN with no ON -- which is a cross join on SQLite and MySQL -- is a
-      # syntax error on PostgreSQL.  So the SQL is written here, the second
-      # place in the gem that writes any: the keyword is fixed and the names
-      # are quoted by the adapter, so nothing of the caller's is in it.
-      def build_cross_join(target_table, alias_name)
-        joined = klass.with_connection do |connection|
-          name = connection.quote_table_name(target_table.to_s)
-          alias_name ? "#{name} #{connection.quote_table_name(alias_name.to_s)}" : name
+        def reject_join_alias(alias_name)
+          return unless alias_name
+          raise ArgumentError, "as: needs a block to write the ON clause with"
         end
-        Arel::Nodes::StringJoin.new(Arel.sql("CROSS JOIN #{joined}"))
-      end
 
-      def build_join_node(target_table, join_class, alias_name, &block)
-        ast = evaluate_block(&block)
-        arel_table = Arel::Table.new(target_table)
-        arel_table = arel_table.alias(alias_name) if alias_name
-        join_class.new(arel_table, Arel::Nodes::On.new(ast.to_arel(table, klass)))
-      end
+        # The subquery is written out rather than handed over as a tree: Arel has
+        # a LATERAL node but only PostgreSQL's visitor writes it, and MySQL can
+        # read what it will not write.  Without a block the join is ON TRUE,
+        # which is the usual shape -- what the subquery is allowed to see is
+        # what makes it lateral, and that is said inside it.
+        def build_lateral_join(relation, join_class, alias_name, &block)
+          unless relation.lateral_value
+            raise ArgumentError,
+              "a relation joins laterally; mark it: joins(sub.lateral, as: :top)"
+          end
+          unless alias_name
+            raise ArgumentError, "a lateral join needs a name: joins(..., as: :top)"
+          end
+          check_lateral_support
+
+          aliased = Arel::Nodes::TableAlias.new(
+            Arel::Nodes::SqlLiteral.new("LATERAL (#{relation.to_sql})"), alias_name)
+          on = block ? evaluate_block(&block).to_arel(table, klass) : Arel::Nodes::True.new
+          join_class.new(aliased, Arel::Nodes::On.new(on))
+        end
+
+        # PostgreSQL has LATERAL and so does MySQL, from 8.0.14.  SQLite has
+        # none, and neither has MariaDB, which answers to the same adapter as
+        # MySQL.  An adapter nobody has classified is left to say for itself.
+        def check_lateral_support
+          case AST.adapter_family(klass)
+          when :sqlite
+            refuse_lateral("sqlite3")
+          when :mysql
+            refuse_lateral("MariaDB") if klass.with_connection { |c| c.mariadb? }
+          end
+        end
+
+        def refuse_lateral(database)
+          raise NotImplementedError, "a lateral join has no equivalent on #{database}"
+        end
+
+        # MySQL has no FULL OUTER JOIN, and neither has MariaDB; SQLite has had
+        # one since 3.39 and PostgreSQL always.
+        def check_full_outer_support
+          return unless AST.adapter_family(klass) == :mysql
+          raise NotImplementedError, "a full outer join has no equivalent on MySQL"
+        end
+
+        def outer_joins(called, join_class, args, alias_name, &block)
+          if args.first.is_a?(ActiveRecord::Relation)
+            return joins(build_lateral_join(args.first, join_class, alias_name, &block))
+          end
+          return joins(build_join_node(args.first, join_class, alias_name, &block)) if block
+
+          raise ArgumentError,
+            "#{called} takes a table and the block that joins it; an association " \
+            "is what joins and left_outer_joins read"
+        end
+
+        # Arel has a node for every other join and none for this one, and INNER
+        # JOIN with no ON -- which is a cross join on SQLite and MySQL -- is a
+        # syntax error on PostgreSQL.  So the SQL is written here, the second
+        # place in the gem that writes any: the keyword is fixed and the names
+        # are quoted by the adapter, so nothing of the caller's is in it.
+        def build_cross_join(target_table, alias_name)
+          joined = klass.with_connection do |connection|
+            name = connection.quote_table_name(target_table.to_s)
+            alias_name ? "#{name} #{connection.quote_table_name(alias_name.to_s)}" : name
+          end
+          Arel::Nodes::StringJoin.new(Arel.sql("CROSS JOIN #{joined}"))
+        end
+
+        def build_join_node(target_table, join_class, alias_name, &block)
+          ast = evaluate_block(&block)
+          arel_table = Arel::Table.new(target_table)
+          arel_table = arel_table.alias(alias_name) if alias_name
+          join_class.new(arel_table, Arel::Nodes::On.new(ast.to_arel(table, klass)))
+        end
     end
 
     # The writing statements, which live on Relation rather than in
@@ -677,7 +677,7 @@ module ActiveRecord
         unless result.is_a?(::Hash)
           raise ArgumentError, "the block gives update_all a hash of column => value"
         end
-        super(result.transform_values {|value| to_arel_field(value) })
+        super(result.transform_values { |value| to_arel_field(value) })
       end
 
       # upsert_all's on_duplicate takes SQL text and nothing else, so this is
@@ -703,19 +703,18 @@ module ActiveRecord
       end
 
       private
-
-      # The left of each assignment is the column being written, which is bare
-      # -- the statement is already about one table -- and the right is the
-      # expression, compiled here because a string is what on_duplicate reads.
-      def set_clause(updates)
-        klass.with_connection do |connection|
-          updates.map do |column, value|
-            expression = connection.visitor.compile(
-              to_arel_field(value), Arel::Collectors::SQLString.new)
-            "#{connection.quote_column_name(column)}=#{expression}"
-          end.join(', ')
+        # The left of each assignment is the column being written, which is bare
+        # -- the statement is already about one table -- and the right is the
+        # expression, compiled here because a string is what on_duplicate reads.
+        def set_clause(updates)
+          klass.with_connection do |connection|
+            updates.map do |column, value|
+              expression = connection.visitor.compile(
+                to_arel_field(value), Arel::Collectors::SQLString.new)
+              "#{connection.quote_column_name(column)}=#{expression}"
+            end.join(", ")
+          end
         end
-      end
     end
   end
 end

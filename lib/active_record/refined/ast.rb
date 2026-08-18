@@ -1,5 +1,7 @@
+# frozen_string_literal: true
+
 # JSON.generate, for the document a containment test is given.
-require 'json'
+require "json"
 
 module ActiveRecord
   module Refined
@@ -19,12 +21,12 @@ module ActiveRecord
       # pglite is PostgreSQL itself compiled to WebAssembly, reached through
       # wasmify-rails' adapter; the server it answers for is the same one.
       ADAPTER_FAMILIES = {
-        'sqlite3' => :sqlite,
-        'postgresql' => :postgresql,
-        'postgis' => :postgresql,
-        'pglite' => :postgresql,
-        'mysql2' => :mysql,
-        'trilogy' => :mysql,
+        "sqlite3" => :sqlite,
+        "postgresql" => :postgresql,
+        "postgis" => :postgresql,
+        "pglite" => :postgresql,
+        "mysql2" => :mysql,
+        "trilogy" => :mysql,
       }.freeze
 
       def self.adapter_family(model)
@@ -179,14 +181,14 @@ module ActiveRecord
           if prefixes.empty?
             raise ArgumentError, "start_with? needs at least one prefix"
           end
-          Like.any(self, prefixes.map {|prefix| "#{Like.escape(prefix)}%" })
+          Like.any(self, prefixes.map { |prefix| "#{Like.escape(prefix)}%" })
         end
 
         def end_with?(*suffixes)
           if suffixes.empty?
             raise ArgumentError, "end_with? needs at least one suffix"
           end
-          Like.any(self, suffixes.map {|suffix| "%#{Like.escape(suffix)}" })
+          Like.any(self, suffixes.map { |suffix| "%#{Like.escape(suffix)}" })
         end
 
         def include?(substring)
@@ -383,61 +385,60 @@ module ActiveRecord
         end
 
         private
-
-        # Resolves an operand denoting a column or an expression.  A number
-        # rides along for Arel to write out, which it can do for Integer and
-        # Float alone: a BigDecimal is quoted, which the adapter spells as
-        # the exact decimal, and a Rational, which no decimal spells exactly,
-        # is refused.
-        def to_arel_operand(operand, table, model)
-          case operand
-          when Node then operand.to_arel(table, model)
-          when :* then Arel.star
-          when Symbol then table[operand]
-          when ::BigDecimal, ::Rational then quote_number(operand)
-          else operand
+          # Resolves an operand denoting a column or an expression.  A number
+          # rides along for Arel to write out, which it can do for Integer and
+          # Float alone: a BigDecimal is quoted, which the adapter spells as
+          # the exact decimal, and a Rational, which no decimal spells exactly,
+          # is refused.
+          def to_arel_operand(operand, table, model)
+            case operand
+            when Node then operand.to_arel(table, model)
+            when :* then Arel.star
+            when Symbol then table[operand]
+            when ::BigDecimal, ::Rational then quote_number(operand)
+            else operand
+            end
           end
-        end
 
-        # A bare symbol is a column in every position, the value side of a
-        # comparison included.  The name is checked against the model, since
-        # a name it has no column for is almost always an enum value spelled
-        # as a symbol -- which, taken as a column, would quietly compare
-        # against nothing anyone meant.
-        def column_operand(name, table, model)
-          unless model.column_names.include?(name.to_s)
-            raise ArgumentError,
-              "#{name.inspect} is no column of #{model.table_name}; an enum " \
-              'value is written as its string, a column of another table ' \
-              'qualified'
+          # A bare symbol is a column in every position, the value side of a
+          # comparison included.  The name is checked against the model, since
+          # a name it has no column for is almost always an enum value spelled
+          # as a symbol -- which, taken as a column, would quietly compare
+          # against nothing anyone meant.
+          def column_operand(name, table, model)
+            unless model.column_names.include?(name.to_s)
+              raise ArgumentError,
+                "#{name.inspect} is no column of #{model.table_name}; an enum " \
+                "value is written as its string, a column of another table " \
+                "qualified"
+            end
+            table[name]
           end
-          table[name]
-        end
 
-        # A number compares as itself, the way a bound ? does: the typed path
-        # would cast 99.5 against an integer column to 99 and quietly move
-        # the boundary.  Everything else keeps the column's own
-        # serialization -- an enum's name, a time's zone, a custom type's
-        # scaling.
-        def quote_number(value)
-          case value
-          when ::Rational
-            raise ArgumentError,
-              'a Rational has no exact SQL spelling; to_d says the decimal meant'
-          when ::Integer, ::Float, ::BigDecimal
-            Arel::Nodes.build_quoted(value)
-          else value
+          # A number compares as itself, the way a bound ? does: the typed path
+          # would cast 99.5 against an integer column to 99 and quietly move
+          # the boundary.  Everything else keeps the column's own
+          # serialization -- an enum's name, a time's zone, a custom type's
+          # scaling.
+          def quote_number(value)
+            case value
+            when ::Rational
+              raise ArgumentError,
+                "a Rational has no exact SQL spelling; to_d says the decimal meant"
+            when ::Integer, ::Float, ::BigDecimal
+              Arel::Nodes.build_quoted(value)
+            else value
+            end
           end
-        end
 
-        # Resolves a function argument: a column or an expression as above,
-        # anything else a value to be quoted.
-        def to_arel_argument(arg, table, model)
-          case arg
-          when Node, Symbol, ::Rational then to_arel_operand(arg, table, model)
-          else Arel::Nodes.build_quoted(arg)
+          # Resolves a function argument: a column or an expression as above,
+          # anything else a value to be quoted.
+          def to_arel_argument(arg, table, model)
+            case arg
+            when Node, Symbol, ::Rational then to_arel_operand(arg, table, model)
+            else Arel::Nodes.build_quoted(arg)
+            end
           end
-        end
       end
 
       class Predicate < Node
@@ -575,24 +576,24 @@ module ActiveRecord
         # quoted so that a comma or a brace in a key is part of it.  except
         # writes its keys the same way, which are steps of no one path.
         def steps_array(steps = path)
-          "{#{steps.map {|step| %("#{escape_step(step)}") }.join(',')}}"
+          "{#{steps.map { |step| %("#{escape_step(step)}") }.join(',')}}"
         end
 
         # MySQL and SQLite take a path expression instead, where an integer is
         # a subscript and a name that is not plain has to be quoted.
         def dollar_path
-          path.inject(+'$') {|so_far, step| so_far << dollar_step(step) }
+          path.inject(+"$") { |so_far, step| so_far << dollar_step(step) }
         end
 
         def dollar_step(step)
           return "[#{step}]" if step.is_a?(::Integer)
           name = step.to_s
-          '.' + (name.match?(/\A[[:alpha:]_][[:alnum:]_]*\z/) ?
+          "." + (name.match?(/\A[[:alpha:]_][[:alnum:]_]*\z/) ?
                  name : %("#{escape_step(step)}"))
         end
 
         def escape_step(step)
-          step.to_s.gsub('\\', '\\\\').gsub('"', '\\"')
+          step.to_s.gsub("\\", "\\\\").gsub('"', '\\"')
         end
       end
 
@@ -648,53 +649,52 @@ module ActiveRecord
         end
 
         private
+          # nil is left to the comparison itself, which says to use null?, and
+          # so is anything the block built rather than wrote as a literal.
+          def comparison_value(other)
+            return other if other.nil? || other.is_a?(Node) || other.is_a?(::Symbol) ||
+                            other.is_a?(Arel::Nodes::Node) ||
+                            other.is_a?(Arel::Attributes::Attribute) ||
+                            other.is_a?(ActiveRecord::Relation)
+            return json_literal(other) if as_json
+            return other if other.is_a?(::String)
 
-        # nil is left to the comparison itself, which says to use null?, and
-        # so is anything the block built rather than wrote as a literal.
-        def comparison_value(other)
-          return other if other.nil? || other.is_a?(Node) || other.is_a?(::Symbol) ||
-                          other.is_a?(Arel::Nodes::Node) ||
-                          other.is_a?(Arel::Attributes::Attribute) ||
-                          other.is_a?(ActiveRecord::Relation)
-          return json_literal(other) if as_json
-          return other if other.is_a?(::String)
-
-          raise ArgumentError,
-            "dig_text gives text, and comparing it with #{other.inspect} means " \
-            "something different on every adapter; cast it to the type meant"
-        end
-
-        def json_literal(other)
-          case other
-          when ::String, ::Integer, ::Float, ::BigDecimal, true, false, ::Hash, ::Array
-            JsonLiteral.new(other)
-          when ::Rational
             raise ArgumentError,
-              'a Rational has no exact SQL spelling; to_d says the decimal meant'
-          else
-            raise ArgumentError,
-              "#{json_source} gives JSON, and #{other.inspect} has no JSON " \
-              'spelling; dig_text gives the value'
+              "dig_text gives text, and comparing it with #{other.inspect} means " \
+              "something different on every adapter; cast it to the type meant"
           end
-        end
 
-        def comparison_set(values)
-          case values
-          when ActiveRecord::Relation then values
-          when ::Range
-            In::QuotedRange.new(comparison_value(values.begin),
-                                comparison_value(values.end), values.exclude_end?)
-          else values.map {|value| comparison_value(value) }
+          def json_literal(other)
+            case other
+            when ::String, ::Integer, ::Float, ::BigDecimal, true, false, ::Hash, ::Array
+              JsonLiteral.new(other)
+            when ::Rational
+              raise ArgumentError,
+                "a Rational has no exact SQL spelling; to_d says the decimal meant"
+            else
+              raise ArgumentError,
+                "#{json_source} gives JSON, and #{other.inspect} has no JSON " \
+                "spelling; dig_text gives the value"
+            end
           end
-        end
 
-        def arithmetic_refusal(operator)
-          as_json ?
-            "#{json_source} gives JSON, and #{operator} on it means something " \
-            "different on every adapter; cast dig_text to the type meant" :
-            "dig_text gives text, and #{operator} on it means something " \
-            "different on every adapter; cast it to the type meant"
-        end
+          def comparison_set(values)
+            case values
+            when ActiveRecord::Relation then values
+            when ::Range
+              In::QuotedRange.new(comparison_value(values.begin),
+                                  comparison_value(values.end), values.exclude_end?)
+            else values.map { |value| comparison_value(value) }
+            end
+          end
+
+          def arithmetic_refusal(operator)
+            as_json ?
+              "#{json_source} gives JSON, and #{operator} on it means something " \
+              "different on every adapter; cast dig_text to the type meant" :
+              "dig_text gives text, and #{operator} on it means something " \
+              "different on every adapter; cast it to the type meant"
+          end
       end
 
       # A Ruby value on the JSON side of a comparison, which jsonb and
@@ -722,19 +722,18 @@ module ActiveRecord
         end
 
         private
+          # MariaDB answers to the same adapter and has no JSON type at all.
+          def mysql_literal(json, model)
+            refuse("MariaDB") if model.with_connection { |c| c.mariadb? }
+            Arel::Nodes::NamedFunction.new(
+              "CAST", [Arel::Nodes::As.new(json, Arel::Nodes::SqlLiteral.new("JSON"))])
+          end
 
-        # MariaDB answers to the same adapter and has no JSON type at all.
-        def mysql_literal(json, model)
-          refuse('MariaDB') if model.with_connection {|c| c.mariadb? }
-          Arel::Nodes::NamedFunction.new(
-            'CAST', [Arel::Nodes::As.new(json, Arel::Nodes::SqlLiteral.new('JSON'))])
-        end
-
-        def refuse(database)
-          raise NotImplementedError,
-            "a JSON comparison has no equivalent on #{database}; " \
-            'dig_text gives the value'
-        end
+          def refuse(database)
+            raise NotImplementedError,
+              "a JSON comparison has no equivalent on #{database}; " \
+              "dig_text gives the value"
+          end
       end
 
       # The JSON operations read a document, and what dig gives is one:
@@ -766,7 +765,7 @@ module ActiveRecord
 
         def initialize(operand, path, as_json: false)
           @operand = operand
-          @path = check_steps(path, 'dig')
+          @path = check_steps(path, "dig")
           @as_json = as_json
         end
 
@@ -778,8 +777,8 @@ module ActiveRecord
               as_json ? :"#>" : :"#>>", document, Arel::Nodes.build_quoted(steps_array))
           when :mysql
             extracted = Arel::Nodes::NamedFunction.new(
-              'JSON_EXTRACT', [document, Arel::Nodes.build_quoted(dollar_path)])
-            as_json ? extracted : Arel::Nodes::NamedFunction.new('JSON_UNQUOTE', [extracted])
+              "JSON_EXTRACT", [document, Arel::Nodes.build_quoted(dollar_path)])
+            as_json ? extracted : Arel::Nodes::NamedFunction.new("JSON_UNQUOTE", [extracted])
           else
             extracted = Arel::Nodes::InfixOperation.new(
               as_json ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
@@ -787,15 +786,14 @@ module ActiveRecord
             # two give text.  Cast so that `dig_text(:n) == '5'` means the
             # same thing everywhere, and a number wants a cast everywhere too.
             as_json ? extracted : Arel::Nodes::NamedFunction.new(
-              'CAST', [Arel::Nodes::As.new(extracted, Arel::Nodes::SqlLiteral.new('text'))])
+              "CAST", [Arel::Nodes::As.new(extracted, Arel::Nodes::SqlLiteral.new("text"))])
           end
         end
 
         private
-
-        def json_source
-          'dig'
-        end
+          def json_source
+            "dig"
+          end
       end
 
       # Setting a value inside a JSON document, which is what bury does to what
@@ -810,7 +808,7 @@ module ActiveRecord
 
         def initialize(operand, path, value)
           @operand = operand
-          @path = check_steps(path, 'bury')
+          @path = check_steps(path, "bury")
           @value = value
         end
 
@@ -823,54 +821,53 @@ module ActiveRecord
           document = to_arel_operand(operand, table, model)
           if AST.adapter_family(model) == :postgresql
             Arel::Nodes::NamedFunction.new(
-              'jsonb_set',
+              "jsonb_set",
               [document, Arel::Nodes.build_quoted(steps_array), postgresql_value(table, model)])
           else
             Arel::Nodes::NamedFunction.new(
-              'JSON_SET',
+              "JSON_SET",
               [document, Arel::Nodes.build_quoted(dollar_path), other_value(table, model)])
           end
         end
 
         private
-
-        # jsonb_set takes jsonb, so an expression is turned into it and a Ruby
-        # value goes in as the JSON that says it -- '"x"' rather than 'x',
-        # which is not a document at all.
-        def postgresql_value(table, model)
-          return Arel::Nodes::NamedFunction.new(
-            'to_jsonb', [to_arel_operand(value, table, model)]) if expression?
-          Arel::Nodes.build_quoted(JSON.generate(value))
-        end
-
-        # The others take the value as it is, except a whole document or a
-        # boolean, which go in as JSON: taken as they are, a document would
-        # be the string that spells it, and a boolean SQLite's own 1.
-        # SQLite's json() marks the literal for JSON_SET; the MySQL family,
-        # which has no json(), reads it with JSON_EXTRACT.
-        def other_value(table, model)
-          return to_arel_operand(value, table, model) if expression?
-          unless value.is_a?(::Hash) || value.is_a?(::Array) ||
-                 value == true || value == false
-            return Arel::Nodes.build_quoted(value)
+          # jsonb_set takes jsonb, so an expression is turned into it and a Ruby
+          # value goes in as the JSON that says it -- '"x"' rather than 'x',
+          # which is not a document at all.
+          def postgresql_value(table, model)
+            return Arel::Nodes::NamedFunction.new(
+              "to_jsonb", [to_arel_operand(value, table, model)]) if expression?
+            Arel::Nodes.build_quoted(JSON.generate(value))
           end
 
-          json = Arel::Nodes.build_quoted(JSON.generate(value))
-          if AST.adapter_family(model) == :sqlite
-            Arel::Nodes::NamedFunction.new('json', [json])
-          else
-            Arel::Nodes::NamedFunction.new(
-              'JSON_EXTRACT', [json, Arel::Nodes.build_quoted('$')])
+          # The others take the value as it is, except a whole document or a
+          # boolean, which go in as JSON: taken as they are, a document would
+          # be the string that spells it, and a boolean SQLite's own 1.
+          # SQLite's json() marks the literal for JSON_SET; the MySQL family,
+          # which has no json(), reads it with JSON_EXTRACT.
+          def other_value(table, model)
+            return to_arel_operand(value, table, model) if expression?
+            unless value.is_a?(::Hash) || value.is_a?(::Array) ||
+                   value == true || value == false
+              return Arel::Nodes.build_quoted(value)
+            end
+
+            json = Arel::Nodes.build_quoted(JSON.generate(value))
+            if AST.adapter_family(model) == :sqlite
+              Arel::Nodes::NamedFunction.new("json", [json])
+            else
+              Arel::Nodes::NamedFunction.new(
+                "JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
+            end
           end
-        end
 
-        def expression?
-          value.is_a?(Node) || value.is_a?(::Symbol)
-        end
+          def expression?
+            value.is_a?(Node) || value.is_a?(::Symbol)
+          end
 
-        def json_source
-          'bury'
-        end
+          def json_source
+            "bury"
+          end
       end
 
       # Keys taken out of a JSON document.  PostgreSQL subtracts them, the
@@ -901,38 +898,37 @@ module ActiveRecord
           end
 
           Arel::Nodes::NamedFunction.new(
-            'JSON_REMOVE',
-            [document, *keys.map {|key| Arel::Nodes.build_quoted("$#{dollar_step(key)}") }])
+            "JSON_REMOVE",
+            [document, *keys.map { |key| Arel::Nodes.build_quoted("$#{dollar_step(key)}") }])
         end
 
         private
-
-        # jsonb has three subtractions -- a key, an array of keys, an element
-        # by index -- and an array literal written without a type is read as
-        # the first of them: `meta - '{draft}'` takes out the key spelled
-        # {draft}, which is nothing, and says nothing about it.
-        def key_array
-          Arel::Nodes::NamedFunction.new(
-            'CAST',
-            [Arel::Nodes::As.new(Arel::Nodes.build_quoted(steps_array(keys)),
-                                 Arel::Nodes::SqlLiteral.new('text[]'))])
-        end
-
-        # Keys, as Hash#except takes them: an index into an array is not what
-        # the name says anywhere, and is bury's business through a path.
-        def check_keys(keys)
-          raise ArgumentError, 'except needs a key' if keys.empty?
-          keys.each do |key|
-            next if key.is_a?(::String) || key.is_a?(::Symbol)
-            raise ArgumentError,
-              "except takes keys of the document, not #{key.inspect}"
+          # jsonb has three subtractions -- a key, an array of keys, an element
+          # by index -- and an array literal written without a type is read as
+          # the first of them: `meta - '{draft}'` takes out the key spelled
+          # {draft}, which is nothing, and says nothing about it.
+          def key_array
+            Arel::Nodes::NamedFunction.new(
+              "CAST",
+              [Arel::Nodes::As.new(Arel::Nodes.build_quoted(steps_array(keys)),
+                                   Arel::Nodes::SqlLiteral.new("text[]"))])
           end
-          keys
-        end
 
-        def json_source
-          'except'
-        end
+          # Keys, as Hash#except takes them: an index into an array is not what
+          # the name says anywhere, and is bury's business through a path.
+          def check_keys(keys)
+            raise ArgumentError, "except needs a key" if keys.empty?
+            keys.each do |key|
+              next if key.is_a?(::String) || key.is_a?(::Symbol)
+              raise ArgumentError,
+                "except takes keys of the document, not #{key.inspect}"
+            end
+            keys
+          end
+
+          def json_source
+            "except"
+          end
       end
 
       # JSON containment: whether the document holds what is given.
@@ -950,7 +946,7 @@ module ActiveRecord
           case AST.adapter_family(model)
           when :postgresql then Arel::Nodes::Contains.new(document, json)
           when :mysql
-            Arel::Nodes::NamedFunction.new('JSON_CONTAINS', [document, json])
+            Arel::Nodes::NamedFunction.new("JSON_CONTAINS", [document, json])
           else
             # Later than the others, since the adapter is only known here.
             raise NotImplementedError,
@@ -976,12 +972,12 @@ module ActiveRecord
           path = Arel::Nodes.build_quoted("$.#{key}")
           case AST.adapter_family(model)
           when :postgresql
-            Arel::Nodes::NamedFunction.new('jsonb_exists', [document, name])
+            Arel::Nodes::NamedFunction.new("jsonb_exists", [document, name])
           when :mysql
             Arel::Nodes::NamedFunction.new(
-              'JSON_CONTAINS_PATH', [document, Arel::Nodes.build_quoted('one'), path])
+              "JSON_CONTAINS_PATH", [document, Arel::Nodes.build_quoted("one"), path])
           else
-            Arel::Nodes::NamedFunction.new('json_type', [document, path]).not_eq(nil)
+            Arel::Nodes::NamedFunction.new("json_type", [document, path]).not_eq(nil)
           end
         end
       end
@@ -1015,27 +1011,26 @@ module ActiveRecord
             if kind == :grouping_sets
               sets.map do |set|
                 Arel::Nodes::GroupingElement.new(
-                  Array(set).map {|column| to_arel_operand(column, table, model) })
+                  Array(set).map { |column| to_arel_operand(column, table, model) })
               end
             else
-              sets.map {|column| to_arel_operand(column, table, model) }
+              sets.map { |column| to_arel_operand(column, table, model) }
             end)
         end
 
         private
-
-        # The MySQL family spells rollup WITH ROLLUP, trailing the whole
-        # group list rather than wrapping a list of its own -- which is also
-        # why a rollup cannot stand beside other group entries there.  The
-        # columns are compiled by the connection's own visitor, so their
-        # quoting is the adapter's.
-        def with_rollup(table, model)
-          columns = sets.map {|column| to_arel_operand(column, table, model) }
-          sql = model.with_connection do |connection|
-            columns.map {|column| connection.visitor.compile(column) }.join(', ')
+          # The MySQL family spells rollup WITH ROLLUP, trailing the whole
+          # group list rather than wrapping a list of its own -- which is also
+          # why a rollup cannot stand beside other group entries there.  The
+          # columns are compiled by the connection's own visitor, so their
+          # quoting is the adapter's.
+          def with_rollup(table, model)
+            columns = sets.map { |column| to_arel_operand(column, table, model) }
+            sql = model.with_connection do |connection|
+              columns.map { |column| connection.visitor.compile(column) }.join(", ")
+            end
+            Arel.sql("#{sql} WITH ROLLUP")
           end
-          Arel.sql("#{sql} WITH ROLLUP")
-        end
       end
 
       class Column < Node
@@ -1085,23 +1080,22 @@ module ActiveRecord
       # PostgreSQL has no such operator and would say so.
       module BitwiseOperands
         private
+          def check_operand(operand, operator)
+            return operand unless operand.is_a?(Predicate)
+            raise ArgumentError,
+              "a condition cannot be an operand of #{operator}; " \
+              "& and | between conditions are AND and OR"
+          end
 
-        def check_operand(operand, operator)
-          return operand unless operand.is_a?(Predicate)
-          raise ArgumentError,
-            "a condition cannot be an operand of #{operator}; " \
-            "& and | between conditions are AND and OR"
-        end
-
-        # Only the unqualified column can be checked, since that is the one
-        # the model is known to have.
-        def check_not_boolean(operand, operator, model)
-          return unless operand.is_a?(::Symbol)
-          return unless model.type_for_attribute(operand).type == :boolean
-          raise ArgumentError,
-            "#{operand.inspect} is a boolean column, which #{operator} does " \
-            "not take; #{operand.inspect}.true? is the condition"
-        end
+          # Only the unqualified column can be checked, since that is the one
+          # the model is known to have.
+          def check_not_boolean(operand, operator, model)
+            return unless operand.is_a?(::Symbol)
+            return unless model.type_for_attribute(operand).type == :boolean
+            raise ArgumentError,
+              "#{operand.inspect} is a boolean column, which #{operator} does " \
+              "not take; #{operand.inspect}.true? is the condition"
+          end
       end
 
       # SQL's bitwise operators.  Each parenthesises itself, which is what
@@ -1141,22 +1135,21 @@ module ActiveRecord
         end
 
         private
-
-        # Arel has a node for XOR, but it writes ^ on every adapter, and ^ is
-        # exponentiation to PostgreSQL -- a wrong answer rather than an error.
-        # PostgreSQL's own spelling, #, is where a comment starts on MySQL, so
-        # it cannot be the portable one either.  SQLite has no XOR at all;
-        # (a | b) - (a & b) is it, at the cost of naming each operand twice.
-        def xor(left, right, model)
-          case AST.adapter_family(model)
-          when :postgresql then Arel::Nodes::InfixOperation.new('#', left, right)
-          when :mysql then Arel::Nodes::BitwiseXor.new(left, right)
-          else
-            Arel::Nodes::Subtraction.new(
-              Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseOr.new(left, right)),
-              Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseAnd.new(left, right)))
+          # Arel has a node for XOR, but it writes ^ on every adapter, and ^ is
+          # exponentiation to PostgreSQL -- a wrong answer rather than an error.
+          # PostgreSQL's own spelling, #, is where a comment starts on MySQL, so
+          # it cannot be the portable one either.  SQLite has no XOR at all;
+          # (a | b) - (a & b) is it, at the cost of naming each operand twice.
+          def xor(left, right, model)
+            case AST.adapter_family(model)
+            when :postgresql then Arel::Nodes::InfixOperation.new("#", left, right)
+            when :mysql then Arel::Nodes::BitwiseXor.new(left, right)
+            else
+              Arel::Nodes::Subtraction.new(
+                Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseOr.new(left, right)),
+                Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseAnd.new(left, right)))
+            end
           end
-        end
       end
 
       # ~, which every adapter has.  MySQL answers with the unsigned 64-bit
@@ -1224,8 +1217,8 @@ module ActiveRecord
 
         def to_arel(table, model)
           window = Arel::Nodes::Window.new
-          partitions.each {|expr| window.partition(to_arel_operand(expr, table, model)) }
-          orders.each {|expr| window.order(to_arel_operand(expr, table, model)) }
+          partitions.each { |expr| window.partition(to_arel_operand(expr, table, model)) }
+          orders.each { |expr| window.order(to_arel_operand(expr, table, model)) }
           frame_arel(window) if frame
 
           # A window-only function refuses to build on its own; here is where
@@ -1237,43 +1230,42 @@ module ActiveRecord
         end
 
         private
-
-        # The frame is a range of rows counted from the current one: negative
-        # before it, positive after, 0 the row itself, and an open end for
-        # unbounded.  `rows(..0)` is what a running total wants.
-        def framing(kind, bounds)
-          raise ArgumentError, "a window has one frame" if frame
-          unless bounds.is_a?(::Range)
-            raise ArgumentError, "#{kind} takes a range of rows, as in rows(..0)"
+          # The frame is a range of rows counted from the current one: negative
+          # before it, positive after, 0 the row itself, and an open end for
+          # unbounded.  `rows(..0)` is what a running total wants.
+          def framing(kind, bounds)
+            raise ArgumentError, "a window has one frame" if frame
+            unless bounds.is_a?(::Range)
+              raise ArgumentError, "#{kind} takes a range of rows, as in rows(..0)"
+            end
+            if bounds.exclude_end?
+              raise ArgumentError, "a frame ends on a row rather than before one; use .."
+            end
+            [bounds.begin, bounds.end].each do |bound|
+              next if bound.nil? || bound.is_a?(::Integer)
+              raise ArgumentError,
+                "a frame bound is a number of rows, or nothing for unbounded"
+            end
+            [kind, bounds.begin, bounds.end]
           end
-          if bounds.exclude_end?
-            raise ArgumentError, "a frame ends on a row rather than before one; use .."
-          end
-          [bounds.begin, bounds.end].each do |bound|
-            next if bound.nil? || bound.is_a?(::Integer)
-            raise ArgumentError,
-              "a frame bound is a number of rows, or nothing for unbounded"
-          end
-          [kind, bounds.begin, bounds.end]
-        end
 
-        # Arel wants the keyword itself on the left of the BETWEEN, which is
-        # what window.rows with no argument hands back.
-        def frame_arel(window)
-          kind, from, to = frame
-          window.frame(
-            Arel::Nodes::Between.new(
-              window.public_send(kind),
-              Arel::Nodes::And.new([bound(from, Arel::Nodes::Preceding.new),
-                                    bound(to, Arel::Nodes::Following.new)])))
-        end
+          # Arel wants the keyword itself on the left of the BETWEEN, which is
+          # what window.rows with no argument hands back.
+          def frame_arel(window)
+            kind, from, to = frame
+            window.frame(
+              Arel::Nodes::Between.new(
+                window.public_send(kind),
+                Arel::Nodes::And.new([bound(from, Arel::Nodes::Preceding.new),
+                                      bound(to, Arel::Nodes::Following.new)])))
+          end
 
-        def bound(rows, unbounded)
-          return unbounded if rows.nil?
-          return Arel::Nodes::CurrentRow.new if rows.zero?
-          rows.negative? ? Arel::Nodes::Preceding.new(-rows)
-                         : Arel::Nodes::Following.new(rows)
-        end
+          def bound(rows, unbounded)
+            return unbounded if rows.nil?
+            return Arel::Nodes::CurrentRow.new if rows.zero?
+            rows.negative? ? Arel::Nodes::Preceding.new(-rows)
+                           : Arel::Nodes::Following.new(rows)
+          end
       end
 
       class Aggregate < Node
@@ -1319,15 +1311,14 @@ module ActiveRecord
         end
 
         private
-
-        def aggregate(over, table, model)
-          arel_operand = to_arel_operand(over, table, model)
-          if function == :count
-            arel_operand.count(distinct)
-          else
-            arel_operand.public_send(function)
+          def aggregate(over, table, model)
+            arel_operand = to_arel_operand(over, table, model)
+            if function == :count
+              arel_operand.count(distinct)
+            else
+              arel_operand.public_send(function)
+            end
           end
-        end
       end
 
       # A column alias, quoted by the adapter, so that the name asked for is
@@ -1356,12 +1347,11 @@ module ActiveRecord
         end
 
         private
-
-        def alias_sql(model)
-          name = alias_name.to_s
-          return name unless quote
-          model.with_connection {|connection| connection.quote_column_name(name) }
-        end
+          def alias_sql(model)
+            name = alias_name.to_s
+            return name unless quote
+            model.with_connection { |connection| connection.quote_column_name(name) }
+          end
       end
 
       class Ordering < Node
@@ -1402,7 +1392,7 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          arel_args = args.map {|arg| to_arel_argument(arg, table, model) }
+          arel_args = args.map { |arg| to_arel_argument(arg, table, model) }
           Arel::Nodes::NamedFunction.new(name, arel_args)
         end
       end
@@ -1517,17 +1507,16 @@ module ActiveRecord
         end
 
         private
-
-        # A relation compared against a column has to yield a single value, so
-        # unlike In there is no sensible default select list to fall back on.
-        def scalar_subquery(relation)
-          if relation.select_values.empty?
-            raise ArgumentError,
-              "#{operator} needs a subquery selecting one value; add a select"
+          # A relation compared against a column has to yield a single value, so
+          # unlike In there is no sensible default select list to fall back on.
+          def scalar_subquery(relation)
+            if relation.select_values.empty?
+              raise ArgumentError,
+                "#{operator} needs a subquery selecting one value; add a select"
+            end
+            relation = relation.send(:apply_join_dependency) if relation.eager_loading?
+            relation.arel
           end
-          relation = relation.send(:apply_join_dependency) if relation.eager_loading?
-          relation.arel
-        end
       end
 
       # IS TRUE, IS FALSE and their negations, which every adapter spells the
@@ -1543,7 +1532,7 @@ module ActiveRecord
 
         def to_arel(table, model)
           literal = value ? Arel::Nodes::True.new : Arel::Nodes::False.new
-          Arel::Nodes::InfixOperation.new(negated ? 'IS NOT' : 'IS',
+          Arel::Nodes::InfixOperation.new(negated ? "IS NOT" : "IS",
             to_arel_operand(operand, table, model), literal)
         end
       end
@@ -1554,19 +1543,18 @@ module ActiveRecord
       # selects the model's primary key.
       module SetSubquery
         private
-
-        def set_subquery(relation, spelling)
-          relation = relation.send(:apply_join_dependency) if relation.eager_loading?
-          if relation.select_values.empty?
-            model = relation.model
-            if model.composite_primary_key?
-              raise ArgumentError,
-                "Cannot map composite primary key #{model.primary_key} to #{spelling}"
+          def set_subquery(relation, spelling)
+            relation = relation.send(:apply_join_dependency) if relation.eager_loading?
+            if relation.select_values.empty?
+              model = relation.model
+              if model.composite_primary_key?
+                raise ArgumentError,
+                  "Cannot map composite primary key #{model.primary_key} to #{spelling}"
+              end
+              relation = relation.select(relation.table[model.primary_key])
             end
-            relation = relation.select(relation.table[model.primary_key])
+            relation.arel
           end
-          relation.arel
-        end
       end
 
       # IN for a list of values, BETWEEN for a range, IN (SELECT ...) for a
@@ -1601,11 +1589,11 @@ module ActiveRecord
             range = QuotedRange.new(lower, upper, values.exclude_end?)
             arel_operand.public_send(negated ? :not_between : :between, range)
           when ActiveRecord::Relation
-            arel_operand.public_send(negated ? :not_in : :in, set_subquery(values, 'IN'))
+            arel_operand.public_send(negated ? :not_in : :in, set_subquery(values, "IN"))
           else
             arg = values
             if arg.is_a?(::Array)
-              arg = arg.map {|value| quote_value(value, table, model) }
+              arg = arg.map { |value| quote_value(value, table, model) }
               return json_list(arel_operand, arg) if json_list?(model)
             end
             arel_operand.public_send(negated ? :not_in : :in, arg)
@@ -1613,45 +1601,44 @@ module ActiveRecord
         end
 
         private
-
-        # An element that is already an expression resolves, a symbol is a
-        # column here as everywhere, a number is quoted as itself, and the
-        # rest ride for Arel to cast by the column.
-        def quote_value(value, table, model)
-          case value
-          when Node then value.to_arel(table, model)
-          when ::Symbol then column_operand(value, table, model)
-          else quote_number(value)
+          # An element that is already an expression resolves, a symbol is a
+          # column here as everywhere, a number is quoted as itself, and the
+          # rest ride for Arel to cast by the column.
+          def quote_value(value, table, model)
+            case value
+            when Node then value.to_arel(table, model)
+            when ::Symbol then column_operand(value, table, model)
+            else quote_number(value)
+            end
           end
-        end
 
-        # MySQL leaves IN and BETWEEN out of its JSON comparisons -- they
-        # fall back to another comparison entirely -- so on it a JSON set is
-        # spelled as the comparisons it means: the closed range as its two
-        # bounds, the list as one equality per element.  That names the dug
-        # value once per element, the price SQLite's XOR pays per operand;
-        # a negated range needs nothing, Arel writing it as two comparisons
-        # everywhere.  MariaDB never gets this far: the endpoints refuse as
-        # they resolve.
-        def json_between?(model)
-          (values.begin.is_a?(JsonLiteral) || values.end.is_a?(JsonLiteral)) &&
-            AST.adapter_family(model) == :mysql
-        end
-
-        def json_list?(model)
-          values.any? {|value| value.is_a?(JsonLiteral) } &&
-            AST.adapter_family(model) == :mysql
-        end
-
-        def json_list(arel_operand, elements)
-          comparisons = elements.map do |element|
-            negated ? arel_operand.not_eq(element) : arel_operand.eq(element)
+          # MySQL leaves IN and BETWEEN out of its JSON comparisons -- they
+          # fall back to another comparison entirely -- so on it a JSON set is
+          # spelled as the comparisons it means: the closed range as its two
+          # bounds, the list as one equality per element.  That names the dug
+          # value once per element, the price SQLite's XOR pays per operand;
+          # a negated range needs nothing, Arel writing it as two comparisons
+          # everywhere.  MariaDB never gets this far: the endpoints refuse as
+          # they resolve.
+          def json_between?(model)
+            (values.begin.is_a?(JsonLiteral) || values.end.is_a?(JsonLiteral)) &&
+              AST.adapter_family(model) == :mysql
           end
-          joined = comparisons.inject do |so_far, piece|
-            negated ? so_far.and(piece) : so_far.or(piece)
+
+          def json_list?(model)
+            values.any? { |value| value.is_a?(JsonLiteral) } &&
+              AST.adapter_family(model) == :mysql
           end
-          negated ? Arel::Nodes::Grouping.new(joined) : joined
-        end
+
+          def json_list(arel_operand, elements)
+            comparisons = elements.map do |element|
+              negated ? arel_operand.not_eq(element) : arel_operand.eq(element)
+            end
+            joined = comparisons.inject do |so_far, piece|
+              negated ? so_far.and(piece) : so_far.or(piece)
+            end
+            negated ? Arel::Nodes::Grouping.new(joined) : joined
+          end
       end
 
       # ANY and ALL, which stand on the right of a comparison and say how many
@@ -1699,7 +1686,7 @@ module ActiveRecord
       end
 
       class Like < Predicate
-        ESCAPE = "\\".freeze
+        ESCAPE = "\\"
 
         # Escapes % and _ so that they match literally. The pattern built from
         # the result must be used with ESCAPE, since SQLite has no default
@@ -1711,8 +1698,8 @@ module ActiveRecord
         # ORs one LIKE per pattern, for the shortcuts that accept several
         # literals the way String#start_with? does.
         def self.any(operand, patterns)
-          patterns.map {|pattern| new(operand, pattern, ESCAPE) }.
-            inject {|left, right| Or.new(left, right) }
+          patterns.map { |pattern| new(operand, pattern, ESCAPE) }.
+            inject { |left, right| Or.new(left, right) }
         end
 
         attr_reader :operand, :pattern, :escape, :case_sensitive, :negated
@@ -1796,21 +1783,20 @@ module ActiveRecord
         end
 
         private
-
-        # PostgreSQL array input syntax: elements joined by commas inside
-        # braces, and an element is double-quoted whenever it is empty, spells
-        # NULL, or contains a character the parser treats specially.
-        def array_literal
-          encoded = elements.map do |value|
-            s = value.to_s
-            if s.empty? || s.casecmp?("null") || s.match?(/[\s{},"\\]/)
-              "\"#{s.gsub(/["\\]/) {|c| "\\#{c}" }}\""
-            else
-              s
+          # PostgreSQL array input syntax: elements joined by commas inside
+          # braces, and an element is double-quoted whenever it is empty, spells
+          # NULL, or contains a character the parser treats specially.
+          def array_literal
+            encoded = elements.map do |value|
+              s = value.to_s
+              if s.empty? || s.casecmp?("null") || s.match?(/[\s{},"\\]/)
+                "\"#{s.gsub(/["\\]/) { |c| "\\#{c}" }}\""
+              else
+                s
+              end
             end
+            "{#{encoded.join(',')}}"
           end
-          "{#{encoded.join(',')}}"
-        end
       end
 
       # Regular expression match: REGEXP on MySQL, ~ on PostgreSQL.  SQLite has
@@ -1834,19 +1820,18 @@ module ActiveRecord
         end
 
         private
-
-        # A Regexp literal reads naturally with =~, but only its source crosses
-        # over; the database has its own dialect and no notion of Ruby's flags.
-        # Dropping a flag would silently change what the query matches, so
-        # anything beyond a plain literal is refused rather than ignored.
-        def regexp_source(regexp)
-          unless regexp.options.zero?
-            raise ArgumentError,
-              "#{regexp.inspect} has options that SQL cannot express; " \
-              "pass the pattern as a string instead"
+          # A Regexp literal reads naturally with =~, but only its source crosses
+          # over; the database has its own dialect and no notion of Ruby's flags.
+          # Dropping a flag would silently change what the query matches, so
+          # anything beyond a plain literal is refused rather than ignored.
+          def regexp_source(regexp)
+            unless regexp.options.zero?
+              raise ArgumentError,
+                "#{regexp.inspect} has options that SQL cannot express; " \
+                "pass the pattern as a string instead"
+            end
+            regexp.source
           end
-          regexp.source
-        end
       end
 
       class And < Predicate

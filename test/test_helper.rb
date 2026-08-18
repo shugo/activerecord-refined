@@ -1,12 +1,14 @@
-$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
+# frozen_string_literal: true
+
+$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), "..", "lib"))
 $LOAD_PATH.unshift(File.dirname(__FILE__))
 
-require 'minitest/autorun'
+require "minitest/autorun"
 Bundler.require
 
-require 'active_record'
-require 'etc'
-require 'json'
+require "active_record"
+require "etc"
+require "json"
 
 # Which database to generate SQL for.  The tests only build queries, so any
 # server reachable without further setup will do; the devcontainer runs
@@ -19,21 +21,21 @@ require 'json'
 #   ADAPTER=mysql2 DB_PORT=3307 rake test   # MySQL, where the devcontainer
 #                                           # serves it (rake test:mysql8)
 #   rake test:all              # all of the above in turn
-ADAPTER = ENV.fetch('ADAPTER', 'sqlite3')
+ADAPTER = ENV.fetch("ADAPTER", "sqlite3")
 
-DATABASE_NAME = 'activerecord_refined_test'.freeze
+DATABASE_NAME = "activerecord_refined_test"
 
 DATABASE_CONFIG =
   case ADAPTER
-  when 'sqlite3'
-    {adapter: 'sqlite3', database: ':memory:'}
-  when 'postgresql', 'mysql2'
+  when "sqlite3"
+    { adapter: "sqlite3", database: ":memory:" }
+  when "postgresql", "mysql2"
     {
       adapter: ADAPTER,
-      host: ENV.fetch('DB_HOST', '127.0.0.1'),
-      port: ENV['DB_PORT']&.to_i,
-      username: ENV.fetch('DB_USERNAME') { Etc.getlogin },
-      password: ENV['DB_PASSWORD'],
+      host: ENV.fetch("DB_HOST", "127.0.0.1"),
+      port: ENV["DB_PORT"]&.to_i,
+      username: ENV.fetch("DB_USERNAME") { Etc.getlogin },
+      password: ENV["DB_PASSWORD"],
       database: DATABASE_NAME,
     }
   else
@@ -41,8 +43,8 @@ DATABASE_CONFIG =
   end
 
 # The server databases persist between runs, so create one on first use.
-unless ADAPTER == 'sqlite3'
-  maintenance_database = ADAPTER == 'postgresql' ? 'postgres' : 'mysql'
+unless ADAPTER == "sqlite3"
+  maintenance_database = ADAPTER == "postgresql" ? "postgres" : "mysql"
   ActiveRecord::Base.establish_connection(
     DATABASE_CONFIG.merge(database: maintenance_database))
   begin
@@ -58,8 +60,8 @@ module SqlAssertions
   # Arel spells the regexp match differently per adapter, and raises on the
   # ones missing from this list.
   REGEXP_OPERATORS = {
-    'postgresql' => ['~', '!~'],
-    'mysql2' => ['REGEXP', 'NOT REGEXP'],
+    "postgresql" => ["~", "!~"],
+    "mysql2" => ["REGEXP", "NOT REGEXP"],
   }.freeze
 
   def skip_without_regexp_support
@@ -69,25 +71,25 @@ module SqlAssertions
   # upsert_all wants to be told which unique index it is upserting against,
   # except on MySQL, which does not accept being told.
   def upsert_target
-    ADAPTER == 'mysql2' ? {} : {unique_by: :page}
+    ADAPTER == "mysql2" ? {} : { unique_by: :page }
   end
 
   # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, SQLite neither.
   def skip_without_json_containment
-    skip "#{ADAPTER} has no JSON containment" if ADAPTER == 'sqlite3'
+    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3"
   end
 
   # Comparing a JSON value with a Ruby one is for jsonb and MySQL's JSON
   # type; SQLite and MariaDB have only the text.
   def skip_without_json_comparisons
-    return if ADAPTER == 'postgresql'
-    return if ADAPTER == 'mysql2' && !mariadb?
+    return if ADAPTER == "postgresql"
+    return if ADAPTER == "mysql2" && !mariadb?
     skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no JSON comparison"
   end
 
   # MySQL is the one without a FULL OUTER JOIN, and so is MariaDB.
   def skip_without_full_outer_joins
-    skip "#{ADAPTER} has no full outer join" if ADAPTER == 'mysql2'
+    skip "#{ADAPTER} has no full outer join" if ADAPTER == "mysql2"
   end
 
   # MariaDB's json is a checked longtext, which Active Record sees as a string
@@ -103,54 +105,54 @@ module SqlAssertions
   # How each adapter spells a cast to a whole number: MySQL casts to SIGNED
   # and has no integer at all, PostgreSQL the other way about, SQLite either.
   def integer_type
-    ADAPTER == 'mysql2' ? 'signed' : 'integer'
+    ADAPTER == "mysql2" ? "signed" : "integer"
   end
 
   def mariadb?
-    ADAPTER == 'mysql2' && ActiveRecord::Base.connection.mariadb?
+    ADAPTER == "mysql2" && ActiveRecord::Base.connection.mariadb?
   end
 
   # GROUPING SETS, ROLLUP and CUBE are PostgreSQL's; MySQL has only WITH
   # ROLLUP, which carries rollup and only rollup, and SQLite has none.
   def skip_without_grouping_sets
-    skip "#{ADAPTER} has no GROUPING SETS" unless ADAPTER == 'postgresql'
+    skip "#{ADAPTER} has no GROUPING SETS" unless ADAPTER == "postgresql"
   end
 
   def skip_without_rollup
-    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == 'sqlite3'
+    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3"
   end
 
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
   def skip_without_lateral
-    return if ADAPTER == 'postgresql'
-    skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no LATERAL" if ADAPTER != 'mysql2' || mariadb?
+    return if ADAPTER == "postgresql"
+    skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no LATERAL" if ADAPTER != "mysql2" || mariadb?
   end
 
   # DISTINCT ON is PostgreSQL's; Arel refuses to write it for the others.
   def skip_without_distinct_on
-    skip "#{ADAPTER} has no DISTINCT ON" unless ADAPTER == 'postgresql'
+    skip "#{ADAPTER} has no DISTINCT ON" unless ADAPTER == "postgresql"
   end
 
   # ANY and ALL over a subquery are PostgreSQL's and MySQL's alike; SQLite
   # has neither quantifier.
   def skip_without_quantifiers
-    skip "#{ADAPTER} has no ANY or ALL" if ADAPTER == 'sqlite3'
+    skip "#{ADAPTER} has no ANY or ALL" if ADAPTER == "sqlite3"
   end
 
   # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; SQLite has
   # none of the three, nor BIT_COUNT.
   def skip_without_bit_aggregates
-    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == 'sqlite3'
+    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3"
   end
 
   def skip_without_array_columns
-    skip "#{ADAPTER} has no array columns" unless ADAPTER == 'postgresql'
+    skip "#{ADAPTER} has no array columns" unless ADAPTER == "postgresql"
   end
 
   # MySQL has no NULLS FIRST/LAST; Arel emulates it with a leading IS NULL
   # ordering, so only the resulting order is portable, not the SQL.
   def skip_without_nulls_ordering_syntax
-    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if ADAPTER == 'mysql2'
+    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if ADAPTER == "mysql2"
   end
 
   def regexp_operator
@@ -166,7 +168,7 @@ module SqlAssertions
   # an escape character there.  Normalising both lets a single expectation
   # cover every adapter.
   def normalize_sql(sql)
-    sql.tr('`', '"').gsub("\\\\") { "\\" }
+    sql.tr("`", '"').gsub("\\\\") { "\\" }
   end
 
   # Takes a relation or the SQL string of one.
@@ -216,11 +218,11 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
       t.integer :age
       t.boolean :active
       t.integer :flags
-      t.string :tags, array: true if ADAPTER == 'postgresql'
+      t.string :tags, array: true if ADAPTER == "postgresql"
     end
-    create_table(:authors) {|t| t.string :name}
-    create_table(:posts) {|t| t.string :title; t.integer :author_id}
-    create_table(:nodes) {|t| t.string :name; t.integer :parent_id}
+    create_table(:authors) { |t| t.string :name }
+    create_table(:posts) { |t| t.string :title; t.integer :author_id }
+    create_table(:nodes) { |t| t.string :name; t.integer :parent_id }
     create_table(:tallies) do |t|
       t.string :page
       t.integer :hits
@@ -228,7 +230,7 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
     end
     create_table(:docs) do |t|
       t.string :name
-      ADAPTER == 'postgresql' ? t.jsonb(:meta) : t.json(:meta)
+      ADAPTER == "postgresql" ? t.jsonb(:meta) : t.json(:meta)
     end
   end
 end

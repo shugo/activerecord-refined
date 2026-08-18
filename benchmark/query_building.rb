@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # Compares the cost of building the same queries through this gem's block
 # DSL and through Active Record's other argument styles: hash conditions,
 # string conditions, raw Arel, and relation and/or chains.  Only query
@@ -16,7 +18,7 @@ require "activerecord-refined"
 ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Schema.verbose = false
 ActiveRecord::Schema.define do
-  create_table(:users) {|t| t.string :name; t.integer :age }
+  create_table(:users) { |t| t.string :name; t.integer :age }
 end
 
 class User < ActiveRecord::Base; end
@@ -47,12 +49,12 @@ VARIANTS = {
     "relation" => -> { User.where(age: 18..).and(User.where(name: "alice").or(User.where(name: "bob"))).to_sql },
     "block"    => -> { User.where { (:age >= 18) & ((:name == "alice") | (:name == "bob")) }.to_sql },
   },
-}
+}.freeze
 
 puts "=== generated SQL (sanity) ==="
 VARIANTS.each do |group, variants|
   puts "--- #{group} ---"
-  variants.each {|name, thunk| puts "  #{name.ljust(8)} #{thunk.call}" }
+  variants.each { |name, thunk| puts "  #{name.ljust(8)} #{thunk.call}" }
 end
 
 puts
@@ -61,7 +63,7 @@ VARIANTS.each do |group, variants|
   puts "--- #{group} ---"
   Benchmark.ips do |x|
     x.config(warmup: 0.5, time: 2)
-    variants.each {|name, thunk| x.report(name, &thunk) }
+    variants.each { |name, thunk| x.report(name, &thunk) }
     x.compare!
   end
 end
