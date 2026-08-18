@@ -308,7 +308,8 @@ show Author.select {
 }
 
 # MySQL has no FILTER clause and gets the case that means the same thing.
-# This page is on SQLite, which has one.
+# SQLite and PostgreSQL both have one, so the SQL here says FILTER
+# whichever database is above.
 sql Author.select { count(:*).filter { :age < 50 } }`,
       },
       {
@@ -635,8 +636,8 @@ show Post.select { [bit_and(:flags).as(:common), bit_or(:flags).as(:any)] }`,
         slug: 'json-compare',
         code: `# jsonb compares numbers as numbers and documents structurally, so a
 # dug value compares with a Ruby one directly -- on PostgreSQL, and on
-# MySQL 8; this page on SQLite says so.  dig_text with a cast is the
-# portable spelling.
+# MySQL 8.  On SQLite this says so instead; dig_text with a cast is
+# the portable spelling.
 show Doc.where { :meta.dig(:stars) >= 10 }
 
 # A document compares whole, key order and spelling aside.
