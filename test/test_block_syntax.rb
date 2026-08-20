@@ -1266,6 +1266,55 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { User.select { fn(INJECTION.to_sym, :name) } }
   end
 
+  # op is fn for operators: the operator is emitted as written, both sides
+  # are parenthesized expressions or quoted values, and the whole is
+  # parenthesized too, its precedence being unknown.
+  def test_op
+    seed_for_filter
+    assert_sql(/WHERE \("users"."age" = 20\)/, User.where { op("=", :age, 20) })
+    assert_equal(["a"], User.where { op("=", :age, 20) }.pluck(:name))
+    assert_equal(21, User.where { op("=", :age, 20) }.
+      select { op("+", :age, 1).as(:v) }.take.v.to_i)
+    assert_sql(/\(\("users"."age" \+ 1\) > 30\)/,
+      User.where { op(">", op("+", :age, 1), 30) })
+  end
+
+  def test_op_with_an_array_column
+    skip_without_array_columns
+    User.delete_all
+    User.create!(name: "a", tags: %w[ruby sql])
+    assert_equal(["a"], User.where { op("&&", :tags, "{sql,jit}") }.pluck(:name))
+    assert_equal([], User.where { op("&&", :tags, "{jit}") }.pluck(:name))
+  end
+
+  # A dug value on either side keeps its own grouping, so the unknown
+  # operator cannot capture its left side.
+  def test_op_parenthesizes_a_dug_side
+    skip "the <@ operator is PostgreSQL's" unless ADAPTER == "postgresql"
+    seed_docs
+    assert_equal(["one"],
+      Doc.where { op("<@", :meta.dig(:a), '{"b": "deep", "c": 1}') }.pluck(:name))
+    assert_sql(/\(\("docs"."meta" #> '\{"a"\}'\) <@ '\{"b": "deep", "c": 1\}'\)/,
+      Doc.where { op("<@", :meta.dig(:a), '{"b": "deep", "c": 1}') })
+  end
+
+  # The operator is the one part written into the SQL as given, so only
+  # PostgreSQL's operator characters are admitted: no letter, no space, no
+  # quote.
+  def test_op_rejects_what_is_not_an_operator
+    assert_raises(ArgumentError) { User.where { op("<@; DROP TABLE users", :name, 1) } }
+    assert_raises(ArgumentError) { User.where { op("OR", :name, 1) } }
+    assert_raises(ArgumentError) { User.where { op(INJECTION, :name, 1) } }
+    e = assert_raises(ArgumentError) { User.where { op("= 1 --", :name, 1) } }
+    assert_match(/not a plain operator/, e.message)
+  end
+
+  def test_op_takes_no_ruby_collection
+    e = assert_raises(ArgumentError) { User.where { op("=", :name, { a: 1 }) } }
+    assert_match(/to_json for a document/, e.message)
+    assert_raises(ArgumentError) { User.where { op("=", :name, [1, 2]) } }
+  end
+
   def test_plain_names_are_still_accepted
     assert_sql(/AS "post_count"/, User.select { :name.as(:post_count) }.to_sql)
     assert_sql(/AS "名前"/, User.select { :name.as(:名前) }.to_sql)

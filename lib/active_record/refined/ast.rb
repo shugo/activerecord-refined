@@ -12,6 +12,10 @@ module ActiveRecord
       # A SQL type as cast writes it: words, at most parenthesized with
       # lengths -- double precision, decimal(10,2).
       TYPE_NAME = /\A[[:alpha:]_][[:alnum:]_ ]*(\(\d+(, ?\d+)?\))?\z/
+      # The characters PostgreSQL allows an operator to be made of, the
+      # widest operator alphabet of the three; op admits nothing else, so a
+      # letter, a space or a quote never reaches the SQL as an operator.
+      OPERATOR = %r{\A[+\-*/<>=~!@\#%^&|`?]+\z}
 
       # Which family of spellings an adapter belongs to.  MariaDB answers to
       # the mysql2 adapter and is counted with MySQL, though the two part
@@ -1628,6 +1632,49 @@ module ActiveRecord
           arel_args = args.map { |arg| to_arel_argument(arg, table, model) }
           Arel::Nodes::NamedFunction.new(name, arel_args)
         end
+      end
+
+      # Escape hatch for operators without a spelling of their own, the way
+      # fn is for functions.  The operator is emitted as written -- whether
+      # the adapter has it is the caller's assertion, as fn's names are --
+      # and the values ride as quoted literals, so on PostgreSQL an untyped
+      # one takes the type of the operand beside it.
+      class Operation < Node
+        include Predications
+        include Arithmetics
+
+        attr_reader :operator, :left, :right
+
+        def initialize(operator, left, right)
+          @operator = AST.check_name(operator, OPERATOR, "operator").to_s
+          @left = check_side(left)
+          @right = check_side(right)
+        end
+
+        def to_arel(table, model)
+          Arel::Nodes::Grouping.new(
+            Arel::Nodes::InfixOperation.new(
+              operator, side(left, table, model), side(right, table, model)))
+        end
+
+        private
+          # An expression operand is parenthesized: an unknown operator's
+          # precedence is unknown too, and PostgreSQL reads its named
+          # operators from the left, so a bare infix on the right would take
+          # the new operator's left side into its own.
+          def side(operand, table, model)
+            arel = to_arel_argument(operand, table, model)
+            operand.is_a?(Node) ? Arel::Nodes::Grouping.new(arel) : arel
+          end
+
+          def check_side(operand)
+            if operand.is_a?(::Hash) || operand.is_a?(::Array) || operand.is_a?(::Set)
+              raise ArgumentError,
+                "#{operand.inspect} has no one SQL spelling; a string says it " \
+                "in the adapter's own, to_json for a document"
+            end
+            operand
+          end
       end
 
       # ROW_NUMBER and its kind: functions that say nothing without a window.

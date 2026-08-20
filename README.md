@@ -547,6 +547,27 @@ Post.select { fn(:date_trunc, "day", :created_at).as(:day) }
 # SELECT date_trunc('day', "posts"."created_at") AS day
 ```
 
+`op` is the same escape hatch for operators — PostgreSQL alone has dozens
+with no method here, `<@` and `&&` and the geometric ones among them. The
+operator is emitted as written and, like `fn`'s names, whether the adapter
+has it is your assertion; it is checked against the characters PostgreSQL
+allows an operator, so a letter, a space or a quote is refused rather than
+written into the SQL. Both sides take what `fn`'s arguments take — a
+column, an expression, a value quoted by the adapter — and a value is
+spelled in the adapter's own syntax, `to_json` saying a document, `'{a,b}'`
+an array; a Ruby Hash or Array is refused rather than guessed at. The
+result is parenthesized, its precedence being unknown, and so is an
+expression on either side, so a dug value cannot be re-grouped out from
+under it:
+
+```ruby
+Post.where { op("&&", :tags, "{ruby,sql}") }
+# WHERE ("posts"."tags" && '{ruby,sql}')
+
+Post.where { op("<@", :meta.dig(:author), { name: "alice" }.to_json) }
+# WHERE (("meta" #> '{author}') <@ '{"name":"alice"}')
+```
+
 Values are quoted by the adapter wherever they appear, as they are in
 Active Record, and so is a column alias. That is what makes the name asked for
 the name that comes back: unquoted, PostgreSQL folds a capital away where the

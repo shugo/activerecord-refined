@@ -240,6 +240,11 @@ module ActiveRecord
           AST.check_name(name, AST::FUNCTION_NAME, "function name").to_s, args)
       end
 
+      # The same escape hatch for operators: op("&&", :tags, "{ruby,sql}").
+      def op(operator, left, right)
+        AST::Operation.new(operator, left, right)
+      end
+
       # BIT_COUNT.  MySQL counts the bits of a number; PostgreSQL counts those
       # of a bit string, so the argument is cast, and to bit(64) because that
       # is what makes a negative come back as MySQL has it -- 64 bits of two's

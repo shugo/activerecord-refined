@@ -146,6 +146,14 @@ show("fn, for a function without a method of its own",
   LineItem.select { fn(:hex, :price).as(:hex_price) },
   LineItem.select { fn(:hex, :price).as(:hex_price) }.map(&:hex_price))
 
+# op is the same for operators: the operator is emitted as written --
+# checked against the operator characters -- and both sides are quoted
+# values, columns or expressions.  What it gives compares like any other
+# expression.
+show("op, for an operator without a method of its own",
+  LineItem.where { op("%", :quantity, 2) == 1 },
+  LineItem.where { op("%", :quantity, 2) == 1 }.pluck(:sku))
+
 # 4. Ordering.  asc and desc take nulls_first / nulls_last.  MySQL has no
 #    such syntax, but Arel emulates it there, so the order is the same
 #    everywhere.
