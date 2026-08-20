@@ -986,9 +986,11 @@ module ActiveRecord
         end
       end
 
-      # Whether a key is in the document.  PostgreSQL has an operator for it,
-      # ?, which is also what a bind parameter looks like to several drivers;
-      # the function it is shorthand for says the same thing and survives.
+      # Whether a key is in the document.  PostgreSQL's spelling is the ?
+      # operator rather than jsonb_exists, the function it is shorthand for,
+      # because a GIN index matches the operator and never the function.  A
+      # ? is a bind placeholder only to sanitize_sql, which none of the SQL
+      # written here passes through.
       class JsonHasKey < Predicate
         attr_reader :operand, :key
 
@@ -1003,7 +1005,7 @@ module ActiveRecord
           path = Arel::Nodes.build_quoted("$.#{key}")
           case AST.adapter_family(model)
           when :postgresql
-            Arel::Nodes::NamedFunction.new("jsonb_exists", [document, name])
+            Arel::Nodes::InfixOperation.new(:"?", document, name)
           when :mysql
             Arel::Nodes::NamedFunction.new(
               "JSON_CONTAINS_PATH", [document, Arel::Nodes.build_quoted("one"), path])

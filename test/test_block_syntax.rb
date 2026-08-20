@@ -2419,6 +2419,13 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(%w[one two], Doc.where { :meta.key?(:n) }.order(:name).pluck(:name))
   end
 
+  # The ? spelling is the one a GIN index matches; jsonb_exists, the
+  # function it is shorthand for, never is.
+  def test_key_is_the_indexable_operator_on_postgresql
+    skip "the ? operator is PostgreSQL's" unless ADAPTER == "postgresql"
+    assert_sql(/"docs"."meta" \? 'tags'/, Doc.where { :meta.key?(:tags) })
+  end
+
   def test_contains
     skip_without_json_containment
     seed_docs

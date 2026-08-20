@@ -751,7 +751,7 @@ three:
 | --- | --- | --- | --- |
 | `dig(:a, :b)` | `#> '{a,b}'` | `-> '$.a.b'` | `JSON_EXTRACT(…, '$.a.b')` |
 | `dig_text(:a, :b)` | `#>> '{a,b}'` | `->> '$.a.b'` | `JSON_UNQUOTE(JSON_EXTRACT(…, '$.a.b'))` |
-| `key?(:a)` | `jsonb_exists(…, 'a')` | `json_type(…, '$.a') IS NOT NULL` | `JSON_CONTAINS_PATH(…, 'one', '$.a')` |
+| `key?(:a)` | `? 'a'` | `json_type(…, '$.a') IS NOT NULL` | `JSON_CONTAINS_PATH(…, 'one', '$.a')` |
 | `contains?(…)` | `@>` | — | `JSON_CONTAINS` |
 
 MariaDB answers to the `mysql2` adapter and has none of `->` or `->>`, so the
