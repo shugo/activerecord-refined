@@ -212,6 +212,19 @@ show Post.select { [:title, (:flags ^ 1).as(:toggled)] }
 Post.where { :published & :published }`,
       },
       {
+        title: 'op reaches any operator',
+        slug: 'op',
+        code: `# An operator without a method of its own goes through op.  Both sides
+# are quoted values, columns or expressions; what it gives compares
+# like any other expression.
+show Post.where { op("%", :likes, 2) == 1 }
+
+# The operator itself is written into the SQL as given, so only the
+# operator characters are admitted: a letter, a space or a quote is
+# refused.
+Post.where { op("= 1 OR 1", :id, 1) }`,
+      },
+      {
         title: 'CASE',
         slug: 'case',
         code: `# Two shapes: an operand to compare each when against, or a condition on
@@ -340,18 +353,6 @@ sql Post.select { fn(:hex, :id).as(:h) }
 # A function name and a column alias are written into the SQL as given,
 # not quoted, so they have to be plain names.
 Post.select { fn(:'evil"; DROP TABLE posts; --', 1) }`,
-      },
-      {
-        title: 'op reaches any operator',
-        slug: 'op',
-        code: `# op is fn for operators.  Both sides are quoted values, columns or
-# expressions; what it gives compares like any other expression.
-show Post.where { op("%", :likes, 2) == 1 }
-
-# The operator itself is written into the SQL as given, so only the
-# operator characters are admitted: a letter, a space or a quote is
-# refused.
-Post.where { op("= 1 OR 1", :id, 1) }`,
       },
       {
         title: 'Window functions',
