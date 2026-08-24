@@ -448,11 +448,11 @@ show Doc.where { :meta.dig_text(:stars) > 6 }`,
         code: `# bury sets what dig reads: the last argument is the value, the rest are
 # the path to it.  The document comes back changed rather than being
 # written anywhere, so update_all is what makes it stick.
-show Doc.select { [:name, :meta.dig_text(:author, :name).as(:author)] }
+show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }
 
 Doc.where { :name == 'first' }.update_all { { meta: :meta.bury(:author, :name, 'Erin') } }
 
-show Doc.select { [:name, :meta.dig_text(:author, :name).as(:author)] }
+show Doc.select { [:name, :meta.dig(:author, :name).as(:author)] }
 
 # except takes keys out again, as Hash#except does -- keys of the
 # document, however many, rather than a path.  It gives back a document
