@@ -225,6 +225,23 @@ show Post.where { op("%", :likes, 2) == 1 }
 Post.where { op("= 1 OR 1", :id, 1) }`,
       },
       {
+        title: 'sql, the last resort',
+        slug: 'sql',
+        code: `# The one way a string means SQL inside a block.  ? and :name
+# placeholders take quoted values, and what it gives composes like any
+# expression, parenthesized where it stands as an operand.
+show Post.where { sql("length(title) > ?", 12) }
+show Post.where { sql("likes + ?", 10) * 2 >= 28 }
+
+# A string is a value in every other position, and sent .as it is one
+# at the top of a select list too.
+show Post.select { [:title, "listed".as(:state)] }
+
+# A bare string there could mean SQL or a value, so it is refused
+# rather than read either way.
+Post.select { "count(*) AS n" }`,
+      },
+      {
         title: 'CASE',
         slug: 'case',
         code: `# Two shapes: an operand to compare each when against, or a condition on
@@ -591,9 +608,8 @@ show Node.with_recursive(
 # tree you want is an ordinary where, asked afterwards -- the CTE is not
 # rebuilt for each root, which is what makes it worth naming.
 #
-# 0 is a value rather than SQL: at the top of a select list a bare string
-# would be SQL, so numbers say .as directly and anything else says
-# value(...).as.
+# 0 is a value: numbers and strings say .as directly at the top of a
+# select list, and anything else says value(...).as.
 forest = Node.with_recursive(
   tree: [
     Node.where { :parent_id.null? }.

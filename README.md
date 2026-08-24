@@ -568,6 +568,28 @@ Post.where { op("<@", :meta.dig(:author), { name: "alice" }.to_json) }
 # WHERE (("meta" #> '{author}') <@ '{"name":"alice"}')
 ```
 
+`sql` is the last resort, for what neither `fn` nor `op` can spell: the
+statement goes out as written. It is the one way a string means SQL inside a
+block — everywhere else a string is a value — so writing SQL is always asked
+for by name, and an interpolation has a spelling that is not it: `?` and
+`:name` placeholders take values quoted by the adapter, through
+`sanitize_sql_array`. A `?` is rewritten only when there are positional binds
+to put in it, so PostgreSQL's `?` operators can share a statement with named
+binds, or with none. The result carries the predications and arithmetic, and
+is parenthesized where it stands inside a larger expression — its precedence
+is whatever was written — but comes out bare at the top of a select list,
+where parentheses would refuse an alias written into the string:
+
+```ruby
+Post.where { sql("length(title) > ?", 10) }
+# WHERE (length(title) > 10)
+
+Post.where { sql("score + ?", 10) * 2 >= 60 }
+# WHERE (score + 10) * 2 >= 60
+
+Post.select { sql("count(*) FILTER (WHERE score > 0) AS positive") }
+```
+
 Values are quoted by the adapter wherever they appear, as they are in
 Active Record, and so is a column alias. That is what makes the name asked for
 the name that comes back: unquoted, PostgreSQL folds a capital away where the
@@ -695,11 +717,12 @@ number, the others as a negative one, and the bits are the same either way.
 
 One place asks for a value to be said out loud: the top of a select list.
 Everywhere else a bare literal is already a value — `where { :age > 18 }`,
-`concat(:name, '-x')` — but Active Record reads a string in `select` as SQL,
-so `value` is how you ask for the other meaning. It carries the predications
-and arithmetic with it, so a literal can be compared and combined like
-anything else. Numbers have a shorthand, since nothing else could be meant by
-one:
+`concat(:name, '-x')` — but a bare string at the top of the list would be SQL
+to Active Record and a value everywhere else in the block, so it is refused
+rather than read either way: `sql` says the SQL, `value` the value. `value`
+carries the predications and arithmetic with it, so a literal can be compared
+and combined like anything else, and numbers and strings have a shorthand,
+since a literal that has been sent `as` has already said it is a value:
 
 ```ruby
 Node.select { [:id, value(0).as(:depth)] }
@@ -707,14 +730,12 @@ Node.select { [:id, value(0).as(:depth)] }
 
 Node.select { [:id, 0.as(:depth)] }         # the same thing
 
-Post.select { [:title, value("draft").as(:state)] }
+Post.select { [:title, "draft".as(:state)] }
 # SELECT "posts"."title", 'draft' AS state FROM "posts"
 ```
 
-The shorthand is `Integer` and `Float` only. `String` keeps its two meanings —
-SQL in a select list, a value everywhere else — and refining it would make the
-same literal mean one thing or the other depending on whether it had been sent
-a message.
+What the shorthand does not cover, `value` still spells: `value(true)`,
+`value(nil)`, or a literal that goes on to be compared rather than selected.
 
 `CASE` is grammar rather than a function, and has two shapes. With an operand, each `when` is
 something to compare it against; without one, each `when` carries a condition

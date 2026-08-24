@@ -481,11 +481,11 @@ module ActiveRecord
 
       # A literal standing where an expression would: `select { value(0).as(:depth) }`.
       #
-      # Values reach the SQL quoted wherever they appear as an operand, but the
-      # top of a select list is Active Record's, and a bare string there is SQL
-      # rather than a string.  Saying `value` is how you ask for the other
-      # meaning, and it carries the predications with it, so a literal can be
-      # compared and combined like anything else.
+      # Values reach the SQL quoted wherever they appear as an operand, but a
+      # bare Ruby literal at the top of a select list is refused as saying
+      # nothing.  `value` is the spelling that quotes it there, and it carries
+      # the predications with it, so a literal can be compared and combined
+      # like anything else.
       class Value < Node
         include Predications
         include Arithmetics
@@ -498,6 +498,43 @@ module ActiveRecord
 
         def to_arel(_table, _model)
           Arel::Nodes.build_quoted(value)
+        end
+      end
+
+      # SQL as written: `sql("length(name) > ?", 10)`.  The ? and :name
+      # placeholders take quoted values through sanitize_sql_array, which
+      # needs the connection, so the binds wait here until the model is
+      # known.  Without binds the statement passes untouched -- which is
+      # what leaves PostgreSQL's ? operators writable, since only the
+      # positional-bind rewrite reads ? as a placeholder.
+      #
+      # As an operand the statement is parenthesized: its precedence is
+      # whatever was written inside.  The top of a select list gets it bare,
+      # through field_arel, where parentheses would refuse an alias written
+      # into the string.
+      class Sql < Node
+        include Predications
+        include Arithmetics
+
+        attr_reader :statement, :binds
+
+        def initialize(statement, binds)
+          unless statement.is_a?(::String)
+            raise ArgumentError,
+              "sql takes the statement as a string, not #{statement.inspect}"
+          end
+          @statement = statement
+          @binds = binds
+        end
+
+        def to_arel(_table, model)
+          Arel::Nodes::Grouping.new(field_arel(model))
+        end
+
+        def field_arel(model)
+          return Arel.sql(statement) if binds.empty?
+
+          Arel.sql(model.sanitize_sql_array([statement, *binds]))
         end
       end
 

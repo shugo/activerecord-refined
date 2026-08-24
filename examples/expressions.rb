@@ -154,6 +154,18 @@ show("op, for an operator without a method of its own",
   LineItem.where { op("%", :quantity, 2) == 1 },
   LineItem.where { op("%", :quantity, 2) == 1 }.pluck(:sku))
 
+# sql is the last resort, and the one way a string means SQL inside a block:
+# a bare string is refused there, and ? and :name placeholders take quoted
+# values.  What it gives is parenthesized wherever it stands as an operand.
+show("sql, for what neither fn nor op can spell",
+  LineItem.where { sql("price % ?", 100) == 0 },
+  LineItem.where { sql("price % ?", 100) == 0 }.pluck(:sku))
+
+# A string sent `as` is a value, like a number.
+show("a string literal in a select list",
+  LineItem.select { [:sku, "listed".as(:state)] },
+  LineItem.select { [:sku, "listed".as(:state)] }.map { |i| [i.sku, i.state] })
+
 # 4. Ordering.  asc and desc take nulls_first / nulls_last.  MySQL has no
 #    such syntax, but Arel emulates it there, so the order is the same
 #    everywhere.

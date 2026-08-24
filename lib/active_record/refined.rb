@@ -25,11 +25,8 @@ module ActiveRecord
       end
 
       # Shorthand for `value(0).as(:depth)` and the like, and arithmetic with
-      # the number on the left: 20 - :quantity.  Numbers only: a string in a
-      # select list already means SQL rather than a string, so giving String
-      # this would make the same literal mean two things depending on whether
-      # it had been sent a message.  BigDecimal is a number here because that
-      # is what a decimal column's values are.
+      # the number on the left: 20 - :quantity.  BigDecimal is a number here
+      # because that is what a decimal column's values are.
       [Integer, Float, BigDecimal].each do |klass|
         refine klass do
           import_methods AST::NumericArithmetics
@@ -37,6 +34,14 @@ module ActiveRecord
           def as(alias_name, quote: true)
             AST::As.new(AST::Value.new(self), alias_name, quote: quote)
           end
+        end
+      end
+
+      # A string is a value here as it is in every other position of a block;
+      # SQL is asked for by name, with sql().
+      refine String do
+        def as(alias_name, quote: true)
+          AST::As.new(AST::Value.new(self), alias_name, quote: quote)
         end
       end
     end
@@ -280,13 +285,22 @@ module ActiveRecord
         quantified("ALL", relation)
       end
 
+      # SQL as written, asked for by name:
+      #
+      #   where { sql("length(name) > ?", 10) }
+      #
+      # The one way a string means SQL inside a block.  ? and :name
+      # placeholders take quoted values, through sanitize_sql_array.
+      def sql(statement, *binds)
+        AST::Sql.new(statement, binds)
+      end
+
       # A literal where an expression is expected, quoted like any other value:
       #
       #   select { [:id, value(0).as(:depth)] }
       #
-      # Needed because the top of a select list is Active Record's, and a bare
-      # string there is SQL rather than a string.  Numbers have a shorthand --
-      # `0.as(:depth)` -- since nothing else could be meant by one.
+      # Numbers and strings have a shorthand -- `0.as(:depth)` -- so this is
+      # the spelling for the rest: true, nil, a date.
       def value(literal)
         AST::Value.new(literal)
       end
@@ -355,7 +369,7 @@ module ActiveRecord
     module QueryMethods
       def where(opts = nil, *rest, &block)
         if block
-          super(evaluate_block(&block).to_arel(table, klass))
+          super(to_arel_condition(evaluate_block(&block)))
         else
           super
         end
@@ -363,9 +377,7 @@ module ActiveRecord
 
       def select(*fields, &block)
         if block
-          result = evaluate_block(&block)
-          arel = Array(result).map { |node| to_arel_field(node) }
-          super(*arel, &nil)
+          super(*to_arel_fields(evaluate_block(&block)), &nil)
         else
           super
         end
@@ -373,7 +385,7 @@ module ActiveRecord
 
       def having(opts = nil, *rest, &block)
         if block
-          super(evaluate_block(&block).to_arel(table, klass))
+          super(to_arel_condition(evaluate_block(&block)))
         else
           super
         end
@@ -381,9 +393,7 @@ module ActiveRecord
 
       def order(*args, &block)
         if block
-          result = evaluate_block(&block)
-          arel = Array(result).map { |node| to_arel_field(node) }
-          super(*arel, &nil)
+          super(*to_arel_fields(evaluate_block(&block)), &nil)
         else
           super
         end
@@ -393,8 +403,7 @@ module ActiveRecord
         if block
           result = evaluate_block(&block)
           check_rollup_stands_alone(result)
-          arel = Array(result).map { |node| to_arel_field(node) }
-          super(*arel, &nil)
+          super(*to_arel_fields(result), &nil)
         else
           super
         end
@@ -596,8 +605,35 @@ module ActiveRecord
             "WITH ROLLUP takes the whole group list; group by the rollup alone"
         end
 
+        def to_arel_condition(result)
+          return result if result.is_a?(Arel::Nodes::SqlLiteral)
+          if result.is_a?(::String)
+            raise ArgumentError,
+              "#{result.inspect} is a string, not a condition; sql(...) " \
+              "writes one as SQL"
+          end
+          result.to_arel(table, klass)
+        end
+
+        # The top of a select, order or group list.  A bare string is refused
+        # rather than passed to Active Record, where it would be SQL: inside a
+        # block a string is a value in every other position, and a literal
+        # whose meaning turns on where it stands is how an interpolation
+        # becomes an injection.
+        def to_arel_fields(result)
+          Array(result).map do |node|
+            if node.is_a?(::String) && !node.is_a?(Arel::Nodes::SqlLiteral)
+              raise ArgumentError,
+                "#{node.inspect} could mean SQL or a string; " \
+                "sql(...) says the SQL, value(...) the string"
+            end
+            to_arel_field(node)
+          end
+        end
+
         def to_arel_field(node)
           case node
+          when AST::Sql then node.field_arel(klass)
           when AST::Node then node.to_arel(table, klass)
           when Symbol then table[node]
           else node

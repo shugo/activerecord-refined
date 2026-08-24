@@ -2860,9 +2860,50 @@ class TestBlockSyntax < Minitest::Test
       User.select { value(payload).as(:note) }.map(&:note))
   end
 
-  def test_a_bare_string_is_still_sql
-    assert_sql(/SELECT "users"."name", 1 \+ 1 AS two/,
-      User.select { [:name, "1 + 1 AS two"] }.to_sql)
+  def test_a_bare_string_is_refused
+    e = assert_raises(ArgumentError) { User.select { [:name, "1 + 1 AS two"] } }
+    assert_match(/sql\(\.\.\.\) says the SQL/, e.message)
+    assert_raises(ArgumentError) { User.order { "name" } }
+    assert_raises(ArgumentError) { User.group { "name" } }
+    e = assert_raises(ArgumentError) { User.where { "age > 20" } }
+    assert_match(/sql\(\.\.\.\) writes one as SQL/, e.message)
+  end
+
+  def test_sql_writes_sql
+    User.delete_all
+    User.create!(name: "alice", age: 30)
+    assert_sql(/SELECT \(1 \+ 2\) AS "v"/, User.select { sql("1 + 2").as(:v) }.to_sql)
+    assert_equal(3, User.select { sql("1 + 2").as(:v) }.first.v.to_i)
+  end
+
+  def test_sql_takes_placeholders
+    User.delete_all
+    User.create!(name: "alice", age: 30)
+    User.create!(name: "bob", age: 20)
+    assert_equal(["alice"], User.where { sql("age > ?", 25) }.pluck(:name))
+    assert_equal(["alice"], User.where { sql("age > :min", min: 25) }.pluck(:name))
+  end
+
+  # Each adapter escapes the apostrophe its own way, so what is asserted is
+  # that the bind stays a value: nothing matches, rather than everything.
+  def test_sql_quotes_its_binds
+    User.delete_all
+    User.create!(name: "alice", age: 30)
+    assert_equal(0, User.where { sql("name = ?", "x' OR 'a'='a") }.count)
+  end
+
+  def test_sql_stands_as_an_operand_parenthesized
+    User.delete_all
+    User.create!(name: "bob", age: 20)
+    assert_sql(/WHERE \(age \+ 10\) = 30/, User.where { sql("age + 10") == 30 }.to_sql)
+    assert_equal(["bob"], User.where { sql("age + 10") == 30 }.pluck(:name))
+    assert_sql(/\(1 \+ 2\) \* "users"."age"/,
+      User.select { (sql("1 + 2") * :age).as(:v) }.to_sql)
+  end
+
+  def test_sql_takes_the_statement_as_a_string
+    e = assert_raises(ArgumentError) { User.select { sql(:foo) } }
+    assert_match(/as a string/, e.message)
   end
 
   def test_value_takes_the_predications
@@ -2892,6 +2933,19 @@ class TestBlockSyntax < Minitest::Test
   def test_numeric_shorthand_has_no_orderings
     assert_raises(NoMethodError) { User.order { 1.asc } }
     assert_raises(NoMethodError) { User.order { 1.desc } }
+  end
+
+  def test_string_shorthand_for_value
+    User.delete_all
+    User.create!(name: "alice")
+    assert_sql(/SELECT 'draft' AS "state"/,
+      User.select { "draft".as(:state) }.to_sql)
+    assert_equal(["it's a value"],
+      User.select { "it's a value".as(:note) }.map(&:note))
+  end
+
+  def test_string_as_outside_a_block
+    assert_raises(NoMethodError) { "draft".as(:state) }
   end
 
   # The alias on a literal is quoted like any other, so a name that is not a
