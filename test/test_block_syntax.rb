@@ -2966,6 +2966,13 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/sql\(\.\.\.\) writes one as SQL/, e.message)
   end
 
+  # A hand-built Arel object passes through untouched -- an attribute too,
+  # which is a Struct that Array() would splat into its members.
+  def test_a_bare_arel_attribute_passes_through
+    assert_sql(/SELECT "users"."name" FROM/,
+      User.select { User.arel_table[:name] }.to_sql)
+  end
+
   def test_sql_writes_sql
     User.delete_all
     User.create!(name: "alice", age: 30)

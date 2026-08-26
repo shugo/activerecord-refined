@@ -568,7 +568,12 @@ module ActiveRecord
         # whose meaning turns on where it stands is how an interpolation
         # becomes an injection.
         def to_arel_fields(result)
-          Array(result).map do |node|
+          fields =
+            if result.nil? then []
+            elsif result.is_a?(::Array) then result
+            else [result]
+            end
+          fields.map do |node|
             if node.is_a?(::String) && !node.is_a?(Arel::Nodes::SqlLiteral)
               raise ArgumentError,
                 "#{node.inspect} could mean SQL or a string; " \
