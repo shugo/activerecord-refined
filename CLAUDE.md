@@ -4,6 +4,11 @@
 
 - origin = shugo/activerecord-refined.  Pull requests are usually created
   by Shugo himself; do not create one unless asked.
+- Do not change the CI workflow (`.github/workflows/`) to run work in
+  progress - no temporary branch triggers.  To reach CI for a change only CI
+  can verify, such as an adapter with no local server, ask first, then open a
+  draft pull request; the standing `pull_request` trigger runs the suite on
+  it, and the draft says it is not yet up for merge.
 - Work happens on `master`.  The gem was formerly `activerecord-refinements`
   by Akira Matsuda; the History section of the README is the only place that
   needs to know.
