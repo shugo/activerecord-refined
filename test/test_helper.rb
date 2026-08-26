@@ -203,10 +203,15 @@ module SqlAssertions
 
   # MySQL quotes identifiers with backticks instead of double quotes, and
   # doubles the backslashes inside string literals because backslash is itself
-  # an escape character there.  Normalising both lets a single expectation
-  # cover every adapter.
+  # an escape character there.  Oracle folds an unquoted identifier to upper
+  # case, so it quotes the columns back as "USERS"."AGE" where the others
+  # keep "users"."age".  Normalising all three lets a single expectation
+  # cover every adapter; values sit in single quotes and keywords outside
+  # quotes, so lowering only what is inside double quotes leaves them alone.
   def normalize_sql(sql)
-    sql.tr("`", '"').gsub("\\\\") { "\\" }
+    sql = sql.tr("`", '"').gsub("\\\\") { "\\" }
+    sql = sql.gsub(/"[^"]*"/, &:downcase) if oracle?
+    sql
   end
 
   # Takes a relation or the SQL string of one.
