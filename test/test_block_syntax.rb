@@ -2392,6 +2392,12 @@ class TestBlockSyntax < Minitest::Test
     if ADAPTER == "postgresql"
       assert_sql(/jsonb_build_array\("docs"."name"\)/, relation)
       assert_sql(/jsonb_build_object\('a', "docs"."name"\)/, relation)
+    elsif oracle?
+      # Oracle pairs a key by VALUE, keeps a NULL only when told, and returns
+      # text so ruby-oci8 can fetch it.
+      assert_sql(/JSON_ARRAY\("docs"."name" NULL ON NULL RETURNING VARCHAR2\(4000\)\)/, relation)
+      assert_sql(/JSON_OBJECT\('a' VALUE "docs"."name" NULL ON NULL RETURNING VARCHAR2\(4000\)\)/,
+        relation)
     else
       assert_sql(/JSON_ARRAY\("docs"."name"\)/, relation)
       assert_sql(/JSON_OBJECT\('a', "docs"."name"\)/, relation)
