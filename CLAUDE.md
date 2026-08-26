@@ -70,6 +70,11 @@ rake test:all                # all of the above; MySQL skipped when 3307 is empt
 
 - Run all of them before reporting anything about the DSL.  The skips are
   adapter-specific and intended; PostgreSQL skips nothing.
+- Every client gem sits in an optional bundler group named after its
+  adapter, so the server legs need a one-time
+  `bundle config set --local with postgresql mysql2 trilogy` -- already done
+  in this devcontainer.  Oracle and SQL Server have no local server and run
+  on CI only.
 - `ADAPTER=mysql2` here reaches MariaDB; `rake test:mysql8` reaches Oracle's
   MySQL on 3307, in a devcontainer rebuilt since it was added -- test:all
   says so and moves on when it is not there.  The two differ over JSON, where
