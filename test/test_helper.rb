@@ -101,7 +101,7 @@ module SqlAssertions
   # upsert_all wants to be told which unique index it is upserting against,
   # except on MySQL, which does not accept being told.
   def upsert_target
-    mysql? ? {} : { unique_by: :page }
+    mysql? || oracle? ? {} : { unique_by: :page }
   end
 
   # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, SQLite neither.
@@ -156,8 +156,10 @@ module SqlAssertions
     skip "#{ADAPTER} has no GROUPING SETS" unless ADAPTER == "postgresql"
   end
 
+  # Oracle has ROLLUP, but Arel's oracle_enhanced visitor cannot write the
+  # node, so the gem does not offer it there yet.
   def skip_without_rollup
-    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3" || oracle?
   end
 
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.

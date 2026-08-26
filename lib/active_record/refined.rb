@@ -355,7 +355,7 @@ module ActiveRecord
 
         def grouping(kind, sets)
           node = AST::GroupingSets.new(kind, sets)
-          return node if adapter_family == :postgresql || adapter_family == :oracle
+          return node if adapter_family == :postgresql
           return node if kind == :rollup && adapter_family == :mysql
 
           raise NotImplementedError,

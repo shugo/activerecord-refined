@@ -1033,6 +1033,7 @@ class TestBlockSyntax < Minitest::Test
   # The alias is what lets a where find its column, which is the whole reason
   # from_cte exists; without it the SQL names a table the query does not have.
   def test_from_cte_leaves_where_able_to_qualify
+    skip "oracle_enhanced does not spell a recursive WITH the gem can run" if oracle?
     Node.delete_all
     root = Node.create!(name: "root")
     Node.create!(name: "child", parent_id: root.id)
@@ -1054,6 +1055,7 @@ class TestBlockSyntax < Minitest::Test
   # A CTE is joined by name like any other table, so the recursive member's
   # ON clause is a block rather than the string join Rails' own docs use.
   def test_recursive_cte
+    skip "oracle_enhanced does not spell a recursive WITH the gem can run" if oracle?
     Node.delete_all
     root = Node.create!(name: "root")
     child = Node.create!(name: "child", parent_id: root.id)
@@ -1367,7 +1369,10 @@ class TestBlockSyntax < Minitest::Test
   # SQLite has no CHAR_LENGTH, GREATEST or LEAST, but LENGTH, MAX and MIN
   # mean the same thing there.
   def test_scalar_functions_spelled_differently_on_sqlite
-    expected = ADAPTER == "sqlite3" ? %w[LENGTH MAX MIN] : %w[CHAR_LENGTH GREATEST LEAST]
+    expected = if ADAPTER == "sqlite3" then %w[LENGTH MAX MIN]
+    elsif oracle? then %w[LENGTH GREATEST LEAST]
+    else %w[CHAR_LENGTH GREATEST LEAST]
+    end
     assert_sql(/SELECT #{expected[0]}\("users"."name"\)/,
       User.select { char_length(:name) }.to_sql)
     assert_sql(/SELECT #{expected[1]}\("users"."age", 18\)/,
@@ -1427,7 +1432,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_now_is_unsupported_on_sqlite
-    if ADAPTER == "sqlite3"
+    if ADAPTER == "sqlite3" || oracle?
       assert_raises(NotImplementedError) { User.select { now } }
     else
       assert_sql(/SELECT NOW\(\)/, User.select { now }.to_sql)
@@ -1500,6 +1505,12 @@ class TestBlockSyntax < Minitest::Test
     assert_sql(/SELECT SIGN\("users"."age"\)/, User.select { sign(:age) }.to_sql)
     assert_sql(/SELECT ATAN2\("users"."age", 2\)/,
       User.select { atan2(:age, 2) }.to_sql)
+    # Oracle has neither PI nor degrees/radians, and refuses each by name.
+    if oracle?
+      assert_raises(NotImplementedError) { User.select { pi } }
+      assert_raises(NotImplementedError) { User.select { degrees(radians(:age)) } }
+      return
+    end
     assert_sql(/SELECT PI\(\)/, User.select { pi }.to_sql)
     assert_sql(/SELECT DEGREES\(RADIANS\("users"."age"\)\)/,
       User.select { degrees(radians(:age)) }.to_sql)
@@ -1520,7 +1531,7 @@ class TestBlockSyntax < Minitest::Test
 
   # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
   def test_log2_is_unsupported_on_postgresql
-    if ADAPTER == "postgresql"
+    if ADAPTER == "postgresql" || oracle?
       assert_raises(NotImplementedError) { User.select { log2(:age) } }
     else
       assert_sql(/SELECT LOG2\("users"."age"\)/, User.select { log2(:age) }.to_sql)
@@ -1633,7 +1644,8 @@ class TestBlockSyntax < Minitest::Test
     assert_sql(/\(100 - "users"."age"\)/, User.select { (100 - :age).as(:v) })
     assert_equal(70, User.select { (100 - :age).as(:v) }.first.v.to_i)
     assert_equal(15, User.select { (0.5 * :age).as(:v) }.first.v.to_f.to_i)
-    assert_equal(0, User.select { (4 & :flags).as(:v) }.first.v.to_i)
+    # Oracle has no bitwise & operator, so that operand is left to the others.
+    assert_equal(0, User.select { (4 & :flags).as(:v) }.first.v.to_i) unless oracle?
     assert_sql(/> 30/, User.where { :age > 10 + 20 })
   end
 
@@ -1791,7 +1803,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_bit_aggregates_are_unsupported_on_sqlite
-    if ADAPTER == "sqlite3"
+    if ADAPTER == "sqlite3" || oracle?
       e = assert_raises(NotImplementedError) { User.select { bit_or(:flags) } }
       assert_match(/bit_or/, e.message)
     else
@@ -2726,7 +2738,7 @@ class TestBlockSyntax < Minitest::Test
     rows = grouped { rollup(:author_id, :title) }
     assert_equal(6, rows.size)   # by both (3), by author (2), the whole (1)
     assert_includes(rows, [nil, nil, 3])
-    if ADAPTER == "postgresql" || oracle?
+    if ADAPTER == "postgresql"
       assert_sql(/GROUP BY ROLLUP\( "posts"."author_id", "posts"."title" \)/,
         Post.group { rollup(:author_id, :title) }.to_sql)
     else
