@@ -8,7 +8,9 @@
   progress - no temporary branch triggers.  To reach CI for a change only CI
   can verify, such as an adapter with no local server, ask first, then open a
   draft pull request; the standing `pull_request` trigger runs the suite on
-  it, and the draft says it is not yet up for merge.
+  it, and the draft says it is not yet up for merge.  When the work is done
+  and CI is green, mark the pull request ready for review (`gh pr ready`) so
+  Shugo can take it; reviewing and merging stay his.
 - Work happens on `master`.  The gem was formerly `activerecord-refinements`
   by Akira Matsuda; the History section of the README is the only place that
   needs to know.
