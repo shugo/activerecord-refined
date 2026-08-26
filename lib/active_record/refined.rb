@@ -99,32 +99,41 @@ module ActiveRecord
       # assume the math functions its build usually enables.
       SCALAR_FUNCTIONS = {
         abs: {}, acos: {}, asin: {}, atan: {}, atan2: {}, ceil: {},
-        coalesce: {}, concat: {}, cos: {}, degrees: {}, exp: {}, floor: {},
-        length: {}, ln: {}, log: {}, log10: {}, lower: {}, ltrim: {},
-        mod: {}, nullif: {}, pi: {}, power: {}, radians: {}, replace: {},
+        coalesce: {}, concat: {}, cos: {}, exp: {}, floor: {},
+        length: {}, ln: {}, log: {}, lower: {}, ltrim: {},
+        mod: {}, nullif: {}, power: {}, replace: {},
         round: {}, rtrim: {}, sign: {}, sin: {}, sqrt: {}, substr: {},
         tan: {}, trim: {}, upper: {},
-        char_length: { sqlite: "LENGTH" },
+        # Oracle turns degrees to radians only through the constants, having no
+        # function of its own for either, nor a PI().
+        degrees: { oracle: nil }, radians: { oracle: nil }, pi: { oracle: nil },
+        char_length: { sqlite: "LENGTH", oracle: "LENGTH" },
         greatest: { sqlite: "MAX" },
         least: { sqlite: "MIN" },
-        # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
-        log2: { postgresql: nil },
+        # PostgreSQL spells log2(x) as log(2, x), and Oracle log(2, x) too,
+        # which no renaming carries; nor has Oracle a LOG10 of its own.
+        log2: { postgresql: nil, oracle: nil },
+        log10: { oracle: nil },
         # MySQL's TRUNCATE insists on the second argument, where the others
         # default it to zero; SQLite's trunc takes only the one.
         trunc: { mysql: "TRUNCATE" },
-        now: { sqlite: nil },
+        now: { sqlite: nil, oracle: nil },
         # The bit aggregates, which PostgreSQL and MySQL spell alike and
-        # SQLite has none of.  PostgreSQL gained bit_xor in 14.
-        bit_and: { sqlite: nil }, bit_or: { sqlite: nil }, bit_xor: { sqlite: nil },
-        date_trunc: { sqlite: nil, mysql: nil },
+        # neither SQLite nor Oracle has.  PostgreSQL gained bit_xor in 14.
+        bit_and: { sqlite: nil, oracle: nil }, bit_or: { sqlite: nil, oracle: nil },
+        bit_xor: { sqlite: nil, oracle: nil },
+        # Oracle truncates a date with TRUNC, not a date_trunc of its own.
+        date_trunc: { sqlite: nil, mysql: nil, oracle: nil },
         # Named for Kernel#rand, which it also takes back: a block calling
         # rand would otherwise get Ruby's and never reach the database.
-        rand: { sqlite: "RANDOM", postgresql: "RANDOM" },
+        # Oracle's random is DBMS_RANDOM.VALUE, a package call, not a function.
+        rand: { sqlite: "RANDOM", postgresql: "RANDOM", oracle: nil },
         # Two different functions share this name: printf formatting here, and
         # on MySQL the one that puts separators in a number, which reads a
         # printf template as the number zero rather than complaining.  The
-        # name keeps the one meaning; fn(:format, ...) reaches MySQL's.
-        format: { mysql: nil },
+        # name keeps the one meaning; fn(:format, ...) reaches MySQL's.  Oracle
+        # has no FORMAT at all.
+        format: { mysql: nil, oracle: nil },
       }.freeze
 
       SCALAR_FUNCTIONS.each_key do |name|

@@ -31,6 +31,7 @@ module ActiveRecord
         "pglite" => :postgresql,
         "mysql2" => :mysql,
         "trilogy" => :mysql,
+        "oracle_enhanced" => :oracle,
       }.freeze
 
       def self.adapter_family(model)
@@ -49,8 +50,14 @@ module ActiveRecord
       # JSON_EXTRACT.
       def self.json_argument(value, model)
         json = Arel::Nodes.build_quoted(JSON.generate(value))
-        if adapter_family(model) == :sqlite
+        case adapter_family(model)
+        when :sqlite
           Arel::Nodes::NamedFunction.new("json", [json])
+        when :oracle
+          # A string tagged FORMAT JSON is read as the document it spells
+          # rather than as text; it is only ever an argument to Oracle's own
+          # JSON functions, which is where FORMAT JSON is grammar.
+          Arel.sql("#{model.with_connection { |c| c.quote(JSON.generate(value)) }} FORMAT JSON")
         else
           Arel::Nodes::NamedFunction.new(
             "JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
@@ -860,6 +867,21 @@ module ActiveRecord
             extracted = Arel::Nodes::NamedFunction.new(
               "JSON_EXTRACT", [document, Arel::Nodes.build_quoted(dollar_path)])
             json_value? ? extracted : Arel::Nodes::NamedFunction.new("JSON_UNQUOTE", [extracted])
+          when :oracle
+            # Oracle keeps its scalars and its structures in different
+            # functions: JSON_VALUE reads a scalar out as text, JSON_QUERY a
+            # fragment as JSON.  dig keeps JSON, so it takes JSON_QUERY with
+            # ALLOW SCALARS -- 23ai's leave for it to return a scalar leaf as
+            # itself rather than wrapping or refusing it.
+            if json_value?
+              Arel.sql(
+                "JSON_QUERY(#{compile(document, model)}, " \
+                "#{quoted_path(model)} RETURNING VARCHAR2(4000) ALLOW SCALARS " \
+                "NULL ON EMPTY)")
+            else
+              Arel::Nodes::NamedFunction.new(
+                "JSON_VALUE", [document, Arel::Nodes.build_quoted(dollar_path)])
+            end
           else
             extracted = Arel::Nodes::InfixOperation.new(
               json_value? ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
@@ -872,6 +894,17 @@ module ActiveRecord
         end
 
         private
+          # ALLOW SCALARS is keyword syntax no Arel node carries, so the call
+          # is written out; the document is compiled by the connection's own
+          # visitor and the path quoted by it, so both are the adapter's.
+          def compile(document, model)
+            model.with_connection { |connection| connection.visitor.compile(document) }
+          end
+
+          def quoted_path(model)
+            model.with_connection { |connection| connection.quote(dollar_path) }
+          end
+
           def json_source
             "dig"
           end
@@ -900,10 +933,21 @@ module ActiveRecord
 
         def to_arel(table, model)
           document = to_arel_operand(operand, table, model)
-          if AST.adapter_family(model) == :postgresql
+          case AST.adapter_family(model)
+          when :postgresql
             Arel::Nodes::NamedFunction.new(
               "jsonb_set",
               [document, Arel::Nodes.build_quoted(steps_array), postgresql_value(table, model)])
+          when :oracle
+            # JSON_TRANSFORM is Oracle's one editing function, SET reaching a
+            # path the way JSON_SET does; its SET and the value beside it are
+            # grammar, so the call is written out.
+            model.with_connection do |connection|
+              Arel.sql(
+                "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
+                "SET #{connection.quote(dollar_path)} = #{oracle_value(table, model)} " \
+                "RETURNING VARCHAR2(4000))")
+            end
           else
             Arel::Nodes::NamedFunction.new(
               "JSON_SET",
@@ -912,6 +956,21 @@ module ActiveRecord
         end
 
         private
+          # A column or expression is compiled as itself; a Ruby document or
+          # boolean rides in tagged FORMAT JSON, and a bare scalar is quoted.
+          def oracle_value(table, model)
+            model.with_connection do |connection|
+              if expression?
+                connection.visitor.compile(to_arel_operand(value, table, model))
+              elsif value.is_a?(::Hash) || value.is_a?(::Array) ||
+                    value == true || value == false
+                "#{connection.quote(JSON.generate(value))} FORMAT JSON"
+              else
+                connection.quote(value)
+              end
+            end
+          end
+
           # jsonb_set takes jsonb, so an expression is turned into it and a Ruby
           # value goes in as the JSON that says it -- '"x"' rather than 'x',
           # which is not a document at all.
@@ -967,6 +1026,19 @@ module ActiveRecord
             # the subtraction would otherwise take the path literal first.
             return Arel::Nodes::InfixOperation.new(
               :-, Arel::Nodes::Grouping.new(document), key_array)
+          end
+
+          if AST.adapter_family(model) == :oracle
+            # One JSON_TRANSFORM with a REMOVE for each key, which passes over
+            # a key that is not there rather than raising.
+            return model.with_connection do |connection|
+              removes = keys.map do |key|
+                "REMOVE #{connection.quote("$#{dollar_step(key)}")}"
+              end
+              Arel.sql(
+                "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
+                "#{removes.join(', ')} RETURNING VARCHAR2(4000))")
+            end
           end
 
           Arel::Nodes::NamedFunction.new(
@@ -1050,6 +1122,8 @@ module ActiveRecord
           when :mysql
             Arel::Nodes::NamedFunction.new(
               "JSON_CONTAINS_PATH", [document, Arel::Nodes.build_quoted("one"), path])
+          when :oracle
+            Arel::Nodes::NamedFunction.new("JSON_EXISTS", [document, path])
           else
             Arel::Nodes::NamedFunction.new("json_type", [document, path]).not_eq(nil)
           end
@@ -1086,6 +1160,11 @@ module ActiveRecord
             Arel.sql("CASE WHEN jsonb_typeof(#{sql}) = 'object' " \
                      "THEN COALESCE((SELECT jsonb_agg(k) FROM jsonb_object_keys(#{sql}) k), " \
                      "CAST('[]' AS jsonb)) END")
+          when :oracle
+            # Oracle has no JSON_KEYS, and the keys are reachable only through
+            # a JSON_TABLE unnest the gem does not build yet.
+            raise NotImplementedError,
+              "keys has no equivalent on #{model.connection_db_config.adapter}"
           else
             Arel::Nodes::NamedFunction.new("JSON_KEYS", [document])
           end
@@ -1126,12 +1205,34 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
+          return oracle_build(table, model) if AST.adapter_family(model) == :oracle
+
           Arel::Nodes::NamedFunction.new(
             NAMES.fetch(kind).fetch(AST.adapter_family(model)) { "JSON_#{kind.to_s.upcase}" },
             arguments(table, model))
         end
 
         private
+          # Oracle pairs a key with its value by the VALUE keyword rather than
+          # by position, drops a NULL from an array unless told NULL ON NULL,
+          # and returns the native JSON type ruby-oci8 cannot fetch unless a
+          # RETURNING asks for text -- none of which an Arel function carries.
+          def oracle_build(table, model)
+            model.with_connection do |connection|
+              compile = ->(value) { connection.visitor.compile(build_argument(value, table, model)) }
+              body =
+                if kind == :array
+                  values.map(&compile).join(", ")
+                else
+                  values.map do |key, value|
+                    "#{connection.quote(key.to_s)} VALUE #{compile.call(value)}"
+                  end.join(", ")
+                end
+              Arel.sql(
+                "JSON_#{kind.to_s.upcase}(#{body} NULL ON NULL RETURNING VARCHAR2(4000))")
+            end
+          end
+
           def arguments(table, model)
             if kind == :array
               values.map { |value| build_argument(value, table, model) }
@@ -1564,6 +1665,11 @@ module ActiveRecord
         # MariaDB takes every other aggregate as a window function, but not
         # these two; Over asks here before writing one.
         def check_window(model)
+          if AST.adapter_family(model) == :oracle
+            raise NotImplementedError,
+              "#{json_source} over a window has no equivalent on " \
+              "#{model.connection_db_config.adapter}"
+          end
           return unless AST.adapter_family(model) == :mysql
           return unless model.with_connection { |connection| connection.mariadb? }
           raise NotImplementedError,

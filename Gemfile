@@ -13,3 +13,14 @@ group :db do
   gem "pg"
   gem "trilogy"
 end
+
+# oracle_enhanced reaches Oracle through ruby-oci8, whose build needs Oracle
+# Instant Client and whose released version does not compile on ruby-master
+# -- its git HEAD does.  An optional group keeps all of that out of every
+# run but the one that opts in with `bundle --with oracle`, so the other
+# adapters, and a plain local bundle, need neither the client nor the
+# git checkout.
+group :oracle, optional: true do
+  gem "ruby-oci8", git: "https://github.com/kubo/ruby-oci8"
+  gem "activerecord-oracle_enhanced-adapter"
+end

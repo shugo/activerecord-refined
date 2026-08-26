@@ -21,8 +21,14 @@ require "json"
 #   ADAPTER=trilogy rake test               # the same server through Trilogy
 #   ADAPTER=mysql2 DB_PORT=3307 rake test   # MySQL, where the devcontainer
 #                                           # serves it (rake test:mysql8)
+#   ADAPTER=oracle_enhanced rake test       # Oracle, which only CI provides
 #   rake test:all              # all of the above in turn
 ADAPTER = ENV.fetch("ADAPTER", "sqlite3")
+
+# Active Record 8.1 knows an adapter only once its gem is loaded, and the
+# oracle_enhanced gem (with its Instant Client build) is installed only for
+# this adapter's run -- so it is required here, not through Bundler.require.
+require "active_record/connection_adapters/oracle_enhanced_adapter" if ADAPTER == "oracle_enhanced"
 
 # Trilogy and mysql2 both reach the MySQL family of servers -- the same
 # MySQL and MariaDB -- and so want the same spellings throughout; mariadb?
@@ -48,12 +54,26 @@ DATABASE_CONFIG =
       password: ENV["DB_PASSWORD"],
       database: DATABASE_NAME,
     }
+  when "oracle_enhanced"
+    # database is the service name; unlike the others there is no schema-less
+    # account to fall back on, so the user and password are required, and the
+    # suite connects straight to a schema that already exists.
+    {
+      adapter: "oracle_enhanced",
+      host: ENV.fetch("DB_HOST", "127.0.0.1"),
+      port: ENV["DB_PORT"]&.to_i,
+      database: ENV.fetch("DB_DATABASE", "FREEPDB1"),
+      username: ENV.fetch("DB_USERNAME"),
+      password: ENV.fetch("DB_PASSWORD"),
+    }
   else
     raise ArgumentError, "unknown ADAPTER: #{ADAPTER}"
   end
 
-# The server databases persist between runs, so create one on first use.
-unless ADAPTER == "sqlite3"
+# PostgreSQL and the MySQL family keep their databases between runs, so
+# create one on first use.  SQLite is in memory and Oracle connects to a
+# schema that already exists, so neither goes through this.
+if ADAPTER == "postgresql" || MYSQL_ADAPTERS.include?(ADAPTER)
   maintenance_database = ADAPTER == "postgresql" ? "postgres" : "mysql"
   ActiveRecord::Base.establish_connection(
     DATABASE_CONFIG.merge(database: maintenance_database))
@@ -84,9 +104,22 @@ module SqlAssertions
     mysql? ? {} : { unique_by: :page }
   end
 
-  # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, SQLite neither.
+  # oracle_enhanced does not implement upsert_all at all -- not the conflict
+  # target, the statement itself.
+  def skip_without_upsert
+    skip "#{ADAPTER} has no upsert" if oracle?
+  end
+
+  # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, and neither
+  # SQLite nor Oracle a way the gem generalises to an arbitrary value.
   def skip_without_json_containment
-    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3" || oracle?
+  end
+
+  # Oracle has no JSON_KEYS, and reaching the keys through JSON_TABLE is not
+  # written yet.
+  def skip_without_json_keys
+    skip "#{ADAPTER} has no JSON keys function" if oracle?
   end
 
   # Comparing a JSON value with a Ruby one is for jsonb and MySQL's JSON
@@ -109,7 +142,7 @@ module SqlAssertions
   # rather than as the object, and every path would find nothing.  Both answer
   # to the mysql2 adapter, so the two have to be told apart.
   def json_document(hash)
-    mariadb? ? JSON.generate(hash) : hash
+    mariadb? || oracle? ? JSON.generate(hash) : hash
   end
 
   # How each adapter spells a cast to a whole number: MySQL casts to SIGNED
@@ -122,6 +155,10 @@ module SqlAssertions
     MYSQL_ADAPTERS.include?(ADAPTER)
   end
 
+  def oracle?
+    ADAPTER == "oracle_enhanced"
+  end
+
   def mariadb?
     mysql? && ActiveRecord::Base.connection.mariadb?
   end
@@ -132,8 +169,10 @@ module SqlAssertions
     skip "#{ADAPTER} has no GROUPING SETS" unless ADAPTER == "postgresql"
   end
 
+  # Oracle has ROLLUP, but Arel's oracle_enhanced visitor cannot write the
+  # node, so the gem does not offer it there yet.
   def skip_without_rollup
-    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3" || oracle?
   end
 
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
@@ -153,10 +192,10 @@ module SqlAssertions
     skip "#{ADAPTER} has no ANY or ALL" if ADAPTER == "sqlite3"
   end
 
-  # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; SQLite has
-  # none of the three, nor BIT_COUNT.
+  # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; neither SQLite
+  # nor Oracle has the three, nor BIT_COUNT.
   def skip_without_bit_aggregates
-    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3" || oracle?
   end
 
   def skip_without_array_columns
@@ -179,10 +218,19 @@ module SqlAssertions
 
   # MySQL quotes identifiers with backticks instead of double quotes, and
   # doubles the backslashes inside string literals because backslash is itself
-  # an escape character there.  Normalising both lets a single expectation
-  # cover every adapter.
+  # an escape character there.  Oracle folds an unquoted identifier to upper
+  # case, so it quotes the columns back as "USERS"."AGE" where the others
+  # keep "users"."age".  Normalising all three lets a single expectation
+  # cover every adapter; values sit in single quotes and keywords outside
+  # quotes, so lowering only what is inside double quotes leaves them alone.
   def normalize_sql(sql)
-    sql.tr("`", '"').gsub("\\\\") { "\\" }
+    sql = sql.tr("`", '"').gsub("\\\\") { "\\" }
+    # Oracle folds a name to upper case only when it was written unquoted, and
+    # preserves one quoted with case of its own -- an alias like "postCount".
+    # So lower only the all-upper tokens; leave anything with a lower-case
+    # letter, which was quoted deliberately, as written.
+    sql = sql.gsub(/"[^"]*"/) { |name| name.match?(/[a-z]/) ? name : name.downcase } if oracle?
+    sql
   end
 
   # Takes a relation or the SQL string of one.
@@ -244,7 +292,16 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
     end
     create_table(:docs) do |t|
       t.string :name
-      ADAPTER == "postgresql" ? t.jsonb(:meta) : t.json(:meta)
+      # Oracle's native JSON type is one ruby-oci8 cannot fetch (datatype
+      # 119), so the document is kept in a CLOB as text; Oracle's JSON
+      # functions read and write JSON in a CLOB just the same.
+      if ADAPTER == "postgresql"
+        t.jsonb(:meta)
+      elsif ADAPTER == "oracle_enhanced"
+        t.text(:meta)
+      else
+        t.json(:meta)
+      end
     end
   end
 end
