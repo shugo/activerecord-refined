@@ -2973,6 +2973,13 @@ class TestBlockSyntax < Minitest::Test
       User.select { User.arel_table[:name] }.to_sql)
   end
 
+  # An Arel.sql literal is the one string the refusal lets through: it has
+  # already said it is SQL.
+  def test_an_arel_sql_literal_passes_through
+    assert_sql(/SELECT 1 \+ 1 AS two FROM/,
+      User.select { Arel.sql("1 + 1 AS two") }.to_sql)
+  end
+
   def test_sql_writes_sql
     User.delete_all
     User.create!(name: "alice", age: 30)
