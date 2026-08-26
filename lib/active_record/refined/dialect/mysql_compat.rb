@@ -38,6 +38,10 @@ module ActiveRecord
           Arel::Nodes::NamedFunction.new(
             "JSON_CONTAINS_PATH", [document, Arel::Nodes.build_quoted("one"), path])
         end
+
+        def json_aggregate_filter_supported? = false
+
+        def json_list_by_element? = true
       end
     end
   end

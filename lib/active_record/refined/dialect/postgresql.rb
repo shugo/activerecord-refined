@@ -62,6 +62,25 @@ module ActiveRecord
           # Grouped because - binds tighter than #>.
           Arel::Nodes::InfixOperation.new(:-, Arel::Nodes::Grouping.new(document), keys)
         end
+
+        def json_build(kind, keys, args, _model)
+          Arel::Nodes::NamedFunction.new(
+            kind == :array ? "jsonb_build_array" : "jsonb_build_object",
+            json_build_body(kind, keys, args))
+        end
+
+        # jsonb_build_* takes typed arguments, so a JSON literal is cast; left
+        # untyped it would be text, and land as a string.
+        def json_build_argument(value, _model)
+          Arel::Nodes::NamedFunction.new(
+            "CAST", [Arel::Nodes::As.new(
+              Arel::Nodes.build_quoted(JSON.generate(value)),
+              Arel::Nodes::SqlLiteral.new("jsonb"))])
+        end
+
+        def json_aggregate_name(kind)
+          kind == :arrayagg ? "jsonb_agg" : "jsonb_object_agg"
+        end
       end
     end
   end

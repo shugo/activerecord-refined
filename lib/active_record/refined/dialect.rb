@@ -149,6 +149,39 @@ module ActiveRecord
           [document, *dollar_paths.map { |path| Arel::Nodes.build_quoted(path) }])
       end
 
+      # json_array / json_object built in the row.  The standard says JSON_ARRAY
+      # and JSON_OBJECT with the values (and keys alternating); PostgreSQL has
+      # the jsonb_build_* pair and Oracle a keyword syntax, and both override.
+      def json_build(kind, keys, args, _model)
+        Arel::Nodes::NamedFunction.new(
+          kind == :array ? "JSON_ARRAY" : "JSON_OBJECT", json_build_body(kind, keys, args))
+      end
+
+      # A document or boolean built into json_array/json_object.  The standard
+      # marks it JSON as bury does; PostgreSQL casts to jsonb and overrides.
+      def json_build_argument(value, model)
+        json_argument(value, model)
+      end
+
+      # json_arrayagg / json_objectagg gather rows into a document.  The
+      # standard names are JSON_ARRAYAGG and JSON_OBJECTAGG; SQLite and
+      # PostgreSQL have their own and override.
+      def json_aggregate_name(kind)
+        kind == :arrayagg ? "JSON_ARRAYAGG" : "JSON_OBJECTAGG"
+      end
+
+      # These two keep a NULL as JSON null rather than passing over it, so the
+      # CASE that stands in for FILTER would leave one in the document; a
+      # family without FILTER for them refuses it.
+      def json_aggregate_filter_supported? = true
+
+      # A family that cannot take these two as window functions refuses one.
+      def check_json_aggregate_window(_source, _model); end
+
+      # A JSON value in an IN list or a range is compared per element on the
+      # MySQL family, which overrides; the standard leaves it to the IN.
+      def json_list_by_element? = false
+
       protected
         # The value beside a path in JSON_SET: an expression as it is, a
         # document or boolean as JSON, a bare scalar quoted.
@@ -156,6 +189,13 @@ module ActiveRecord
           return expression if expression
           return Arel::Nodes.build_quoted(value) unless json_document_value?(value)
           json_argument(value, model)
+        end
+
+        # The arguments to JSON_ARRAY/JSON_OBJECT: an array's values as they
+        # are, an object's keys alternating with them.
+        def json_build_body(kind, keys, args)
+          return args if kind == :array
+          keys.zip(args).flat_map { |key, arg| [Arel::Nodes.build_quoted(key), arg] }
         end
 
         # The connection's own visitor and quoting, for the families that write

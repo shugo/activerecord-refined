@@ -63,6 +63,28 @@ module ActiveRecord
               "#{removes.join(', ')} RETURNING VARCHAR2(4000))")
           end
         end
+
+        # Oracle pairs a key with its value by the VALUE keyword rather than by
+        # position, keeps a NULL only when told NULL ON NULL, and returns the
+        # native JSON type unless a RETURNING asks for text ruby-oci8 can fetch.
+        def json_build(kind, keys, args, model)
+          model.with_connection do |connection|
+            compiled = args.map { |arg| connection.visitor.compile(arg) }
+            body =
+              if kind == :array
+                compiled.join(", ")
+              else
+                keys.zip(compiled).map { |key, arg| "#{connection.quote(key)} VALUE #{arg}" }.join(", ")
+              end
+            Arel.sql("JSON_#{kind.to_s.upcase}(#{body} NULL ON NULL RETURNING VARCHAR2(4000))")
+          end
+        end
+
+        def check_json_aggregate_window(source, model)
+          raise NotImplementedError,
+            "#{source} over a window has no equivalent on " \
+            "#{model.connection_db_config.adapter}"
+        end
       end
     end
   end

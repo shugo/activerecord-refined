@@ -15,6 +15,10 @@ module ActiveRecord
           raise NotImplementedError,
             "a JSON comparison has no equivalent on MariaDB; dig_text gives the value"
         end
+
+        def check_json_aggregate_window(source, _model)
+          raise NotImplementedError, "#{source} over a window has no equivalent on MariaDB"
+        end
       end
     end
   end

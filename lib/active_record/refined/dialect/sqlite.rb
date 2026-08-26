@@ -25,6 +25,10 @@ module ActiveRecord
           Arel::Nodes::NamedFunction.new(
             "json", [Arel::Nodes.build_quoted(JSON.generate(value))])
         end
+
+        def json_aggregate_name(kind)
+          kind == :arrayagg ? "json_group_array" : "json_group_object"
+        end
       end
     end
   end
