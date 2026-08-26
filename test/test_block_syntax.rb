@@ -2433,6 +2433,7 @@ class TestBlockSyntax < Minitest::Test
   # adapters' own: the JSON types give their normalized order, the text
   # ones the stored order.
   def test_keys
+    skip_without_json_keys
     seed_docs
     value = json_aggregate(Doc.where { :name == "one" }.select { :meta.keys.as(:v) })
     assert_equal(["a", "n", "odd key", "tags"], value.sort)
@@ -2441,6 +2442,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_keys_where_there_is_no_object
+    skip_without_json_keys
     seed_docs
     Doc.create!(name: "bare", meta: json_document({}))
     Doc.create!(name: "empty")

@@ -110,9 +110,16 @@ module SqlAssertions
     skip "#{ADAPTER} has no upsert" if oracle?
   end
 
-  # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, SQLite neither.
+  # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, and neither
+  # SQLite nor Oracle a way the gem generalises to an arbitrary value.
   def skip_without_json_containment
-    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3" || oracle?
+  end
+
+  # Oracle has no JSON_KEYS, and reaching the keys through JSON_TABLE is not
+  # written yet.
+  def skip_without_json_keys
+    skip "#{ADAPTER} has no JSON keys function" if oracle?
   end
 
   # Comparing a JSON value with a Ruby one is for jsonb and MySQL's JSON
