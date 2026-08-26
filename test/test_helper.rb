@@ -29,6 +29,7 @@ ADAPTER = ENV.fetch("ADAPTER", "sqlite3")
 # oracle_enhanced gem (with its Instant Client build) is installed only for
 # this adapter's run -- so it is required here, not through Bundler.require.
 require "active_record/connection_adapters/oracle_enhanced_adapter" if ADAPTER == "oracle_enhanced"
+require "active_record/connection_adapters/sqlserver_adapter" if ADAPTER == "sqlserver"
 
 # Trilogy and mysql2 both reach the MySQL family of servers -- the same
 # MySQL and MariaDB -- and so want the same spellings throughout; mariadb?
@@ -66,15 +67,29 @@ DATABASE_CONFIG =
       username: ENV.fetch("DB_USERNAME"),
       password: ENV.fetch("DB_PASSWORD"),
     }
+  when "sqlserver"
+    {
+      adapter: "sqlserver",
+      host: ENV.fetch("DB_HOST", "127.0.0.1"),
+      port: ENV["DB_PORT"]&.to_i,
+      username: ENV.fetch("DB_USERNAME"),
+      password: ENV.fetch("DB_PASSWORD"),
+      database: DATABASE_NAME,
+    }
   else
     raise ArgumentError, "unknown ADAPTER: #{ADAPTER}"
   end
 
-# PostgreSQL and the MySQL family keep their databases between runs, so
-# create one on first use.  SQLite is in memory and Oracle connects to a
-# schema that already exists, so neither goes through this.
-if ADAPTER == "postgresql" || MYSQL_ADAPTERS.include?(ADAPTER)
-  maintenance_database = ADAPTER == "postgresql" ? "postgres" : "mysql"
+# PostgreSQL, the MySQL family and SQL Server keep their databases between
+# runs, so create one on first use.  SQLite is in memory and Oracle connects
+# to a schema that already exists, so neither goes through this.
+if ADAPTER == "postgresql" || MYSQL_ADAPTERS.include?(ADAPTER) || ADAPTER == "sqlserver"
+  maintenance_database =
+    case ADAPTER
+    when "postgresql" then "postgres"
+    when "sqlserver" then "master"
+    else "mysql"
+    end
   ActiveRecord::Base.establish_connection(
     DATABASE_CONFIG.merge(database: maintenance_database))
   begin
@@ -107,19 +122,19 @@ module SqlAssertions
   # oracle_enhanced does not implement upsert_all at all -- not the conflict
   # target, the statement itself.
   def skip_without_upsert
-    skip "#{ADAPTER} has no upsert" if oracle?
+    skip "#{ADAPTER} has no upsert" if oracle? || sqlserver?
   end
 
   # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, and neither
   # SQLite nor Oracle a way the gem generalises to an arbitrary value.
   def skip_without_json_containment
-    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3" || oracle?
+    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3" || oracle? || sqlserver?
   end
 
   # Oracle has no JSON_KEYS, and reaching the keys through JSON_TABLE is not
   # written yet.
   def skip_without_json_keys
-    skip "#{ADAPTER} has no JSON keys function" if oracle?
+    skip "#{ADAPTER} has no JSON keys function" if oracle? || sqlserver?
   end
 
   # Comparing a JSON value with a Ruby one is for jsonb and MySQL's JSON
@@ -142,7 +157,18 @@ module SqlAssertions
   # rather than as the object, and every path would find nothing.  Both answer
   # to the mysql2 adapter, so the two have to be told apart.
   def json_document(hash)
-    mariadb? || oracle? ? JSON.generate(hash) : hash
+    mariadb? || oracle? || sqlserver? ? JSON.generate(hash) : hash
+  end
+
+  # SQL Server 2022 has JSON_ARRAY and JSON_OBJECT, but building one from a
+  # dug scalar needs a scalar JSON_QUERY it has no ALLOW SCALARS for, and it
+  # has no JSON aggregate at all.
+  def skip_without_json_build
+    skip "#{ADAPTER} cannot build JSON from a dug value here" if sqlserver?
+  end
+
+  def skip_without_json_aggregate
+    skip "#{ADAPTER} has no JSON aggregate" if sqlserver?
   end
 
   # How each adapter spells a cast to a whole number: MySQL casts to SIGNED
@@ -159,6 +185,10 @@ module SqlAssertions
     ADAPTER == "oracle_enhanced"
   end
 
+  def sqlserver?
+    ADAPTER == "sqlserver"
+  end
+
   def mariadb?
     mysql? && ActiveRecord::Base.connection.mariadb?
   end
@@ -172,7 +202,7 @@ module SqlAssertions
   # Oracle has ROLLUP, but Arel's oracle_enhanced visitor cannot write the
   # node, so the gem does not offer it there yet.
   def skip_without_rollup
-    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3" || oracle?
+    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3" || oracle? || sqlserver?
   end
 
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
@@ -195,7 +225,7 @@ module SqlAssertions
   # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; neither SQLite
   # nor Oracle has the three, nor BIT_COUNT.
   def skip_without_bit_aggregates
-    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3" || oracle?
+    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3" || oracle? || sqlserver?
   end
 
   def skip_without_array_columns
@@ -205,7 +235,7 @@ module SqlAssertions
   # MySQL has no NULLS FIRST/LAST; Arel emulates it with a leading IS NULL
   # ordering, so only the resulting order is portable, not the SQL.
   def skip_without_nulls_ordering_syntax
-    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if mysql?
+    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if mysql? || sqlserver?
   end
 
   def regexp_operator
@@ -225,6 +255,13 @@ module SqlAssertions
   # quotes, so lowering only what is inside double quotes leaves them alone.
   def normalize_sql(sql)
     sql = sql.tr("`", '"').gsub("\\\\") { "\\" }
+    # SQL Server quotes identifiers in [brackets]; string literals are in
+    # single quotes, so what is bracketed is always an identifier.  It also
+    # marks a string literal national with a leading N -- N'x' -- which the
+    # \b keeps to the prefix, off an N inside a value.
+    if sqlserver?
+      sql = sql.gsub(/\[([^\]]*)\]/, '"\1"').gsub(/\bN'/, "'")
+    end
     # Oracle folds a name to upper case only when it was written unquoted, and
     # preserves one quoted with case of its own -- an alias like "postCount".
     # So lower only the all-upper tokens; leave anything with a lower-case

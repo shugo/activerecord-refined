@@ -1668,9 +1668,8 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          literal = value ? Arel::Nodes::True.new : Arel::Nodes::False.new
-          Arel::Nodes::InfixOperation.new(negated ? "IS NOT" : "IS",
-            to_arel_operand(operand, table, model), literal)
+          Dialect.for(model).truth_value(
+            to_arel_operand(operand, table, model), value, negated, model)
         end
       end
 

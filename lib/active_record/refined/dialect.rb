@@ -19,6 +19,7 @@ module ActiveRecord
       autoload :Mysql, "active_record/refined/dialect/mysql"
       autoload :Mariadb, "active_record/refined/dialect/mariadb"
       autoload :Oracle, "active_record/refined/dialect/oracle"
+      autoload :SqlServer, "active_record/refined/dialect/sql_server"
 
       # One instance per family, shared across threads.  The dialect carries no
       # state, so sharing is safe; the map is a concurrent one so that building
@@ -44,6 +45,7 @@ module ActiveRecord
             when "mysql2", "trilogy"
               model.with_connection { |connection| connection.mariadb? } ? Mariadb : Mysql
             when "oracle_enhanced" then Oracle
+            when "sqlserver" then SqlServer
             else Dialect
             end
           end
@@ -92,6 +94,14 @@ module ActiveRecord
       # MySQL spells the same thing VALUES(column) and overrides.
       def excluded(column, _model)
         AST::Column.new(:excluded, column)
+      end
+
+      # true? / false? and their negations.  The standard spells them with the
+      # boolean IS [NOT] TRUE/FALSE, which keeps a NULL out of the plain form
+      # and in of the negation; a family without a boolean type overrides.
+      def truth_value(operand, value, negated, _model)
+        literal = value ? Arel::Nodes::True.new : Arel::Nodes::False.new
+        Arel::Nodes::InfixOperation.new(negated ? "IS NOT" : "IS", operand, literal)
       end
 
       # XOR, which no two families spell alike.  The standard is the two

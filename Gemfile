@@ -24,3 +24,11 @@ group :oracle, optional: true do
   gem "ruby-oci8", git: "https://github.com/kubo/ruby-oci8"
   gem "activerecord-oracle_enhanced-adapter"
 end
+
+# sqlserver reaches SQL Server through tiny_tds, whose build needs FreeTDS.
+# An optional group keeps it out of every run but the one that opts in with
+# `bundle --with sqlserver`.
+group :sqlserver, optional: true do
+  gem "tiny_tds"
+  gem "activerecord-sqlserver-adapter"
+end
