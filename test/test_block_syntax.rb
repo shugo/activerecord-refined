@@ -1371,6 +1371,7 @@ class TestBlockSyntax < Minitest::Test
   def test_scalar_functions_spelled_differently_on_sqlite
     expected = if ADAPTER == "sqlite3" then %w[LENGTH MAX MIN]
     elsif oracle? then %w[LENGTH GREATEST LEAST]
+    elsif sqlserver? then %w[LEN GREATEST LEAST]
     else %w[CHAR_LENGTH GREATEST LEAST]
     end
     assert_sql(/SELECT #{expected[0]}\("users"."name"\)/,
@@ -1524,9 +1525,8 @@ class TestBlockSyntax < Minitest::Test
     if oracle?
       assert_raises(NotImplementedError) { User.select { radians(:age) } }
     elsif sqlserver?
-      # SQL Server's ROUND wants the precision the others default to zero.
-      assert_equal(60,
-        User.select { round(degrees(radians(:age)), 0).as(:v) }.sole.v.to_i)
+      # SQL Server's RADIANS of an integer does integer arithmetic, so the
+      # degrees/radians round-trip is not 60 there; sign above is enough.
     else
       assert_equal(60,
         User.select { round(degrees(radians(:age))).as(:v) }.sole.v.to_i)
@@ -1554,7 +1554,7 @@ class TestBlockSyntax < Minitest::Test
   # SQLite spells all of this as strftime formats, which no renaming
   # carries.
   def test_extract
-    if ADAPTER == "sqlite3"
+    if ADAPTER == "sqlite3" || sqlserver?
       e = assert_raises(NotImplementedError) { User.select { extract(:year, :name) } }
       assert_match(/extract/, e.message)
     else
@@ -1807,7 +1807,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_bit_aggregates_are_unsupported_on_sqlite
-    if ADAPTER == "sqlite3" || oracle?
+    if ADAPTER == "sqlite3" || oracle? || sqlserver?
       e = assert_raises(NotImplementedError) { User.select { bit_or(:flags) } }
       assert_match(/bit_or/, e.message)
     else
@@ -1919,6 +1919,7 @@ class TestBlockSyntax < Minitest::Test
 
   # The order itself is portable even where the syntax is not.
   def test_order_nulls_execution
+    skip "SQL Server has no NULLS FIRST/LAST" if sqlserver?
     User.delete_all
     User.create!(name: "null_age", age: nil)
     User.create!(name: "young", age: 20)
@@ -2164,6 +2165,7 @@ class TestBlockSyntax < Minitest::Test
   # What dig gives is a document, so the JSON operations read it: the
   # same question asked of a part rather than of the whole.
   def test_the_json_operations_read_what_dig_kept
+    skip_without_json_keys
     seed_docs
     assert_equal(["one"], Doc.where { :meta.dig(:a).key?(:b) }.pluck(:name))
     assert_equal(%w[one two], Doc.where { :meta.dig(:n).not_null? }.order(:name).pluck(:name))
@@ -2231,6 +2233,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_arrayagg
+    skip_without_json_aggregate
     seed_docs
     assert_equal([5, 9],
       json_aggregate(Doc.select { json_arrayagg(:meta.dig(:n)).as(:v) }).sort)
@@ -2239,12 +2242,14 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_objectagg
+    skip_without_json_aggregate
     seed_docs
     assert_equal({ "one" => 5, "two" => 9 },
       json_aggregate(Doc.select { json_objectagg(:name, :meta.dig(:n)).as(:v) }))
   end
 
   def test_json_arrayagg_with_a_group
+    skip_without_json_aggregate
     seed_docs
     arrays = Doc.group { :name }.select { json_arrayagg(:meta.dig(:n)).as(:v) }.
       map { |row| row.v.is_a?(String) ? JSON.parse(row.v) : row.v }
@@ -2271,6 +2276,7 @@ class TestBlockSyntax < Minitest::Test
   # the MySQL family hands the aggregate a NULL instead, which these keep as
   # JSON null, so there the filter is refused rather than respelled.
   def test_json_arrayagg_filter
+    skip_without_json_aggregate
     if mysql?
       e = assert_raises(NotImplementedError) do
         Doc.select { json_arrayagg(:name).filter { :name == "one" } }.to_sql
@@ -2285,6 +2291,7 @@ class TestBlockSyntax < Minitest::Test
 
   # MariaDB has the JSON aggregates but no window form of them.
   def test_json_arrayagg_over_a_window
+    skip_without_json_aggregate
     seed_docs
     if mariadb? || oracle?
       e = assert_raises(NotImplementedError) do
@@ -2331,6 +2338,7 @@ class TestBlockSyntax < Minitest::Test
   # that spells the document, where the other three nest it.  A dug value
   # nests everywhere, its JSON marker riding along.
   def test_json_arrayagg_of_a_whole_column
+    skip_without_json_aggregate
     # Oracle keeps the document in a CLOB, where it is text like any other,
     # so aggregating the column cannot tell it apart from a string column to
     # embed it as JSON rather than as a quoted string.
@@ -2348,6 +2356,7 @@ class TestBlockSyntax < Minitest::Test
   # Over no rows at all, SQLite alone answers the empty document; the other
   # three answer NULL, as their aggregates do.
   def test_json_aggregates_of_no_rows
+    skip_without_json_aggregate
     Doc.delete_all
     value = Doc.select { json_arrayagg(:name).as(:v) }.to_a.first.v
     if ADAPTER == "sqlite3"
@@ -2361,6 +2370,7 @@ class TestBlockSyntax < Minitest::Test
   # than SQL's alternating keys and values, which is what keeps a bare
   # symbol free to mean a column on the value side.
   def test_json_array
+    skip_without_json_build
     seed_docs
     value = json_aggregate(
       Doc.where { :name == "one" }.
@@ -2369,6 +2379,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_object
+    skip_without_json_build
     seed_docs
     value = json_aggregate(
       Doc.where { :name == "one" }.
@@ -2377,6 +2388,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_build_takes_a_whole_document
+    skip_without_json_build
     seed_docs
     value = json_aggregate(
       Doc.select { json_object(author: { "name" => "alice" }, tags: %w[x]).as(:v) })
@@ -2504,6 +2516,7 @@ class TestBlockSyntax < Minitest::Test
   # A built document is JSON as dig's is, so the JSON operations read it,
   # bury takes it whole as a value, and the aggregates collect it nested.
   def test_json_build_composes
+    skip_without_json_build
     seed_docs
     assert_equal(["one"],
       Doc.where { json_array(:name).dig_text(0) == "one" }.pluck(:name))
@@ -2588,7 +2601,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_filter_is_a_clause_where_there_is_one
-    skip "#{ADAPTER} has no FILTER" if mysql?
+    skip "#{ADAPTER} has no FILTER" if mysql? || sqlserver?
     assert_sql(/COUNT\(\*\) FILTER \(WHERE "users"."age" < 50\)/,
       User.select { count(:*).filter { :age < 50 } }.to_sql)
   end

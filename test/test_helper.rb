@@ -157,7 +157,18 @@ module SqlAssertions
   # rather than as the object, and every path would find nothing.  Both answer
   # to the mysql2 adapter, so the two have to be told apart.
   def json_document(hash)
-    mariadb? || oracle? ? JSON.generate(hash) : hash
+    mariadb? || oracle? || sqlserver? ? JSON.generate(hash) : hash
+  end
+
+  # SQL Server 2022 has JSON_ARRAY and JSON_OBJECT, but building one from a
+  # dug scalar needs a scalar JSON_QUERY it has no ALLOW SCALARS for, and it
+  # has no JSON aggregate at all.
+  def skip_without_json_build
+    skip "#{ADAPTER} cannot build JSON from a dug value here" if sqlserver?
+  end
+
+  def skip_without_json_aggregate
+    skip "#{ADAPTER} has no JSON aggregate" if sqlserver?
   end
 
   # How each adapter spells a cast to a whole number: MySQL casts to SIGNED

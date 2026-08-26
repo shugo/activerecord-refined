@@ -96,6 +96,14 @@ module ActiveRecord
         AST::Column.new(:excluded, column)
       end
 
+      # true? / false? and their negations.  The standard spells them with the
+      # boolean IS [NOT] TRUE/FALSE, which keeps a NULL out of the plain form
+      # and in of the negation; a family without a boolean type overrides.
+      def truth_value(operand, value, negated, _model)
+        literal = value ? Arel::Nodes::True.new : Arel::Nodes::False.new
+        Arel::Nodes::InfixOperation.new(negated ? "IS NOT" : "IS", operand, literal)
+      end
+
       # XOR, which no two families spell alike.  The standard is the two
       # operations it is made of, naming each operand twice, as SQLite needs;
       # PostgreSQL and the MySQL family have an operator and override.
