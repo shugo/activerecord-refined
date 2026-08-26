@@ -1392,7 +1392,7 @@ class TestBlockSyntax < Minitest::Test
   # rand takes the name back from Kernel#rand, which would otherwise answer
   # inside the block and never reach the database.
   def test_rand
-    if oracle?
+    if oracle? || sqlserver?
       assert_raises(NotImplementedError) { User.order { rand } }
       return
     end
@@ -1416,7 +1416,7 @@ class TestBlockSyntax < Minitest::Test
   # and reads a printf template as the number zero rather than complaining,
   # so the name carries the printf one and MySQL raises.
   def test_format_is_printf_and_unsupported_on_mysql
-    if mysql? || oracle?
+    if mysql? || oracle? || sqlserver?
       assert_raises(NotImplementedError) { User.select { format("%s!", :name) } }
     else
       User.delete_all
@@ -1464,7 +1464,7 @@ class TestBlockSyntax < Minitest::Test
   # The one thing that does go into the parentheses is a precision, which
   # current_date never takes and SQLite never accepts.
   def test_datetime_value_function_with_precision
-    if ADAPTER == "sqlite3"
+    if ADAPTER == "sqlite3" || sqlserver?
       e = assert_raises(NotImplementedError) { User.select { current_timestamp(3) } }
       assert_match(/precision/, e.message)
     else
@@ -1523,6 +1523,10 @@ class TestBlockSyntax < Minitest::Test
     # Oracle has neither degrees nor radians, and raises when either is asked.
     if oracle?
       assert_raises(NotImplementedError) { User.select { radians(:age) } }
+    elsif sqlserver?
+      # SQL Server's ROUND wants the precision the others default to zero.
+      assert_equal(60,
+        User.select { round(degrees(radians(:age)), 0).as(:v) }.sole.v.to_i)
     else
       assert_equal(60,
         User.select { round(degrees(radians(:age))).as(:v) }.sole.v.to_i)
@@ -1568,7 +1572,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_extract_runs
-    skip "#{ADAPTER} has no extract" if ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has no extract" if ADAPTER == "sqlite3" || sqlserver?
     User.delete_all
     User.create!(name: "alice")
     assert_equal(2026,
@@ -1790,7 +1794,7 @@ class TestBlockSyntax < Minitest::Test
   # PostgreSQL counts the bits of a bit string rather than of a number, so the
   # argument is cast there; bit(64) is what makes a negative answer alike.
   def test_bit_count
-    if ADAPTER == "sqlite3" || oracle?
+    if ADAPTER == "sqlite3" || oracle? || sqlserver?
       assert_raises(NotImplementedError) { User.select { bit_count(:flags) } }
       return
     end
@@ -2718,6 +2722,7 @@ class TestBlockSyntax < Minitest::Test
     # Oracle has LATERAL too, but the gem does not yet write it there, so it
     # is neither refused with this message nor exercised.
     skip "oracle's LATERAL is not written yet" if oracle?
+    skip "SQL Server has APPLY, not written yet" if sqlserver?
     e = assert_raises(NotImplementedError) { Author.joins(top_post.lateral, as: :top) }
     assert_match(/lateral join has no equivalent/, e.message)
   end

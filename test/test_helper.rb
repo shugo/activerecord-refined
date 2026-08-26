@@ -122,19 +122,19 @@ module SqlAssertions
   # oracle_enhanced does not implement upsert_all at all -- not the conflict
   # target, the statement itself.
   def skip_without_upsert
-    skip "#{ADAPTER} has no upsert" if oracle?
+    skip "#{ADAPTER} has no upsert" if oracle? || sqlserver?
   end
 
   # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, and neither
   # SQLite nor Oracle a way the gem generalises to an arbitrary value.
   def skip_without_json_containment
-    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3" || oracle?
+    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3" || oracle? || sqlserver?
   end
 
   # Oracle has no JSON_KEYS, and reaching the keys through JSON_TABLE is not
   # written yet.
   def skip_without_json_keys
-    skip "#{ADAPTER} has no JSON keys function" if oracle?
+    skip "#{ADAPTER} has no JSON keys function" if oracle? || sqlserver?
   end
 
   # Comparing a JSON value with a Ruby one is for jsonb and MySQL's JSON
@@ -191,7 +191,7 @@ module SqlAssertions
   # Oracle has ROLLUP, but Arel's oracle_enhanced visitor cannot write the
   # node, so the gem does not offer it there yet.
   def skip_without_rollup
-    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3" || oracle?
+    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3" || oracle? || sqlserver?
   end
 
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
@@ -214,7 +214,7 @@ module SqlAssertions
   # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; neither SQLite
   # nor Oracle has the three, nor BIT_COUNT.
   def skip_without_bit_aggregates
-    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3" || oracle?
+    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3" || oracle? || sqlserver?
   end
 
   def skip_without_array_columns
@@ -224,7 +224,7 @@ module SqlAssertions
   # MySQL has no NULLS FIRST/LAST; Arel emulates it with a leading IS NULL
   # ordering, so only the resulting order is portable, not the SQL.
   def skip_without_nulls_ordering_syntax
-    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if mysql?
+    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if mysql? || sqlserver?
   end
 
   def regexp_operator
