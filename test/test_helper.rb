@@ -21,8 +21,14 @@ require "json"
 #   ADAPTER=trilogy rake test               # the same server through Trilogy
 #   ADAPTER=mysql2 DB_PORT=3307 rake test   # MySQL, where the devcontainer
 #                                           # serves it (rake test:mysql8)
+#   ADAPTER=oracle_enhanced rake test       # Oracle, which only CI provides
 #   rake test:all              # all of the above in turn
 ADAPTER = ENV.fetch("ADAPTER", "sqlite3")
+
+# Active Record 8.1 knows an adapter only once its gem is loaded, and the
+# oracle_enhanced gem (with its Instant Client build) is installed only for
+# this adapter's run -- so it is required here, not through Bundler.require.
+require "active_record/connection_adapters/oracle_enhanced_adapter" if ADAPTER == "oracle_enhanced"
 
 # Trilogy and mysql2 both reach the MySQL family of servers -- the same
 # MySQL and MariaDB -- and so want the same spellings throughout; mariadb?
@@ -48,12 +54,26 @@ DATABASE_CONFIG =
       password: ENV["DB_PASSWORD"],
       database: DATABASE_NAME,
     }
+  when "oracle_enhanced"
+    # database is the service name; unlike the others there is no schema-less
+    # account to fall back on, so the user and password are required, and the
+    # suite connects straight to a schema that already exists.
+    {
+      adapter: "oracle_enhanced",
+      host: ENV.fetch("DB_HOST", "127.0.0.1"),
+      port: ENV["DB_PORT"]&.to_i,
+      database: ENV.fetch("DB_DATABASE", "FREEPDB1"),
+      username: ENV.fetch("DB_USERNAME"),
+      password: ENV.fetch("DB_PASSWORD"),
+    }
   else
     raise ArgumentError, "unknown ADAPTER: #{ADAPTER}"
   end
 
-# The server databases persist between runs, so create one on first use.
-unless ADAPTER == "sqlite3"
+# PostgreSQL and the MySQL family keep their databases between runs, so
+# create one on first use.  SQLite is in memory and Oracle connects to a
+# schema that already exists, so neither goes through this.
+if ADAPTER == "postgresql" || MYSQL_ADAPTERS.include?(ADAPTER)
   maintenance_database = ADAPTER == "postgresql" ? "postgres" : "mysql"
   ActiveRecord::Base.establish_connection(
     DATABASE_CONFIG.merge(database: maintenance_database))
@@ -120,6 +140,10 @@ module SqlAssertions
 
   def mysql?
     MYSQL_ADAPTERS.include?(ADAPTER)
+  end
+
+  def oracle?
+    ADAPTER == "oracle_enhanced"
   end
 
   def mariadb?

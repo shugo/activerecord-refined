@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+      # Temporary, while the Oracle leg is brought up on this branch.
+      - oracle
   pull_request:
 
 jobs:
@@ -105,3 +107,67 @@ jobs:
           ruby-version: head
           bundler-cache: true
       - run: bundle exec rake test
+
+  # Oracle, reached through oracle_enhanced.  The client is heavier than the
+  # others -- Instant Client, and ruby-oci8 from git because its release does
+  # not build on ruby-master -- so this leg installs the client itself and
+  # bundles the optional oracle group by hand rather than through the cached
+  # bundler-cache path.  gvenzl/oracle-free is Oracle 23ai Free.
+  oracle:
+    runs-on: ubuntu-latest
+    services:
+      oracle:
+        image: gvenzl/oracle-free:23-slim
+        env:
+          ORACLE_PASSWORD: oracle
+          APP_USER: refined
+          APP_USER_PASSWORD: refined
+        ports:
+          - 1521:1521
+        options: >-
+          --health-cmd healthcheck.sh
+          --health-interval 20s
+          --health-timeout 10s
+          --health-retries 20
+          --health-start-period 40s
+    env:
+      ADAPTER: oracle_enhanced
+      DB_HOST: 127.0.0.1
+      DB_PORT: 1521
+      DB_DATABASE: FREEPDB1
+      DB_USERNAME: refined
+      DB_PASSWORD: refined
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: head
+      - name: Install Oracle Instant Client
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y unzip wget
+          sudo apt-get install -y libaio1t64 || sudo apt-get install -y libaio1
+          # Oracle's libclntsh links libaio.so.1, but Ubuntu 24.04's t64
+          # rename ships libaio.so.1t64; bridge the soname it expects.
+          libdir=/usr/lib/x86_64-linux-gnu
+          if [ ! -e "$libdir/libaio.so.1" ] && [ -e "$libdir/libaio.so.1t64" ]; then
+            sudo ln -sf "$libdir/libaio.so.1t64" "$libdir/libaio.so.1"
+          fi
+          base=https://download.oracle.com/otn_software/linux/instantclient
+          cd /opt
+          sudo wget -q "$base/instantclient-basiclite-linuxx64.zip"
+          sudo wget -q "$base/instantclient-sdk-linuxx64.zip"
+          sudo unzip -q -o instantclient-basiclite-linuxx64.zip
+          sudo unzip -q -o instantclient-sdk-linuxx64.zip
+          ic=$(ls -d /opt/instantclient_*)
+          echo "$ic" | sudo tee /etc/ld.so.conf.d/oracle-instantclient.conf
+          sudo ldconfig
+          echo "LD_LIBRARY_PATH=$ic" >> "$GITHUB_ENV"
+      - name: Bundle the oracle group and run the suite
+        run: |
+          set -eux
+          bundle config set --local with oracle
+          bundle config set --local without db
+          bundle install
+          bundle exec rake test

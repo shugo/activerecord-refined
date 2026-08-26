@@ -31,6 +31,7 @@ module ActiveRecord
         "pglite" => :postgresql,
         "mysql2" => :mysql,
         "trilogy" => :mysql,
+        "oracle_enhanced" => :oracle,
       }.freeze
 
       def self.adapter_family(model)
