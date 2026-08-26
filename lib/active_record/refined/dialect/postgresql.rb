@@ -1,0 +1,91 @@
+# frozen_string_literal: true
+
+module ActiveRecord
+  module Refined
+    class Dialect
+      # PostgreSQL, and the adapters that answer for the same server.
+      class Postgresql < Dialect
+        FUNCTIONS = { log2: nil, rand: "RANDOM" }.freeze
+
+        # PostgreSQL counts the bits of a bit string rather than a number, so
+        # the argument is cast, to bit(64) for a negative to come back as the
+        # MySQL family has it.
+        def bit_count(expr, _model)
+          AST::Function.new("BIT_COUNT", [AST::Cast.new(expr, "bit(64)")])
+        end
+
+        # PostgreSQL's XOR is #, where ^ is exponentiation.
+        def bitwise_xor(left, right)
+          Arel::Nodes::InfixOperation.new("#", left, right)
+        end
+
+        def json_path(document, _dollar_path, steps, json_value, _model)
+          Arel::Nodes::InfixOperation.new(
+            json_value ? :"#>" : :"#>>", document, Arel::Nodes.build_quoted(steps))
+        end
+
+        # An untyped JSON literal beside a jsonb operand coerces to jsonb, so
+        # it passes as it is.
+        def json_literal(json, _model)
+          json
+        end
+
+        def json_contains(document, json, _model)
+          Arel::Nodes::Contains.new(document, json)
+        end
+
+        # The ? operator, which a GIN index matches where jsonb_exists never is.
+        def json_has_key(document, name, _path, _model)
+          Arel::Nodes::InfixOperation.new(:"?", document, name)
+        end
+
+        def json_keys(document, model)
+          sql = compile(document, model)
+          Arel.sql("CASE WHEN jsonb_typeof(#{sql}) = 'object' " \
+                   "THEN COALESCE((SELECT jsonb_agg(k) FROM jsonb_object_keys(#{sql}) k), " \
+                   "CAST('[]' AS jsonb)) END")
+        end
+
+        # jsonb_set takes jsonb: an expression is turned into it, and a Ruby
+        # value goes in as the JSON that says it -- '"x"' rather than 'x'.
+        def json_set(document, steps, _dollar_path, value, expression, _model)
+          set = expression ? Arel::Nodes::NamedFunction.new("to_jsonb", [expression]) :
+                             Arel::Nodes.build_quoted(JSON.generate(value))
+          Arel::Nodes::NamedFunction.new(
+            "jsonb_set", [document, Arel::Nodes.build_quoted(steps), set])
+        end
+
+        # jsonb subtracts an array of keys; an untyped array literal would be
+        # read as a single key, so it is cast to text[].
+        def json_remove(document, _dollar_paths, steps, _model)
+          keys = Arel::Nodes::NamedFunction.new(
+            "CAST", [Arel::Nodes::As.new(
+              Arel::Nodes.build_quoted(steps), Arel::Nodes::SqlLiteral.new("text[]"))])
+          # Grouped because - binds tighter than #>.
+          Arel::Nodes::InfixOperation.new(:-, Arel::Nodes::Grouping.new(document), keys)
+        end
+
+        def json_build(kind, keys, args, _model)
+          Arel::Nodes::NamedFunction.new(
+            kind == :array ? "jsonb_build_array" : "jsonb_build_object",
+            json_build_body(kind, keys, args))
+        end
+
+        # jsonb_build_* takes typed arguments, so a JSON literal is cast; left
+        # untyped it would be text, and land as a string.
+        def json_build_argument(value, _model)
+          Arel::Nodes::NamedFunction.new(
+            "CAST", [Arel::Nodes::As.new(
+              Arel::Nodes.build_quoted(JSON.generate(value)),
+              Arel::Nodes::SqlLiteral.new("jsonb"))])
+        end
+
+        def json_aggregate_name(kind)
+          kind == :arrayagg ? "jsonb_agg" : "jsonb_object_agg"
+        end
+
+        def grouping_supported?(_kind) = true
+      end
+    end
+  end
+end

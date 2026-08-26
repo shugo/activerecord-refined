@@ -17,27 +17,6 @@ module ActiveRecord
       # letter, a space or a quote never reaches the SQL as an operator.
       OPERATOR = %r{\A[+\-*/<>=~!@\#%^&|`?]+\z}
 
-      # Which family of spellings an adapter belongs to.  MariaDB answers to
-      # the mysql2 adapter and is counted with MySQL, though the two part
-      # company over JSON.  An adapter nobody has classified keeps the
-      # standard spellings and is left to say for itself what it cannot do.
-      #
-      # pglite is PostgreSQL itself compiled to WebAssembly, reached through
-      # wasmify-rails' adapter; the server it answers for is the same one.
-      ADAPTER_FAMILIES = {
-        "sqlite3" => :sqlite,
-        "postgresql" => :postgresql,
-        "postgis" => :postgresql,
-        "pglite" => :postgresql,
-        "mysql2" => :mysql,
-        "trilogy" => :mysql,
-        "oracle_enhanced" => :oracle,
-      }.freeze
-
-      def self.adapter_family(model)
-        ADAPTER_FAMILIES[model.connection_db_config.adapter] || :unknown
-      end
-
       def self.check_name(name, pattern, what)
         return name if pattern.match?(name.to_s)
         raise ArgumentError, "#{name.inspect} is not a plain #{what}"
@@ -49,19 +28,7 @@ module ActiveRecord
       # functions; the MySQL family, which has no json(), reads it with
       # JSON_EXTRACT.
       def self.json_argument(value, model)
-        json = Arel::Nodes.build_quoted(JSON.generate(value))
-        case adapter_family(model)
-        when :sqlite
-          Arel::Nodes::NamedFunction.new("json", [json])
-        when :oracle
-          # A string tagged FORMAT JSON is read as the document it spells
-          # rather than as text; it is only ever an argument to Oracle's own
-          # JSON functions, which is where FORMAT JSON is grammar.
-          Arel.sql("#{model.with_connection { |c| c.quote(JSON.generate(value)) }} FORMAT JSON")
-        else
-          Arel::Nodes::NamedFunction.new(
-            "JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
-        end
+        Dialect.for(model).json_argument(value, model)
       end
 
       # Predicate builders shared by symbols, qualified columns and
@@ -781,27 +748,8 @@ module ActiveRecord
         end
 
         def to_arel(_table, model)
-          json = Arel::Nodes.build_quoted(JSON.generate(value))
-          case AST.adapter_family(model)
-          when :postgresql then json
-          when :mysql then mysql_literal(json, model)
-          else refuse(model.connection_db_config.adapter)
-          end
+          Dialect.for(model).json_literal(Arel::Nodes.build_quoted(JSON.generate(value)), model)
         end
-
-        private
-          # MariaDB answers to the same adapter and has no JSON type at all.
-          def mysql_literal(json, model)
-            refuse("MariaDB") if model.with_connection { |c| c.mariadb? }
-            Arel::Nodes::NamedFunction.new(
-              "CAST", [Arel::Nodes::As.new(json, Arel::Nodes::SqlLiteral.new("JSON"))])
-          end
-
-          def refuse(database)
-            raise NotImplementedError,
-              "a JSON comparison has no equivalent on #{database}; " \
-              "dig_text gives the value"
-          end
       end
 
       # The JSON operations read a document, and what dig gives is one:
@@ -858,53 +806,12 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          document = to_arel_operand(operand, table, model)
-          case AST.adapter_family(model)
-          when :postgresql
-            Arel::Nodes::InfixOperation.new(
-              json_value? ? :"#>" : :"#>>", document, Arel::Nodes.build_quoted(steps_array))
-          when :mysql
-            extracted = Arel::Nodes::NamedFunction.new(
-              "JSON_EXTRACT", [document, Arel::Nodes.build_quoted(dollar_path)])
-            json_value? ? extracted : Arel::Nodes::NamedFunction.new("JSON_UNQUOTE", [extracted])
-          when :oracle
-            # Oracle keeps its scalars and its structures in different
-            # functions: JSON_VALUE reads a scalar out as text, JSON_QUERY a
-            # fragment as JSON.  dig keeps JSON, so it takes JSON_QUERY with
-            # ALLOW SCALARS -- 23ai's leave for it to return a scalar leaf as
-            # itself rather than wrapping or refusing it.
-            if json_value?
-              Arel.sql(
-                "JSON_QUERY(#{compile(document, model)}, " \
-                "#{quoted_path(model)} RETURNING VARCHAR2(4000) ALLOW SCALARS " \
-                "NULL ON EMPTY)")
-            else
-              Arel::Nodes::NamedFunction.new(
-                "JSON_VALUE", [document, Arel::Nodes.build_quoted(dollar_path)])
-            end
-          else
-            extracted = Arel::Nodes::InfixOperation.new(
-              json_value? ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
-            # SQLite's ->> gives back the value with its type, where the other
-            # two give text.  Cast so that `dig_text(:n) == '5'` means the
-            # same thing everywhere, and a number wants a cast everywhere too.
-            json_value? ? extracted : Arel::Nodes::NamedFunction.new(
-              "CAST", [Arel::Nodes::As.new(extracted, Arel::Nodes::SqlLiteral.new("text"))])
-          end
+          Dialect.for(model).json_path(
+            to_arel_operand(operand, table, model),
+            dollar_path, steps_array, json_value?, model)
         end
 
         private
-          # ALLOW SCALARS is keyword syntax no Arel node carries, so the call
-          # is written out; the document is compiled by the connection's own
-          # visitor and the path quoted by it, so both are the adapter's.
-          def compile(document, model)
-            model.with_connection { |connection| connection.visitor.compile(document) }
-          end
-
-          def quoted_path(model)
-            model.with_connection { |connection| connection.quote(dollar_path) }
-          end
-
           def json_source
             "dig"
           end
@@ -932,66 +839,13 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          document = to_arel_operand(operand, table, model)
-          case AST.adapter_family(model)
-          when :postgresql
-            Arel::Nodes::NamedFunction.new(
-              "jsonb_set",
-              [document, Arel::Nodes.build_quoted(steps_array), postgresql_value(table, model)])
-          when :oracle
-            # JSON_TRANSFORM is Oracle's one editing function, SET reaching a
-            # path the way JSON_SET does; its SET and the value beside it are
-            # grammar, so the call is written out.
-            model.with_connection do |connection|
-              Arel.sql(
-                "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
-                "SET #{connection.quote(dollar_path)} = #{oracle_value(table, model)} " \
-                "RETURNING VARCHAR2(4000))")
-            end
-          else
-            Arel::Nodes::NamedFunction.new(
-              "JSON_SET",
-              [document, Arel::Nodes.build_quoted(dollar_path), other_value(table, model)])
-          end
+          Dialect.for(model).json_set(
+            to_arel_operand(operand, table, model),
+            steps_array, dollar_path, value,
+            (to_arel_operand(value, table, model) if expression?), model)
         end
 
         private
-          # A column or expression is compiled as itself; a Ruby document or
-          # boolean rides in tagged FORMAT JSON, and a bare scalar is quoted.
-          def oracle_value(table, model)
-            model.with_connection do |connection|
-              if expression?
-                connection.visitor.compile(to_arel_operand(value, table, model))
-              elsif value.is_a?(::Hash) || value.is_a?(::Array) ||
-                    value == true || value == false
-                "#{connection.quote(JSON.generate(value))} FORMAT JSON"
-              else
-                connection.quote(value)
-              end
-            end
-          end
-
-          # jsonb_set takes jsonb, so an expression is turned into it and a Ruby
-          # value goes in as the JSON that says it -- '"x"' rather than 'x',
-          # which is not a document at all.
-          def postgresql_value(table, model)
-            return Arel::Nodes::NamedFunction.new(
-              "to_jsonb", [to_arel_operand(value, table, model)]) if expression?
-            Arel::Nodes.build_quoted(JSON.generate(value))
-          end
-
-          # The others take the value as it is, except a whole document or a
-          # boolean, which go in as JSON through json_argument.
-          def other_value(table, model)
-            return to_arel_operand(value, table, model) if expression?
-            unless value.is_a?(::Hash) || value.is_a?(::Array) ||
-                   value == true || value == false
-              return Arel::Nodes.build_quoted(value)
-            end
-
-            AST.json_argument(value, model)
-          end
-
           def expression?
             value.is_a?(Node) || value.is_a?(::Symbol)
           end
@@ -1020,44 +874,13 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          document = to_arel_operand(operand, table, model)
-          if AST.adapter_family(model) == :postgresql
-            # Grouped because - binds tighter than #>: dug out of a document,
-            # the subtraction would otherwise take the path literal first.
-            return Arel::Nodes::InfixOperation.new(
-              :-, Arel::Nodes::Grouping.new(document), key_array)
-          end
-
-          if AST.adapter_family(model) == :oracle
-            # One JSON_TRANSFORM with a REMOVE for each key, which passes over
-            # a key that is not there rather than raising.
-            return model.with_connection do |connection|
-              removes = keys.map do |key|
-                "REMOVE #{connection.quote("$#{dollar_step(key)}")}"
-              end
-              Arel.sql(
-                "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
-                "#{removes.join(', ')} RETURNING VARCHAR2(4000))")
-            end
-          end
-
-          Arel::Nodes::NamedFunction.new(
-            "JSON_REMOVE",
-            [document, *keys.map { |key| Arel::Nodes.build_quoted("$#{dollar_step(key)}") }])
+          Dialect.for(model).json_remove(
+            to_arel_operand(operand, table, model),
+            keys.map { |key| "$#{dollar_step(key)}" },
+            steps_array(keys), model)
         end
 
         private
-          # jsonb has three subtractions -- a key, an array of keys, an element
-          # by index -- and an array literal written without a type is read as
-          # the first of them: `meta - '{draft}'` takes out the key spelled
-          # {draft}, which is nothing, and says nothing about it.
-          def key_array
-            Arel::Nodes::NamedFunction.new(
-              "CAST",
-              [Arel::Nodes::As.new(Arel::Nodes.build_quoted(steps_array(keys)),
-                                   Arel::Nodes::SqlLiteral.new("text[]"))])
-          end
-
           # Keys, as Hash#except takes them: an index into an array is not what
           # the name says anywhere, and is bury's business through a path.
           def check_keys(keys)
@@ -1085,17 +908,9 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          document = to_arel_operand(operand, table, model)
-          json = Arel::Nodes.build_quoted(JSON.generate(value))
-          case AST.adapter_family(model)
-          when :postgresql then Arel::Nodes::Contains.new(document, json)
-          when :mysql
-            Arel::Nodes::NamedFunction.new("JSON_CONTAINS", [document, json])
-          else
-            # Later than the others, since the adapter is only known here.
-            raise NotImplementedError,
-              "contains? has no equivalent on #{model.connection_db_config.adapter}"
-          end
+          Dialect.for(model).json_contains(
+            to_arel_operand(operand, table, model),
+            Arel::Nodes.build_quoted(JSON.generate(value)), model)
         end
       end
 
@@ -1113,20 +928,10 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          document = to_arel_operand(operand, table, model)
-          name = Arel::Nodes.build_quoted(key.to_s)
-          path = Arel::Nodes.build_quoted("$.#{key}")
-          case AST.adapter_family(model)
-          when :postgresql
-            Arel::Nodes::InfixOperation.new(:"?", document, name)
-          when :mysql
-            Arel::Nodes::NamedFunction.new(
-              "JSON_CONTAINS_PATH", [document, Arel::Nodes.build_quoted("one"), path])
-          when :oracle
-            Arel::Nodes::NamedFunction.new("JSON_EXISTS", [document, path])
-          else
-            Arel::Nodes::NamedFunction.new("json_type", [document, path]).not_eq(nil)
-          end
+          Dialect.for(model).json_has_key(
+            to_arel_operand(operand, table, model),
+            Arel::Nodes.build_quoted(key.to_s),
+            Arel::Nodes.build_quoted("$.#{key}"), model)
         end
       end
 
@@ -1149,35 +954,10 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          document = to_arel_operand(operand, table, model)
-          case AST.adapter_family(model)
-          when :sqlite
-            sql = compile(document, model)
-            Arel.sql("CASE WHEN json_type(#{sql}) = 'object' " \
-                     "THEN (SELECT json_group_array(key) FROM json_each(#{sql})) END")
-          when :postgresql
-            sql = compile(document, model)
-            Arel.sql("CASE WHEN jsonb_typeof(#{sql}) = 'object' " \
-                     "THEN COALESCE((SELECT jsonb_agg(k) FROM jsonb_object_keys(#{sql}) k), " \
-                     "CAST('[]' AS jsonb)) END")
-          when :oracle
-            # Oracle has no JSON_KEYS, and the keys are reachable only through
-            # a JSON_TABLE unnest the gem does not build yet.
-            raise NotImplementedError,
-              "keys has no equivalent on #{model.connection_db_config.adapter}"
-          else
-            Arel::Nodes::NamedFunction.new("JSON_KEYS", [document])
-          end
+          Dialect.for(model).json_keys(to_arel_operand(operand, table, model), model)
         end
 
         private
-          # The document appears more than once, the way SQLite's XOR names
-          # its operands twice; the connection's own visitor compiles it, so
-          # its quoting is the adapter's.
-          def compile(document, model)
-            model.with_connection { |connection| connection.visitor.compile(document) }
-          end
-
           def json_source
             "keys"
           end
@@ -1192,11 +972,6 @@ module ActiveRecord
         include JsonComparable
         include ComputedJson
 
-        NAMES = {
-          array: { postgresql: "jsonb_build_array" },
-          object: { postgresql: "jsonb_build_object" },
-        }.freeze
-
         attr_reader :kind, :values
 
         def initialize(kind, values)
@@ -1205,61 +980,23 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          return oracle_build(table, model) if AST.adapter_family(model) == :oracle
-
-          Arel::Nodes::NamedFunction.new(
-            NAMES.fetch(kind).fetch(AST.adapter_family(model)) { "JSON_#{kind.to_s.upcase}" },
-            arguments(table, model))
+          dialect = Dialect.for(model)
+          if kind == :array
+            dialect.json_build(:array, nil,
+              values.map { |value| build_argument(value, dialect, table, model) }, model)
+          else
+            dialect.json_build(:object, values.keys.map(&:to_s),
+              values.values.map { |value| build_argument(value, dialect, table, model) }, model)
+          end
         end
 
         private
-          # Oracle pairs a key with its value by the VALUE keyword rather than
-          # by position, drops a NULL from an array unless told NULL ON NULL,
-          # and returns the native JSON type ruby-oci8 cannot fetch unless a
-          # RETURNING asks for text -- none of which an Arel function carries.
-          def oracle_build(table, model)
-            model.with_connection do |connection|
-              compile = ->(value) { connection.visitor.compile(build_argument(value, table, model)) }
-              body =
-                if kind == :array
-                  values.map(&compile).join(", ")
-                else
-                  values.map do |key, value|
-                    "#{connection.quote(key.to_s)} VALUE #{compile.call(value)}"
-                  end.join(", ")
-                end
-              Arel.sql(
-                "JSON_#{kind.to_s.upcase}(#{body} NULL ON NULL RETURNING VARCHAR2(4000))")
-            end
-          end
-
-          def arguments(table, model)
-            if kind == :array
-              values.map { |value| build_argument(value, table, model) }
-            else
-              values.flat_map do |key, value|
-                [Arel::Nodes.build_quoted(key.to_s),
-                 build_argument(value, table, model)]
-              end
-            end
-          end
-
-          # An expression is itself and a document or a boolean goes in as
-          # JSON, as bury takes them.  PostgreSQL builds from typed
-          # arguments, so its JSON literal is cast -- left untyped it would
-          # be text, and land as a string.
-          def build_argument(value, table, model)
+          # An expression is itself and a bare scalar is quoted; a document or
+          # a boolean the dialect embeds as JSON, as bury takes it.
+          def build_argument(value, dialect, table, model)
             case value
             when Node, ::Symbol then to_arel_operand(value, table, model)
-            when ::Hash, ::Array, true, false
-              if AST.adapter_family(model) == :postgresql
-                Arel::Nodes::NamedFunction.new(
-                  "CAST", [Arel::Nodes::As.new(
-                    Arel::Nodes.build_quoted(JSON.generate(value)),
-                    Arel::Nodes::SqlLiteral.new("jsonb"))])
-              else
-                AST.json_argument(value, model)
-              end
+            when ::Hash, ::Array, true, false then dialect.json_build_argument(value, model)
             when ::Rational then quote_number(value)
             else Arel::Nodes.build_quoted(value)
             end
@@ -1310,7 +1047,7 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          return with_rollup(table, model) if AST.adapter_family(model) == :mysql
+          return with_rollup(table, model) if Dialect.for(model).grouping_by_with_rollup?
 
           KINDS.fetch(kind).new(
             if kind == :grouping_sets
@@ -1446,14 +1183,7 @@ module ActiveRecord
           # it cannot be the portable one either.  SQLite has no XOR at all;
           # (a | b) - (a & b) is it, at the cost of naming each operand twice.
           def xor(left, right, model)
-            case AST.adapter_family(model)
-            when :postgresql then Arel::Nodes::InfixOperation.new("#", left, right)
-            when :mysql then Arel::Nodes::BitwiseXor.new(left, right)
-            else
-              Arel::Nodes::Subtraction.new(
-                Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseOr.new(left, right)),
-                Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseAnd.new(left, right)))
-            end
+            Dialect.for(model).bitwise_xor(left, right)
           end
       end
 
@@ -1607,11 +1337,11 @@ module ActiveRecord
         def to_arel(table, model)
           return aggregate(operand, table, model) unless condition
 
-          # MySQL has no FILTER clause.  An aggregate passes over a NULL, so
-          # the case that yields nothing for the rows the condition misses is
-          # the same aggregate over the same rows -- count(*) has no operand to
-          # keep, and counts a 1 instead.
-          if AST.adapter_family(model) == :mysql
+          # A family without a FILTER clause gets the CASE that means the same.
+          # An aggregate passes over a NULL, so the case that yields nothing for
+          # the rows the condition misses is the same aggregate over the same
+          # rows -- count(*) has no operand to keep, and counts a 1 instead.
+          unless Dialect.for(model).filter_supported?
             kept = Case.new.when(condition).then(operand == :* ? 1 : operand)
             return aggregate(kept, table, model)
           end
@@ -1641,14 +1371,6 @@ module ActiveRecord
         include ComputedJson
         include Windowing
 
-        # The standard names, which are also the DSL's own and MySQL's, serve
-        # any adapter the table does not list.
-        NAMES = {
-          arrayagg: { sqlite: "json_group_array", postgresql: "jsonb_agg" },
-          objectagg: { sqlite: "json_group_object",
-                       postgresql: "jsonb_object_agg" },
-        }.freeze
-
         attr_reader :kind, :operands, :condition
 
         def initialize(kind, operands, condition: nil)
@@ -1662,31 +1384,23 @@ module ActiveRecord
                             condition: Case.argument(:filter, condition, block))
         end
 
-        # MariaDB takes every other aggregate as a window function, but not
-        # these two; Over asks here before writing one.
+        # Over asks here before writing a window, since a family may take
+        # every other aggregate as one but not these two.
         def check_window(model)
-          if AST.adapter_family(model) == :oracle
-            raise NotImplementedError,
-              "#{json_source} over a window has no equivalent on " \
-              "#{model.connection_db_config.adapter}"
-          end
-          return unless AST.adapter_family(model) == :mysql
-          return unless model.with_connection { |connection| connection.mariadb? }
-          raise NotImplementedError,
-            "#{json_source} over a window has no equivalent on MariaDB"
+          Dialect.for(model).check_json_aggregate_window(json_source, model)
         end
 
         def to_arel(table, model)
-          family = AST.adapter_family(model)
+          dialect = Dialect.for(model)
           call = Arel::Nodes::NamedFunction.new(
-            NAMES.fetch(kind).fetch(family) { "JSON_#{kind.to_s.upcase}" },
+            dialect.json_aggregate_name(kind),
             operands.map { |operand| to_arel_argument(operand, table, model) })
           return call unless condition
 
-          # The CASE that stands in for FILTER elsewhere hands the aggregate
-          # a NULL for every row the condition misses, and these two keep a
-          # NULL -- as JSON null -- rather than passing over it.
-          if family == :mysql
+          # The CASE that stands in for FILTER elsewhere hands the aggregate a
+          # NULL for every row the condition misses, and these two keep a NULL
+          # -- as JSON null -- rather than passing over it, so it is refused.
+          unless dialect.json_aggregate_filter_supported?
             raise NotImplementedError,
               "#{json_source}.filter has no equivalent on " \
               "#{model.connection_db_config.adapter}; a CASE would leave a " \
@@ -2045,12 +1759,12 @@ module ActiveRecord
           # they resolve.
           def json_between?(model)
             (values.begin.is_a?(JsonLiteral) || values.end.is_a?(JsonLiteral)) &&
-              AST.adapter_family(model) == :mysql
+              Dialect.for(model).json_list_by_element?
           end
 
           def json_list?(model)
             values.any? { |value| value.is_a?(JsonLiteral) } &&
-              AST.adapter_family(model) == :mysql
+              Dialect.for(model).json_list_by_element?
           end
 
           def json_list(arel_operand, elements)
