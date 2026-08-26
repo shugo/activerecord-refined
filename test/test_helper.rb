@@ -210,7 +210,11 @@ module SqlAssertions
   # quotes, so lowering only what is inside double quotes leaves them alone.
   def normalize_sql(sql)
     sql = sql.tr("`", '"').gsub("\\\\") { "\\" }
-    sql = sql.gsub(/"[^"]*"/, &:downcase) if oracle?
+    # Oracle folds a name to upper case only when it was written unquoted, and
+    # preserves one quoted with case of its own -- an alias like "postCount".
+    # So lower only the all-upper tokens; leave anything with a lower-case
+    # letter, which was quoted deliberately, as written.
+    sql = sql.gsub(/"[^"]*"/) { |name| name.match?(/[a-z]/) ? name : name.downcase } if oracle?
     sql
   end
 
