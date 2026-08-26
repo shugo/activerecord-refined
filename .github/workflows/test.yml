@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - master
-      # Temporary, while the Oracle leg is brought up on this branch.
-      - oracle
   pull_request:
 
 jobs:
