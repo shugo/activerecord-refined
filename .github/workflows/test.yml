@@ -9,8 +9,6 @@ on:
 jobs:
   rubocop:
     runs-on: ubuntu-latest
-    env:
-      BUNDLE_WITHOUT: db
     steps:
       - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
@@ -23,9 +21,6 @@ jobs:
 
   sqlite:
     runs-on: ubuntu-latest
-    env:
-      # Nothing here loads pg or mysql2, so skip building the extensions.
-      BUNDLE_WITHOUT: db
     steps:
       - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
@@ -40,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ADAPTER: postgresql
+      BUNDLE_WITH: postgresql
       DB_USERNAME: postgres
       DB_PASSWORD: postgres
     services:
@@ -82,6 +78,7 @@ jobs:
             health: healthcheck.sh --connect --innodb_initialized
     env:
       ADAPTER: ${{ matrix.adapter }}
+      BUNDLE_WITH: ${{ matrix.adapter }}
       # The suite creates its own database, which MYSQL_USER would not be
       # granted; root is the account that can.
       DB_USERNAME: root
@@ -166,7 +163,6 @@ jobs:
         run: |
           set -eux
           bundle config set --local with oracle
-          bundle config set --local without db
           bundle install
           bundle exec rake test
 
@@ -204,7 +200,6 @@ jobs:
         run: |
           set -eux
           bundle config set --local with sqlserver
-          bundle config set --local without db
           bundle install
           bundle exec ruby -e 'require "tiny_tds"; 40.times { begin; TinyTds::Client.new(host: "127.0.0.1", port: 1433, username: "sa", password: ENV.fetch("DB_PASSWORD")).execute("SELECT 1").each; exit; rescue StandardError => e; warn e.message; sleep 3; end }; abort "SQL Server did not become ready"'
           bundle exec rake test
