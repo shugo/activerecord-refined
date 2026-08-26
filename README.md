@@ -1104,6 +1104,32 @@ Active Record type-casts each one on the way into the `VALUES` list, so an
 expression does not become SQL there — it becomes nothing, silently. Use
 `upsert_all` where a row's value has to be worked out.
 
+## Other adapters
+
+SQLite, PostgreSQL, MySQL, MariaDB, Oracle and SQL Server are built in: each
+is a `Dialect`, one class per family of spellings, asked for whatever the
+databases write differently. An adapter the gem does not know keeps the
+standard spellings, which reach further than you might expect; where they
+fall short, a dialect of your own says the rest. Subclass
+`ActiveRecord::Refined::Dialect` — or the built-in family the database
+descends from — override only what it spells differently, and register it
+under the adapter's name:
+
+```ruby
+class AcmeDialect < ActiveRecord::Refined::Dialect
+  # AcmeDB spells char_length LEN, and has no random ordering.
+  FUNCTIONS = { char_length: "LEN", rand: nil }.freeze
+
+  def full_outer_join_supported? = false
+end
+
+ActiveRecord::Refined::Dialect.register("acmedb", AcmeDialect)
+```
+
+`register` also takes a block for an adapter whose dialect only the
+connection can name — the way `mysql2` answers for MySQL and MariaDB both —
+receiving the model and returning the class.
+
 ## Performance
 
 `benchmark/query_building.rb` compares building the same queries through the

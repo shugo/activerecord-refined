@@ -27,11 +27,32 @@ module ActiveRecord
       # parallel as much as on one whose do not.
       @instances = Concurrent::Map.new
 
+      @registry = Concurrent::Map.new
+
       class << self
-        # The dialect a model's queries are built for.  MariaDB and MySQL
-        # answer to one adapter apiece and part company only at the connection,
-        # so those two are told apart by asking it; the rest go by adapter name
-        # alone.
+        # Names an adapter's dialect.  An adapter's gem, or an application,
+        # registers its own -- a Dialect subclass overriding only where its
+        # family departs from the standard:
+        #
+        #   ActiveRecord::Refined::Dialect.register("acmedb", AcmeDialect)
+        #
+        # A block registers an adapter whose dialect only the connection can
+        # name, as mysql2's is either MySQL's or MariaDB's: it receives the
+        # model and returns the class.  The built-in families register with
+        # blocks too, which is what leaves each autoloaded until an adapter
+        # first resolves to it.
+        def register(adapter, dialect = nil, &block)
+          unless dialect || block
+            raise ArgumentError, "register takes a dialect class or a block"
+          end
+          @registry[adapter.to_s] = dialect || block
+        end
+
+        # The dialect a model's queries are built for.  An adapter nobody has
+        # registered keeps the standard spellings and is left to say for
+        # itself what it cannot do.  The instances are cached by class rather
+        # than by adapter, so a re-registration takes effect on the next
+        # query.
         def for(model)
           klass = class_for(model.connection_db_config.adapter, model)
           @instances.compute_if_absent(klass) { klass.new }
@@ -39,17 +60,24 @@ module ActiveRecord
 
         private
           def class_for(adapter, model)
-            case adapter
-            when "sqlite3" then Sqlite
-            when "postgresql", "postgis", "pglite" then Postgresql
-            when "mysql2", "trilogy"
-              model.with_connection { |connection| connection.mariadb? } ? Mariadb : Mysql
-            when "oracle_enhanced" then Oracle
-            when "sqlserver" then SqlServer
-            else Dialect
-            end
+            entry = @registry[adapter] or return Dialect
+            entry.is_a?(Proc) ? entry.call(model) : entry
           end
       end
+
+      register("sqlite3") { Sqlite }
+      register("postgresql") { Postgresql }
+      register("postgis") { Postgresql }
+      register("pglite") { Postgresql }
+      # MariaDB and MySQL answer to one adapter apiece and part company only
+      # at the connection, so those two are told apart by asking it.
+      %w[mysql2 trilogy].each do |adapter|
+        register(adapter) do |model|
+          model.with_connection { |connection| connection.mariadb? } ? Mariadb : Mysql
+        end
+      end
+      register("oracle_enhanced") { Oracle }
+      register("sqlserver") { SqlServer }
 
       # --- Capabilities.  The standard has them; a family without one says so
       #     by overriding to false, and the block raises where it is asked for.

@@ -3074,7 +3074,39 @@ class TestBlockSyntax < Minitest::Test
   # Mariadb by what the connection answers; an adapter nobody classifies keeps
   # the base dialect.
   def test_dialect_resolves_by_adapter
-    model = lambda do |adapter, mariadb: false|
+    d = ActiveRecord::Refined::Dialect
+    {
+      "sqlite3" => d::Sqlite,
+      "postgresql" => d::Postgresql,
+      "postgis" => d::Postgresql,
+      "pglite" => d::Postgresql,
+      "oracle_enhanced" => d::Oracle,
+      "nothing_of_the_sort" => d,
+    }.each do |adapter, dialect|
+      assert_instance_of(dialect, d.for(model_with_adapter(adapter)), adapter)
+    end
+    assert_instance_of(d::Mysql, d.for(model_with_adapter("mysql2")))
+    assert_instance_of(d::Mysql, d.for(model_with_adapter("trilogy")))
+    assert_instance_of(d::Mariadb, d.for(model_with_adapter("mysql2", mariadb: true)))
+  end
+
+  # A third-party adapter registers its dialect -- a subclass overriding only
+  # where it departs from the standard -- or, where only the connection can
+  # name it, a block taking the model.
+  def test_dialect_registration
+    d = ActiveRecord::Refined::Dialect
+    dialect = Class.new(d)
+    d.register("registered_here", dialect)
+    assert_instance_of(dialect, d.for(model_with_adapter("registered_here")))
+    d.register("registered_here") do |model|
+      model.connection_db_config.adapter == "registered_here" ? dialect : d
+    end
+    assert_instance_of(dialect, d.for(model_with_adapter("registered_here")))
+    assert_raises(ArgumentError) { d.register("registered_here") }
+  end
+
+  private
+    def model_with_adapter(adapter, mariadb: false)
       config = Struct.new(:adapter).new(adapter)
       Class.new do
         define_singleton_method(:connection_db_config) { config }
@@ -3085,19 +3117,4 @@ class TestBlockSyntax < Minitest::Test
         end
       end
     end
-    d = ActiveRecord::Refined::Dialect
-    {
-      "sqlite3" => d::Sqlite,
-      "postgresql" => d::Postgresql,
-      "postgis" => d::Postgresql,
-      "pglite" => d::Postgresql,
-      "oracle_enhanced" => d::Oracle,
-      "nothing_of_the_sort" => d,
-    }.each do |adapter, dialect|
-      assert_instance_of(dialect, d.for(model.call(adapter)), adapter)
-    end
-    assert_instance_of(d::Mysql, d.for(model.call("mysql2")))
-    assert_instance_of(d::Mysql, d.for(model.call("trilogy")))
-    assert_instance_of(d::Mariadb, d.for(model.call("mysql2", mariadb: true)))
-  end
 end
