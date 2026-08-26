@@ -50,8 +50,14 @@ module ActiveRecord
       # JSON_EXTRACT.
       def self.json_argument(value, model)
         json = Arel::Nodes.build_quoted(JSON.generate(value))
-        if adapter_family(model) == :sqlite
+        case adapter_family(model)
+        when :sqlite
           Arel::Nodes::NamedFunction.new("json", [json])
+        when :oracle
+          # A string tagged FORMAT JSON is read as the document it spells
+          # rather than as text; it is only ever an argument to Oracle's own
+          # JSON functions, which is where FORMAT JSON is grammar.
+          Arel.sql("#{model.with_connection { |c| c.quote(JSON.generate(value)) }} FORMAT JSON")
         else
           Arel::Nodes::NamedFunction.new(
             "JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
@@ -927,10 +933,20 @@ module ActiveRecord
 
         def to_arel(table, model)
           document = to_arel_operand(operand, table, model)
-          if AST.adapter_family(model) == :postgresql
+          case AST.adapter_family(model)
+          when :postgresql
             Arel::Nodes::NamedFunction.new(
               "jsonb_set",
               [document, Arel::Nodes.build_quoted(steps_array), postgresql_value(table, model)])
+          when :oracle
+            # JSON_TRANSFORM is Oracle's one editing function, SET reaching a
+            # path the way JSON_SET does; its SET and the value beside it are
+            # grammar, so the call is written out.
+            model.with_connection do |connection|
+              Arel.sql(
+                "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
+                "SET #{connection.quote(dollar_path)} = #{oracle_value(table, model)})")
+            end
           else
             Arel::Nodes::NamedFunction.new(
               "JSON_SET",
@@ -939,6 +955,21 @@ module ActiveRecord
         end
 
         private
+          # A column or expression is compiled as itself; a Ruby document or
+          # boolean rides in tagged FORMAT JSON, and a bare scalar is quoted.
+          def oracle_value(table, model)
+            model.with_connection do |connection|
+              if expression?
+                connection.visitor.compile(to_arel_operand(value, table, model))
+              elsif value.is_a?(::Hash) || value.is_a?(::Array) ||
+                    value == true || value == false
+                "#{connection.quote(JSON.generate(value))} FORMAT JSON"
+              else
+                connection.quote(value)
+              end
+            end
+          end
+
           # jsonb_set takes jsonb, so an expression is turned into it and a Ruby
           # value goes in as the JSON that says it -- '"x"' rather than 'x',
           # which is not a document at all.
@@ -994,6 +1025,19 @@ module ActiveRecord
             # the subtraction would otherwise take the path literal first.
             return Arel::Nodes::InfixOperation.new(
               :-, Arel::Nodes::Grouping.new(document), key_array)
+          end
+
+          if AST.adapter_family(model) == :oracle
+            # One JSON_TRANSFORM with a REMOVE for each key, which passes over
+            # a key that is not there rather than raising.
+            return model.with_connection do |connection|
+              removes = keys.map do |key|
+                "REMOVE #{connection.quote("$#{dollar_step(key)}")}"
+              end
+              Arel.sql(
+                "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
+                "#{removes.join(', ')})")
+            end
           end
 
           Arel::Nodes::NamedFunction.new(
@@ -1598,6 +1642,11 @@ module ActiveRecord
         # MariaDB takes every other aggregate as a window function, but not
         # these two; Over asks here before writing one.
         def check_window(model)
+          if AST.adapter_family(model) == :oracle
+            raise NotImplementedError,
+              "#{json_source} over a window has no equivalent on " \
+              "#{model.connection_db_config.adapter}"
+          end
           return unless AST.adapter_family(model) == :mysql
           return unless model.with_connection { |connection| connection.mariadb? }
           raise NotImplementedError,

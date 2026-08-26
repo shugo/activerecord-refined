@@ -2282,7 +2282,7 @@ class TestBlockSyntax < Minitest::Test
   # MariaDB has the JSON aggregates but no window form of them.
   def test_json_arrayagg_over_a_window
     seed_docs
-    if mariadb?
+    if mariadb? || oracle?
       e = assert_raises(NotImplementedError) do
         Doc.select { json_arrayagg(:name).over.as(:v) }.to_sql
       end
@@ -2454,6 +2454,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_keys_is_spelled_per_adapter
+    skip_without_json_keys
     relation = Doc.select { :meta.keys }
     case ADAPTER
     when "sqlite3"
