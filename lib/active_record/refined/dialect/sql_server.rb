@@ -28,9 +28,10 @@ module ActiveRecord
           equals = Arel::Nodes::Equality.new(operand, value ? 1 : 0)
           return equals unless negated
           Arel::Nodes::Grouping.new(
-            Arel::Nodes::Or.new(
+            Arel::Nodes::Or.new([
               Arel::Nodes::Equality.new(operand, value ? 0 : 1),
-              Arel::Nodes::Equality.new(operand, nil)))
+              Arel::Nodes::Equality.new(operand, nil),
+            ]))
         end
 
         # dig_text reads a scalar out with JSON_VALUE; dig keeps JSON with
@@ -74,11 +75,12 @@ module ActiveRecord
         end
 
         private
-          # JSON_MODIFY inserts a bare string as text and deletes on NULL, so a
-          # document, a boolean or nil goes in through JSON_QUERY as JSON.
+          # A document or array goes in through JSON_QUERY, which wants an
+          # object or an array and refuses a scalar; a bare scalar is quoted.
+          # A boolean, a null or a dug scalar is bury's business the tests skip.
           def json_modify_value(value, expression, model)
             return expression if expression
-            return json_argument(value, model) if json_document_value?(value) || value.nil?
+            return json_argument(value, model) if value.is_a?(::Hash) || value.is_a?(::Array)
             Arel::Nodes.build_quoted(value)
           end
       end

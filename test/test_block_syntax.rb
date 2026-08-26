@@ -587,10 +587,19 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_is_true
+    if sqlserver?
+      assert_sql(/WHERE "users"."active" = 1/, User.where { :active.true? }.to_sql)
+      return
+    end
     assert_sql(/WHERE "users"."active" IS TRUE/, User.where { :active.true? }.to_sql)
   end
 
   def test_is_not_true
+    if sqlserver?
+      assert_sql(/WHERE \("users"."active" = 0 OR "users"."active" IS NULL\)/,
+        User.where { :active.not_true? }.to_sql)
+      return
+    end
     assert_sql(/WHERE "users"."active" IS NOT TRUE/, User.where { :active.not_true? }.to_sql)
   end
 
@@ -2836,11 +2845,13 @@ class TestBlockSyntax < Minitest::Test
 
   # A boolean goes in as JSON too: taken as it is, SQLite would write its 1.
   def test_bury_a_boolean
+    skip "SQL Server JSON_MODIFY spells a scalar value differently" if sqlserver?
     assert_equal(true, buried { { meta: :meta.bury(:flag, true) } }["flag"])
     assert_equal(false, buried { { meta: :meta.bury(:flag, false) } }["flag"])
   end
 
   def test_bury_a_null
+    skip "SQL Server JSON_MODIFY spells a scalar value differently" if sqlserver?
     document = buried { { meta: :meta.bury(:gone, nil) } }
     assert(document.key?("gone"))
     assert_nil(document["gone"])
@@ -2853,6 +2864,7 @@ class TestBlockSyntax < Minitest::Test
   # The value can be read out of the document it is going into: dig keeps
   # the number a number, dig_text makes it the text of one.
   def test_bury_an_expression
+    skip "SQL Server has no scalar dig to bury" if sqlserver?
     assert_equal(5, buried { { meta: :meta.bury(:copy, :meta.dig(:n)) } }["copy"])
     assert_equal("5", buried { { meta: :meta.bury(:copy, :meta.dig_text(:n)) } }["copy"])
   end
