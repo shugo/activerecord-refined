@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "concurrent/map"
+
 module ActiveRecord
   module Refined
     # One class per family of SQL spellings, resolved from the model's adapter
@@ -18,15 +20,20 @@ module ActiveRecord
       autoload :Mariadb, "active_record/refined/dialect/mariadb"
       autoload :Oracle, "active_record/refined/dialect/oracle"
 
+      # One instance per family, shared across threads.  The dialect carries no
+      # state, so sharing is safe; the map is a concurrent one so that building
+      # the instance the first time is too, on a Ruby whose threads run in
+      # parallel as much as on one whose do not.
+      @instances = Concurrent::Map.new
+
       class << self
         # The dialect a model's queries are built for.  MariaDB and MySQL
         # answer to one adapter apiece and part company only at the connection,
         # so those two are told apart by asking it; the rest go by adapter name
-        # alone.  The dialect carries no state, so one instance serves each
-        # family, cached here on first use.
+        # alone.
         def for(model)
           klass = class_for(model.connection_db_config.adapter, model)
-          (@instances ||= {})[klass] ||= klass.new
+          @instances.compute_if_absent(klass) { klass.new }
         end
 
         private
