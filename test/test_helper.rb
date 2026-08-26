@@ -177,10 +177,10 @@ module SqlAssertions
     skip "#{ADAPTER} has no ANY or ALL" if ADAPTER == "sqlite3"
   end
 
-  # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; SQLite has
-  # none of the three, nor BIT_COUNT.
+  # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; neither SQLite
+  # nor Oracle has the three, nor BIT_COUNT.
   def skip_without_bit_aggregates
-    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3" || oracle?
   end
 
   def skip_without_array_columns
