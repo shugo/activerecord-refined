@@ -1992,6 +1992,7 @@ class TestBlockSyntax < Minitest::Test
   # on_duplicate takes SQL text and nothing else, so the block is compiled to
   # some.  `excluded` is the row that could not be inserted.
   def test_upsert_all_adds_to_what_is_there
+    skip_without_upsert
     Tally.delete_all
     Tally.upsert_all([{ page: "/a", hits: 1 }], **upsert_target)
     Tally.upsert_all([{ page: "/a", hits: 10 }], **upsert_target) {
@@ -2001,6 +2002,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_upsert_all_inserts_when_there_is_no_conflict
+    skip_without_upsert
     Tally.delete_all
     Tally.upsert_all([{ page: "/new", hits: 3 }], **upsert_target) {
       { hits: :hits + excluded(:hits) }
@@ -2009,6 +2011,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_upsert_all_takes_any_expression
+    skip_without_upsert
     Tally.delete_all
     Tally.upsert_all([{ page: "/a", hits: 7 }], **upsert_target)
     Tally.upsert_all([{ page: "/a", hits: 2 }], **upsert_target) {
@@ -2018,6 +2021,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_upsert_all_without_a_block_is_unchanged
+    skip_without_upsert
     Tally.delete_all
     Tally.upsert_all([{ page: "/a", hits: 1 }], **upsert_target)
     Tally.upsert_all([{ page: "/a", hits: 6 }], **upsert_target)

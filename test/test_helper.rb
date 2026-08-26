@@ -101,7 +101,13 @@ module SqlAssertions
   # upsert_all wants to be told which unique index it is upserting against,
   # except on MySQL, which does not accept being told.
   def upsert_target
-    mysql? || oracle? ? {} : { unique_by: :page }
+    mysql? ? {} : { unique_by: :page }
+  end
+
+  # oracle_enhanced does not implement upsert_all at all -- not the conflict
+  # target, the statement itself.
+  def skip_without_upsert
+    skip "#{ADAPTER} has no upsert" if oracle?
   end
 
   # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, SQLite neither.
