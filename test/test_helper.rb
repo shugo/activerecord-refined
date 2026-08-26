@@ -128,7 +128,7 @@ module SqlAssertions
   # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, and neither
   # SQLite nor Oracle a way the gem generalises to an arbitrary value.
   def skip_without_json_containment
-    skip "#{ADAPTER} has no JSON containment" if ADAPTER == "sqlite3" || oracle? || sqlserver?
+    skip "#{ADAPTER} has no JSON containment" if sqlite? || oracle? || sqlserver?
   end
 
   # Oracle has no JSON_KEYS, and reaching the keys through JSON_TABLE is not
@@ -177,6 +177,10 @@ module SqlAssertions
     mysql? ? "signed" : "integer"
   end
 
+  def sqlite?
+    ADAPTER == "sqlite3"
+  end
+
   def mysql?
     MYSQL_ADAPTERS.include?(ADAPTER)
   end
@@ -202,7 +206,7 @@ module SqlAssertions
   # Oracle has ROLLUP, but Arel's oracle_enhanced visitor cannot write the
   # node, so the gem does not offer it there yet.
   def skip_without_rollup
-    skip "#{ADAPTER} has no ROLLUP" if ADAPTER == "sqlite3" || oracle? || sqlserver?
+    skip "#{ADAPTER} has no ROLLUP" if sqlite? || oracle? || sqlserver?
   end
 
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
@@ -219,13 +223,13 @@ module SqlAssertions
   # ANY and ALL over a subquery are PostgreSQL's and MySQL's alike; SQLite
   # has neither quantifier.
   def skip_without_quantifiers
-    skip "#{ADAPTER} has no ANY or ALL" if ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has no ANY or ALL" if sqlite?
   end
 
   # BIT_AND, BIT_OR and BIT_XOR are PostgreSQL's and MySQL's; neither SQLite
   # nor Oracle has the three, nor BIT_COUNT.
   def skip_without_bit_aggregates
-    skip "#{ADAPTER} has no bit aggregates" if ADAPTER == "sqlite3" || oracle? || sqlserver?
+    skip "#{ADAPTER} has no bit aggregates" if sqlite? || oracle? || sqlserver?
   end
 
   def skip_without_array_columns
