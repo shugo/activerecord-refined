@@ -22,16 +22,15 @@ module ActiveRecord
         def extract_supported? = false
         def datetime_precision_supported? = false
 
-        # No boolean type: the column is a bit, so true? is = 1 and false? = 0.
-        # The negations keep a NULL, which = would drop, by naming it.
+        # No boolean type: the column is a bit.  ISNULL reads a NULL as the
+        # value the test is not looking for -- 0 for true?, 1 for false? --
+        # so the plain form drops it and, being never NULL itself, the
+        # negation is exactly NOT of the plain form, matching what ! builds.
         def truth_value(operand, value, negated, _model)
-          equals = Arel::Nodes::Equality.new(operand, value ? 1 : 0)
-          return equals unless negated
-          Arel::Nodes::Grouping.new(
-            Arel::Nodes::Or.new([
-              Arel::Nodes::Equality.new(operand, value ? 0 : 1),
-              Arel::Nodes::Equality.new(operand, nil),
-            ]))
+          equals = Arel::Nodes::Equality.new(
+            Arel::Nodes::NamedFunction.new("ISNULL", [operand, value ? 0 : 1]),
+            value ? 1 : 0)
+          negated ? Arel::Nodes::Not.new(equals) : equals
         end
 
         # dig_text reads a scalar out with JSON_VALUE; dig keeps JSON with

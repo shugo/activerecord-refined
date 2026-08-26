@@ -588,7 +588,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_is_true
     if sqlserver?
-      assert_sql(/WHERE "users"."active" = 1/, User.where { :active.true? }.to_sql)
+      assert_sql(/WHERE ISNULL\("users"."active", 0\) = 1/, User.where { :active.true? }.to_sql)
       return
     end
     assert_sql(/WHERE "users"."active" IS TRUE/, User.where { :active.true? }.to_sql)
@@ -596,7 +596,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_is_not_true
     if sqlserver?
-      assert_sql(/WHERE \("users"."active" = 0 OR "users"."active" IS NULL\)/,
+      assert_sql(/WHERE NOT \(ISNULL\("users"."active", 0\) = 1\)/,
         User.where { :active.not_true? }.to_sql)
       return
     end
@@ -604,10 +604,19 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_is_false
+    if sqlserver?
+      assert_sql(/WHERE ISNULL\("users"."active", 1\) = 0/, User.where { :active.false? }.to_sql)
+      return
+    end
     assert_sql(/WHERE "users"."active" IS FALSE/, User.where { :active.false? }.to_sql)
   end
 
   def test_is_not_false
+    if sqlserver?
+      assert_sql(/WHERE NOT \(ISNULL\("users"."active", 1\) = 0\)/,
+        User.where { :active.not_false? }.to_sql)
+      return
+    end
     assert_sql(/WHERE "users"."active" IS NOT FALSE/, User.where { :active.not_false? }.to_sql)
   end
 
