@@ -43,6 +43,25 @@ module ActiveRecord
                    "THEN COALESCE((SELECT jsonb_agg(k) FROM jsonb_object_keys(#{sql}) k), " \
                    "CAST('[]' AS jsonb)) END")
         end
+
+        # jsonb_set takes jsonb: an expression is turned into it, and a Ruby
+        # value goes in as the JSON that says it -- '"x"' rather than 'x'.
+        def json_set(document, steps, _dollar_path, value, expression, _model)
+          set = expression ? Arel::Nodes::NamedFunction.new("to_jsonb", [expression]) :
+                             Arel::Nodes.build_quoted(JSON.generate(value))
+          Arel::Nodes::NamedFunction.new(
+            "jsonb_set", [document, Arel::Nodes.build_quoted(steps), set])
+        end
+
+        # jsonb subtracts an array of keys; an untyped array literal would be
+        # read as a single key, so it is cast to text[].
+        def json_remove(document, _dollar_paths, steps, _model)
+          keys = Arel::Nodes::NamedFunction.new(
+            "CAST", [Arel::Nodes::As.new(
+              Arel::Nodes.build_quoted(steps), Arel::Nodes::SqlLiteral.new("text[]"))])
+          # Grouped because - binds tighter than #>.
+          Arel::Nodes::InfixOperation.new(:-, Arel::Nodes::Grouping.new(document), keys)
+        end
       end
     end
   end

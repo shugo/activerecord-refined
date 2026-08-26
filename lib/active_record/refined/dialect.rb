@@ -116,7 +116,48 @@ module ActiveRecord
         Arel::Nodes::NamedFunction.new("JSON_KEYS", [document])
       end
 
+      # --- Writing JSON.  A Ruby document or boolean has to be told apart from
+      #     a bare scalar, and embedded as the JSON it spells.
+
+      def json_document_value?(value)
+        value.is_a?(::Hash) || value.is_a?(::Array) || value == true || value == false
+      end
+
+      # A Ruby document or boolean written where one of the JSON functions
+      # wants JSON.  The standard marks the literal with JSON_EXTRACT($);
+      # SQLite has json() and Oracle FORMAT JSON, and both override.
+      def json_argument(value, _model)
+        json = Arel::Nodes.build_quoted(JSON.generate(value))
+        Arel::Nodes::NamedFunction.new("JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
+      end
+
+      # bury: setting a value at a path.  The standard is JSON_SET; PostgreSQL
+      # has jsonb_set and Oracle JSON_TRANSFORM, and both override.
+      def json_set(document, _steps, dollar_path, value, expression, model)
+        Arel::Nodes::NamedFunction.new(
+          "JSON_SET",
+          [document, Arel::Nodes.build_quoted(dollar_path),
+           json_set_value(value, expression, model)])
+      end
+
+      # except: removing keys.  The standard removes a path apiece with
+      # JSON_REMOVE; PostgreSQL subtracts an array of keys and Oracle removes
+      # through JSON_TRANSFORM, and both override.
+      def json_remove(document, dollar_paths, _steps, _model)
+        Arel::Nodes::NamedFunction.new(
+          "JSON_REMOVE",
+          [document, *dollar_paths.map { |path| Arel::Nodes.build_quoted(path) }])
+      end
+
       protected
+        # The value beside a path in JSON_SET: an expression as it is, a
+        # document or boolean as JSON, a bare scalar quoted.
+        def json_set_value(value, expression, model)
+          return expression if expression
+          return Arel::Nodes.build_quoted(value) unless json_document_value?(value)
+          json_argument(value, model)
+        end
+
         # The connection's own visitor and quoting, for the families that write
         # a call out because its grammar no Arel node carries.
         def compile(node, model)

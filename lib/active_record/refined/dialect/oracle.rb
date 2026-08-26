@@ -31,6 +31,38 @@ module ActiveRecord
           raise NotImplementedError,
             "keys has no equivalent on #{model.connection_db_config.adapter}"
         end
+
+        def json_argument(value, model)
+          Arel.sql("#{quote(JSON.generate(value), model)} FORMAT JSON")
+        end
+
+        # JSON_TRANSFORM is Oracle's one editing function; its SET and the value
+        # beside it are grammar, so the call is written out, RETURNING text that
+        # ruby-oci8 can fetch.
+        def json_set(document, _steps, dollar_path, value, expression, model)
+          model.with_connection do |connection|
+            set =
+              if expression
+                connection.visitor.compile(expression)
+              elsif json_document_value?(value)
+                "#{connection.quote(JSON.generate(value))} FORMAT JSON"
+              else
+                connection.quote(value)
+              end
+            Arel.sql(
+              "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
+              "SET #{connection.quote(dollar_path)} = #{set} RETURNING VARCHAR2(4000))")
+          end
+        end
+
+        def json_remove(document, dollar_paths, _steps, model)
+          model.with_connection do |connection|
+            removes = dollar_paths.map { |path| "REMOVE #{connection.quote(path)}" }
+            Arel.sql(
+              "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
+              "#{removes.join(', ')} RETURNING VARCHAR2(4000))")
+          end
+        end
       end
     end
   end

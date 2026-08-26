@@ -49,19 +49,7 @@ module ActiveRecord
       # functions; the MySQL family, which has no json(), reads it with
       # JSON_EXTRACT.
       def self.json_argument(value, model)
-        json = Arel::Nodes.build_quoted(JSON.generate(value))
-        case adapter_family(model)
-        when :sqlite
-          Arel::Nodes::NamedFunction.new("json", [json])
-        when :oracle
-          # A string tagged FORMAT JSON is read as the document it spells
-          # rather than as text; it is only ever an argument to Oracle's own
-          # JSON functions, which is where FORMAT JSON is grammar.
-          Arel.sql("#{model.with_connection { |c| c.quote(JSON.generate(value)) }} FORMAT JSON")
-        else
-          Arel::Nodes::NamedFunction.new(
-            "JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
-        end
+        Dialect.for(model).json_argument(value, model)
       end
 
       # Predicate builders shared by symbols, qualified columns and
@@ -872,66 +860,13 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          document = to_arel_operand(operand, table, model)
-          case AST.adapter_family(model)
-          when :postgresql
-            Arel::Nodes::NamedFunction.new(
-              "jsonb_set",
-              [document, Arel::Nodes.build_quoted(steps_array), postgresql_value(table, model)])
-          when :oracle
-            # JSON_TRANSFORM is Oracle's one editing function, SET reaching a
-            # path the way JSON_SET does; its SET and the value beside it are
-            # grammar, so the call is written out.
-            model.with_connection do |connection|
-              Arel.sql(
-                "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
-                "SET #{connection.quote(dollar_path)} = #{oracle_value(table, model)} " \
-                "RETURNING VARCHAR2(4000))")
-            end
-          else
-            Arel::Nodes::NamedFunction.new(
-              "JSON_SET",
-              [document, Arel::Nodes.build_quoted(dollar_path), other_value(table, model)])
-          end
+          Dialect.for(model).json_set(
+            to_arel_operand(operand, table, model),
+            steps_array, dollar_path, value,
+            (to_arel_operand(value, table, model) if expression?), model)
         end
 
         private
-          # A column or expression is compiled as itself; a Ruby document or
-          # boolean rides in tagged FORMAT JSON, and a bare scalar is quoted.
-          def oracle_value(table, model)
-            model.with_connection do |connection|
-              if expression?
-                connection.visitor.compile(to_arel_operand(value, table, model))
-              elsif value.is_a?(::Hash) || value.is_a?(::Array) ||
-                    value == true || value == false
-                "#{connection.quote(JSON.generate(value))} FORMAT JSON"
-              else
-                connection.quote(value)
-              end
-            end
-          end
-
-          # jsonb_set takes jsonb, so an expression is turned into it and a Ruby
-          # value goes in as the JSON that says it -- '"x"' rather than 'x',
-          # which is not a document at all.
-          def postgresql_value(table, model)
-            return Arel::Nodes::NamedFunction.new(
-              "to_jsonb", [to_arel_operand(value, table, model)]) if expression?
-            Arel::Nodes.build_quoted(JSON.generate(value))
-          end
-
-          # The others take the value as it is, except a whole document or a
-          # boolean, which go in as JSON through json_argument.
-          def other_value(table, model)
-            return to_arel_operand(value, table, model) if expression?
-            unless value.is_a?(::Hash) || value.is_a?(::Array) ||
-                   value == true || value == false
-              return Arel::Nodes.build_quoted(value)
-            end
-
-            AST.json_argument(value, model)
-          end
-
           def expression?
             value.is_a?(Node) || value.is_a?(::Symbol)
           end
@@ -960,44 +895,13 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          document = to_arel_operand(operand, table, model)
-          if AST.adapter_family(model) == :postgresql
-            # Grouped because - binds tighter than #>: dug out of a document,
-            # the subtraction would otherwise take the path literal first.
-            return Arel::Nodes::InfixOperation.new(
-              :-, Arel::Nodes::Grouping.new(document), key_array)
-          end
-
-          if AST.adapter_family(model) == :oracle
-            # One JSON_TRANSFORM with a REMOVE for each key, which passes over
-            # a key that is not there rather than raising.
-            return model.with_connection do |connection|
-              removes = keys.map do |key|
-                "REMOVE #{connection.quote("$#{dollar_step(key)}")}"
-              end
-              Arel.sql(
-                "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
-                "#{removes.join(', ')} RETURNING VARCHAR2(4000))")
-            end
-          end
-
-          Arel::Nodes::NamedFunction.new(
-            "JSON_REMOVE",
-            [document, *keys.map { |key| Arel::Nodes.build_quoted("$#{dollar_step(key)}") }])
+          Dialect.for(model).json_remove(
+            to_arel_operand(operand, table, model),
+            keys.map { |key| "$#{dollar_step(key)}" },
+            steps_array(keys), model)
         end
 
         private
-          # jsonb has three subtractions -- a key, an array of keys, an element
-          # by index -- and an array literal written without a type is read as
-          # the first of them: `meta - '{draft}'` takes out the key spelled
-          # {draft}, which is nothing, and says nothing about it.
-          def key_array
-            Arel::Nodes::NamedFunction.new(
-              "CAST",
-              [Arel::Nodes::As.new(Arel::Nodes.build_quoted(steps_array(keys)),
-                                   Arel::Nodes::SqlLiteral.new("text[]"))])
-          end
-
           # Keys, as Hash#except takes them: an index into an array is not what
           # the name says anywhere, and is bury's business through a path.
           def check_keys(keys)

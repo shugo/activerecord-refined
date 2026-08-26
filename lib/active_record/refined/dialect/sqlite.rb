@@ -20,6 +20,11 @@ module ActiveRecord
           Arel.sql("CASE WHEN json_type(#{sql}) = 'object' " \
                    "THEN (SELECT json_group_array(key) FROM json_each(#{sql})) END")
         end
+
+        def json_argument(value, _model)
+          Arel::Nodes::NamedFunction.new(
+            "json", [Arel::Nodes.build_quoted(JSON.generate(value))])
+        end
       end
     end
   end
