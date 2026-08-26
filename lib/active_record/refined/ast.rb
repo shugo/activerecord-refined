@@ -945,7 +945,8 @@ module ActiveRecord
             model.with_connection do |connection|
               Arel.sql(
                 "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
-                "SET #{connection.quote(dollar_path)} = #{oracle_value(table, model)})")
+                "SET #{connection.quote(dollar_path)} = #{oracle_value(table, model)} " \
+                "RETURNING VARCHAR2(4000))")
             end
           else
             Arel::Nodes::NamedFunction.new(
@@ -1036,7 +1037,7 @@ module ActiveRecord
               end
               Arel.sql(
                 "JSON_TRANSFORM(#{connection.visitor.compile(document)}, " \
-                "#{removes.join(', ')})")
+                "#{removes.join(', ')} RETURNING VARCHAR2(4000))")
             end
           end
 
@@ -1204,12 +1205,34 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
+          return oracle_build(table, model) if AST.adapter_family(model) == :oracle
+
           Arel::Nodes::NamedFunction.new(
             NAMES.fetch(kind).fetch(AST.adapter_family(model)) { "JSON_#{kind.to_s.upcase}" },
             arguments(table, model))
         end
 
         private
+          # Oracle pairs a key with its value by the VALUE keyword rather than
+          # by position, drops a NULL from an array unless told NULL ON NULL,
+          # and returns the native JSON type ruby-oci8 cannot fetch unless a
+          # RETURNING asks for text -- none of which an Arel function carries.
+          def oracle_build(table, model)
+            model.with_connection do |connection|
+              compile = ->(value) { connection.visitor.compile(build_argument(value, table, model)) }
+              body =
+                if kind == :array
+                  values.map(&compile).join(", ")
+                else
+                  values.map do |key, value|
+                    "#{connection.quote(key.to_s)} VALUE #{compile.call(value)}"
+                  end.join(", ")
+                end
+              Arel.sql(
+                "JSON_#{kind.to_s.upcase}(#{body} NULL ON NULL RETURNING VARCHAR2(4000))")
+            end
+          end
+
           def arguments(table, model)
             if kind == :array
               values.map { |value| build_argument(value, table, model) }

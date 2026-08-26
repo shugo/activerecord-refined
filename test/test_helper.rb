@@ -142,7 +142,7 @@ module SqlAssertions
   # rather than as the object, and every path would find nothing.  Both answer
   # to the mysql2 adapter, so the two have to be told apart.
   def json_document(hash)
-    mariadb? ? JSON.generate(hash) : hash
+    mariadb? || oracle? ? JSON.generate(hash) : hash
   end
 
   # How each adapter spells a cast to a whole number: MySQL casts to SIGNED
@@ -292,7 +292,16 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
     end
     create_table(:docs) do |t|
       t.string :name
-      ADAPTER == "postgresql" ? t.jsonb(:meta) : t.json(:meta)
+      # Oracle's native JSON type is one ruby-oci8 cannot fetch (datatype
+      # 119), so the document is kept in a CLOB as text; Oracle's JSON
+      # functions read and write JSON in a CLOB just the same.
+      if ADAPTER == "postgresql"
+        t.jsonb(:meta)
+      elsif ADAPTER == "oracle_enhanced"
+        t.text(:meta)
+      else
+        t.json(:meta)
+      end
     end
   end
 end
