@@ -81,6 +81,51 @@ module ActiveRecord
           Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseOr.new(left, right)),
           Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseAnd.new(left, right)))
       end
+
+      # --- Reading JSON.  The defaults are what an unclassified adapter gets,
+      #     which is SQLite's operators for a path and its functions elsewhere.
+
+      # dig / dig_text.  The standard is SQLite's -> and ->>, whose ->> keeps
+      # the value's type, so dig_text casts to text for a portable comparison.
+      def json_path(document, dollar_path, _steps, json_value, _model)
+        extracted = Arel::Nodes::InfixOperation.new(
+          json_value ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
+        return extracted if json_value
+        Arel::Nodes::NamedFunction.new(
+          "CAST", [Arel::Nodes::As.new(extracted, Arel::Nodes::SqlLiteral.new("text"))])
+      end
+
+      # A Ruby value on the JSON side of a comparison belongs to a JSON type;
+      # a family without one refuses it.
+      def json_literal(_json, model)
+        raise NotImplementedError,
+          "a JSON comparison has no equivalent on " \
+          "#{model.connection_db_config.adapter}; dig_text gives the value"
+      end
+
+      def json_contains(_document, _json, model)
+        raise NotImplementedError,
+          "contains? has no equivalent on #{model.connection_db_config.adapter}"
+      end
+
+      def json_has_key(document, _name, path, _model)
+        Arel::Nodes::NamedFunction.new("json_type", [document, path]).not_eq(nil)
+      end
+
+      def json_keys(document, _model)
+        Arel::Nodes::NamedFunction.new("JSON_KEYS", [document])
+      end
+
+      protected
+        # The connection's own visitor and quoting, for the families that write
+        # a call out because its grammar no Arel node carries.
+        def compile(node, model)
+          model.with_connection { |connection| connection.visitor.compile(node) }
+        end
+
+        def quote(value, model)
+          model.with_connection { |connection| connection.quote(value) }
+        end
     end
   end
 end

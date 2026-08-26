@@ -16,6 +16,33 @@ module ActiveRecord
         def bitwise_xor(left, right)
           Arel::Nodes::InfixOperation.new("#", left, right)
         end
+
+        def json_path(document, _dollar_path, steps, json_value, _model)
+          Arel::Nodes::InfixOperation.new(
+            json_value ? :"#>" : :"#>>", document, Arel::Nodes.build_quoted(steps))
+        end
+
+        # An untyped JSON literal beside a jsonb operand coerces to jsonb, so
+        # it passes as it is.
+        def json_literal(json, _model)
+          json
+        end
+
+        def json_contains(document, json, _model)
+          Arel::Nodes::Contains.new(document, json)
+        end
+
+        # The ? operator, which a GIN index matches where jsonb_exists never is.
+        def json_has_key(document, name, _path, _model)
+          Arel::Nodes::InfixOperation.new(:"?", document, name)
+        end
+
+        def json_keys(document, model)
+          sql = compile(document, model)
+          Arel.sql("CASE WHEN jsonb_typeof(#{sql}) = 'object' " \
+                   "THEN COALESCE((SELECT jsonb_agg(k) FROM jsonb_object_keys(#{sql}) k), " \
+                   "CAST('[]' AS jsonb)) END")
+        end
       end
     end
   end

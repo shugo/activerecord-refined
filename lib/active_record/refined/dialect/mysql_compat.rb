@@ -22,6 +22,22 @@ module ActiveRecord
         def bitwise_xor(left, right)
           Arel::Nodes::BitwiseXor.new(left, right)
         end
+
+        def json_path(document, dollar_path, _steps, json_value, _model)
+          extracted = Arel::Nodes::NamedFunction.new(
+            "JSON_EXTRACT", [document, Arel::Nodes.build_quoted(dollar_path)])
+          return extracted if json_value
+          Arel::Nodes::NamedFunction.new("JSON_UNQUOTE", [extracted])
+        end
+
+        def json_contains(document, json, _model)
+          Arel::Nodes::NamedFunction.new("JSON_CONTAINS", [document, json])
+        end
+
+        def json_has_key(document, _name, path, _model)
+          Arel::Nodes::NamedFunction.new(
+            "JSON_CONTAINS_PATH", [document, Arel::Nodes.build_quoted("one"), path])
+        end
       end
     end
   end

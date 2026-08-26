@@ -14,6 +14,12 @@ module ActiveRecord
           raise NotImplementedError,
             "a lateral join has no equivalent on #{model.connection_db_config.adapter}"
         end
+
+        def json_keys(document, model)
+          sql = compile(document, model)
+          Arel.sql("CASE WHEN json_type(#{sql}) = 'object' " \
+                   "THEN (SELECT json_group_array(key) FROM json_each(#{sql})) END")
+        end
       end
     end
   end
