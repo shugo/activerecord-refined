@@ -34,7 +34,7 @@ module ActiveRecord
         # registers its own -- a Dialect subclass overriding only where its
         # family departs from the standard:
         #
-        #   ActiveRecord::Refined::Dialect.register("acmedb", AcmeDialect)
+        #   ActiveRecord::Refined::Dialect.register("exampledb", ExampleDialect)
         #
         # A block registers an adapter whose dialect only the connection can
         # name, as mysql2's is either MySQL's or MariaDB's: it receives the

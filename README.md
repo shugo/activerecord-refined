@@ -1116,14 +1116,14 @@ descends from — override only what it spells differently, and register it
 under the adapter's name:
 
 ```ruby
-class AcmeDialect < ActiveRecord::Refined::Dialect
-  # AcmeDB spells char_length LEN, and has no random ordering.
+class ExampleDialect < ActiveRecord::Refined::Dialect
+  # The example database spells char_length LEN, and has no random ordering.
   FUNCTIONS = { char_length: "LEN", rand: nil }.freeze
 
   def full_outer_join_supported? = false
 end
 
-ActiveRecord::Refined::Dialect.register("acmedb", AcmeDialect)
+ActiveRecord::Refined::Dialect.register("exampledb", ExampleDialect)
 ```
 
 `register` also takes a block for an adapter whose dialect only the
