@@ -6,6 +6,13 @@ module ActiveRecord
       # SQLite: the fewest of the extras, and a JSON path through its own
       # operators.
       class Sqlite < Dialect
+        FUNCTIONS = {
+          char_length: "LENGTH", greatest: "MAX", least: "MIN",
+          now: nil, date_trunc: nil, rand: "RANDOM",
+          bit_and: nil, bit_or: nil, bit_xor: nil,
+          localtime: nil, localtimestamp: nil,
+        }.freeze
+
         def datetime_precision_supported? = false
         def extract_supported? = false
         def quantifiers_supported? = false

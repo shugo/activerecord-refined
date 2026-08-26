@@ -6,6 +6,8 @@ module ActiveRecord
       # What MySQL and MariaDB share, which is most of it; the two part company
       # only in the Mysql and Mariadb subclasses.
       class MysqlCompat < Dialect
+        FUNCTIONS = { trunc: "TRUNCATE", date_trunc: nil, format: nil }.freeze
+
         def full_outer_join_supported? = false
         def filter_supported? = false
 

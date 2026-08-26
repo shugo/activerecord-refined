@@ -6,6 +6,13 @@ module ActiveRecord
       # Oracle, reached through oracle_enhanced.  Loaded only when a query is
       # built for it.
       class Oracle < Dialect
+        FUNCTIONS = {
+          char_length: "LENGTH",
+          degrees: nil, radians: nil, pi: nil, log2: nil, log10: nil,
+          now: nil, date_trunc: nil, rand: nil, format: nil,
+          bit_and: nil, bit_or: nil, bit_xor: nil,
+        }.freeze
+
         # Oracle keeps scalars and structures in different functions: JSON_VALUE
         # reads a scalar out as text, JSON_QUERY a fragment as JSON.  dig keeps
         # JSON, so it takes JSON_QUERY with 23ai's ALLOW SCALARS, which returns

@@ -22,15 +22,15 @@ module ActiveRecord
         # The dialect a model's queries are built for.  MariaDB and MySQL
         # answer to one adapter apiece and part company only at the connection,
         # so those two are told apart by asking it; the rest go by adapter name
-        # alone.  The dialect carries no state, so one instance serves a whole
-        # adapter, cached here on first use.
+        # alone.  The dialect carries no state, so one instance serves each
+        # family, cached here on first use.
         def for(model)
-          adapter = model.connection_db_config.adapter
-          (@instances ||= {})[adapter] ||= resolve(adapter, model).new
+          klass = class_for(model.connection_db_config.adapter, model)
+          (@instances ||= {})[klass] ||= klass.new
         end
 
         private
-          def resolve(adapter, model)
+          def class_for(adapter, model)
             case adapter
             when "sqlite3" then Sqlite
             when "postgresql", "postgis", "pglite" then Postgresql
@@ -44,6 +44,20 @@ module ActiveRecord
 
       # --- Capabilities.  The standard has them; a family without one says so
       #     by overriding to false, and the block raises where it is asked for.
+
+      # The scalar and datetime functions a family spells differently, or has
+      # none of.  A name it does not list it spells like the method, upper
+      # cased; a nil says it has no equivalent, and the block raises.  The base
+      # -- an unclassified adapter -- keeps every standard name.
+      FUNCTIONS = {}.freeze
+
+      def function_name(name, model)
+        functions = self.class::FUNCTIONS
+        return name.to_s.upcase unless functions.key?(name)
+        functions.fetch(name) ||
+          raise(NotImplementedError,
+                "#{name} has no equivalent on #{model.connection_db_config.adapter}")
+      end
 
       def datetime_precision_supported? = true
       def extract_supported? = true

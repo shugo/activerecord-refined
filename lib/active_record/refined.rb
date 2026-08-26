@@ -88,57 +88,19 @@ module ActiveRecord
 
       # Scalar functions, defined as real methods so that a typo is a
       # NoMethodError and a name Kernel also answers to (format, hash, test)
-      # cannot quietly mean something else.
-      #
-      # The value lists the adapters that differ: a string is what the
-      # function is called there, nil says the adapter has no equivalent.  An
-      # adapter that is not listed spells it like the method.  The families
-      # are what the entries key on, so trilogy reads the mysql column.
-      #
-      # Availability was checked by calling each one; the SQLite figures
-      # assume the math functions its build usually enables.
-      SCALAR_FUNCTIONS = {
-        abs: {}, acos: {}, asin: {}, atan: {}, atan2: {}, ceil: {},
-        coalesce: {}, concat: {}, cos: {}, exp: {}, floor: {},
-        length: {}, ln: {}, log: {}, lower: {}, ltrim: {},
-        mod: {}, nullif: {}, power: {}, replace: {},
-        round: {}, rtrim: {}, sign: {}, sin: {}, sqrt: {}, substr: {},
-        tan: {}, trim: {}, upper: {},
-        # Oracle turns degrees to radians only through the constants, having no
-        # function of its own for either, nor a PI().
-        degrees: { oracle: nil }, radians: { oracle: nil }, pi: { oracle: nil },
-        char_length: { sqlite: "LENGTH", oracle: "LENGTH" },
-        greatest: { sqlite: "MAX" },
-        least: { sqlite: "MIN" },
-        # PostgreSQL spells log2(x) as log(2, x), and Oracle log(2, x) too,
-        # which no renaming carries; nor has Oracle a LOG10 of its own.
-        log2: { postgresql: nil, oracle: nil },
-        log10: { oracle: nil },
-        # MySQL's TRUNCATE insists on the second argument, where the others
-        # default it to zero; SQLite's trunc takes only the one.
-        trunc: { mysql: "TRUNCATE" },
-        now: { sqlite: nil, oracle: nil },
-        # The bit aggregates, which PostgreSQL and MySQL spell alike and
-        # neither SQLite nor Oracle has.  PostgreSQL gained bit_xor in 14.
-        bit_and: { sqlite: nil, oracle: nil }, bit_or: { sqlite: nil, oracle: nil },
-        bit_xor: { sqlite: nil, oracle: nil },
-        # Oracle truncates a date with TRUNC, not a date_trunc of its own.
-        date_trunc: { sqlite: nil, mysql: nil, oracle: nil },
-        # Named for Kernel#rand, which it also takes back: a block calling
-        # rand would otherwise get Ruby's and never reach the database.
-        # Oracle's random is DBMS_RANDOM.VALUE, a package call, not a function.
-        rand: { sqlite: "RANDOM", postgresql: "RANDOM", oracle: nil },
-        # Two different functions share this name: printf formatting here, and
-        # on MySQL the one that puts separators in a number, which reads a
-        # printf template as the number zero rather than complaining.  The
-        # name keeps the one meaning; fn(:format, ...) reaches MySQL's.  Oracle
-        # has no FORMAT at all.
-        format: { mysql: nil, oracle: nil },
-      }.freeze
+      # cannot quietly mean something else.  Where one is spelled other than as
+      # its plain upper-cased name, and where a family has no equivalent, is
+      # the dialect's to say; here is only the list of them.
+      SCALAR_FUNCTIONS = %i[
+        abs acos asin atan atan2 ceil coalesce concat cos exp floor length ln
+        log lower ltrim mod nullif power replace round rtrim sign sin sqrt
+        substr tan trim upper degrees radians pi char_length greatest least
+        log2 log10 trunc now bit_and bit_or bit_xor date_trunc rand format
+      ].freeze
 
-      SCALAR_FUNCTIONS.each_key do |name|
+      SCALAR_FUNCTIONS.each do |name|
         define_method(name) do |*args|
-          AST::Function.new(function_name(name, SCALAR_FUNCTIONS), args)
+          AST::Function.new(dialect.function_name(name, @model), args)
         end
       end
 
@@ -149,26 +111,21 @@ module ActiveRecord
       # takes and SQLite never accepts.  The table reads like
       # SCALAR_FUNCTIONS; current_timestamp is the portable spelling of what
       # now means, reaching SQLite where now does not.
-      DATETIME_VALUE_FUNCTIONS = {
-        current_date: {},
-        current_time: {},
-        current_timestamp: {},
-        localtime: { sqlite: nil },
-        localtimestamp: { sqlite: nil },
-      }.freeze
+      DATETIME_VALUE_FUNCTIONS = %i[
+        current_date current_time current_timestamp localtime localtimestamp
+      ].freeze
 
       def current_date
-        AST::DatetimeValueFunction.new(
-          function_name(:current_date, DATETIME_VALUE_FUNCTIONS))
+        AST::DatetimeValueFunction.new(dialect.function_name(:current_date, @model))
       end
 
-      (DATETIME_VALUE_FUNCTIONS.keys - [:current_date]).each do |name|
+      (DATETIME_VALUE_FUNCTIONS - [:current_date]).each do |name|
         define_method(name) do |precision = nil|
           # Built first so that a precision of the wrong type is an
           # ArgumentError on every adapter, before SQLite gets to say it takes
           # none at all.
           node = AST::DatetimeValueFunction.new(
-            function_name(name, DATETIME_VALUE_FUNCTIONS), precision)
+            dialect.function_name(name, @model), precision)
           if precision && !dialect.datetime_precision_supported?
             raise NotImplementedError,
               "#{name} takes no precision on #{@model.connection_db_config.adapter}"
@@ -351,20 +308,8 @@ module ActiveRecord
             "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
         end
 
-        def function_name(name, functions)
-          spellings = functions.fetch(name)
-          return name.to_s.upcase unless spellings.key?(adapter_family)
-          spellings.fetch(adapter_family) ||
-            raise(NotImplementedError,
-                  "#{name} has no equivalent on #{@model.connection_db_config.adapter}")
-        end
-
         def dialect
           @dialect ||= Dialect.for(@model)
-        end
-
-        def adapter_family
-          @adapter_family ||= AST.adapter_family(@model)
         end
     end
 

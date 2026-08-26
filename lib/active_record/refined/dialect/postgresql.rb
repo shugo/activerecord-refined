@@ -5,6 +5,8 @@ module ActiveRecord
     class Dialect
       # PostgreSQL, and the adapters that answer for the same server.
       class Postgresql < Dialect
+        FUNCTIONS = { log2: nil, rand: "RANDOM" }.freeze
+
         # PostgreSQL counts the bits of a bit string rather than a number, so
         # the argument is cast, to bit(64) for a negative to come back as the
         # MySQL family has it.

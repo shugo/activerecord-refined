@@ -17,27 +17,6 @@ module ActiveRecord
       # letter, a space or a quote never reaches the SQL as an operator.
       OPERATOR = %r{\A[+\-*/<>=~!@\#%^&|`?]+\z}
 
-      # Which family of spellings an adapter belongs to.  MariaDB answers to
-      # the mysql2 adapter and is counted with MySQL, though the two part
-      # company over JSON.  An adapter nobody has classified keeps the
-      # standard spellings and is left to say for itself what it cannot do.
-      #
-      # pglite is PostgreSQL itself compiled to WebAssembly, reached through
-      # wasmify-rails' adapter; the server it answers for is the same one.
-      ADAPTER_FAMILIES = {
-        "sqlite3" => :sqlite,
-        "postgresql" => :postgresql,
-        "postgis" => :postgresql,
-        "pglite" => :postgresql,
-        "mysql2" => :mysql,
-        "trilogy" => :mysql,
-        "oracle_enhanced" => :oracle,
-      }.freeze
-
-      def self.adapter_family(model)
-        ADAPTER_FAMILIES[model.connection_db_config.adapter] || :unknown
-      end
-
       def self.check_name(name, pattern, what)
         return name if pattern.match?(name.to_s)
         raise ArgumentError, "#{name.inspect} is not a plain #{what}"

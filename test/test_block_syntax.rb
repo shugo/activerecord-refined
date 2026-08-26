@@ -3031,27 +3031,34 @@ class TestBlockSyntax < Minitest::Test
   # pglite is PostgreSQL compiled to WebAssembly, which the sandbox runs in the
   # browser.  Its adapter answers to a name of its own, so without this the
   # spellings would fall back to the standard ones and the browser would be
-  # told PostgreSQL's JSON operators do not exist.
-  def test_adapter_families
-    model = Class.new do
-      def self.with_adapter(name)
-        config = Struct.new(:adapter).new(name)
-        Class.new { define_singleton_method(:connection_db_config) { config } }
+  # told PostgreSQL's JSON operators do not exist.  A MySQL adapter is Mysql or
+  # Mariadb by what the connection answers; an adapter nobody classifies keeps
+  # the base dialect.
+  def test_dialect_resolves_by_adapter
+    model = lambda do |adapter, mariadb: false|
+      config = Struct.new(:adapter).new(adapter)
+      Class.new do
+        define_singleton_method(:connection_db_config) { config }
+        define_singleton_method(:with_connection) do |&block|
+          connection = Object.new
+          connection.define_singleton_method(:mariadb?) { mariadb }
+          block.call(connection)
+        end
       end
     end
-
+    d = ActiveRecord::Refined::Dialect
     {
-      "sqlite3" => :sqlite,
-      "postgresql" => :postgresql,
-      "postgis" => :postgresql,
-      "pglite" => :postgresql,
-      "mysql2" => :mysql,
-      "trilogy" => :mysql,
-      "nothing_of_the_sort" => :unknown,
-    }.each do |adapter, family|
-      assert_equal(family,
-        ActiveRecord::Refined::AST.adapter_family(model.with_adapter(adapter)),
-        adapter)
+      "sqlite3" => d::Sqlite,
+      "postgresql" => d::Postgresql,
+      "postgis" => d::Postgresql,
+      "pglite" => d::Postgresql,
+      "oracle_enhanced" => d::Oracle,
+      "nothing_of_the_sort" => d,
+    }.each do |adapter, dialect|
+      assert_instance_of(dialect, d.for(model.call(adapter)), adapter)
     end
+    assert_instance_of(d::Mysql, d.for(model.call("mysql2")))
+    assert_instance_of(d::Mysql, d.for(model.call("trilogy")))
+    assert_instance_of(d::Mariadb, d.for(model.call("mysql2", mariadb: true)))
   end
 end
