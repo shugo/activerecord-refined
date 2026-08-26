@@ -1446,14 +1446,7 @@ module ActiveRecord
           # it cannot be the portable one either.  SQLite has no XOR at all;
           # (a | b) - (a & b) is it, at the cost of naming each operand twice.
           def xor(left, right, model)
-            case AST.adapter_family(model)
-            when :postgresql then Arel::Nodes::InfixOperation.new("#", left, right)
-            when :mysql then Arel::Nodes::BitwiseXor.new(left, right)
-            else
-              Arel::Nodes::Subtraction.new(
-                Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseOr.new(left, right)),
-                Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseAnd.new(left, right)))
-            end
+            Dialect.for(model).bitwise_xor(left, right)
           end
       end
 
@@ -1607,11 +1600,11 @@ module ActiveRecord
         def to_arel(table, model)
           return aggregate(operand, table, model) unless condition
 
-          # MySQL has no FILTER clause.  An aggregate passes over a NULL, so
-          # the case that yields nothing for the rows the condition misses is
-          # the same aggregate over the same rows -- count(*) has no operand to
-          # keep, and counts a 1 instead.
-          if AST.adapter_family(model) == :mysql
+          # A family without a FILTER clause gets the CASE that means the same.
+          # An aggregate passes over a NULL, so the case that yields nothing for
+          # the rows the condition misses is the same aggregate over the same
+          # rows -- count(*) has no operand to keep, and counts a 1 instead.
+          unless Dialect.for(model).filter_supported?
             kept = Case.new.when(condition).then(operand == :* ? 1 : operand)
             return aggregate(kept, table, model)
           end

@@ -169,7 +169,7 @@ module ActiveRecord
           # none at all.
           node = AST::DatetimeValueFunction.new(
             function_name(name, DATETIME_VALUE_FUNCTIONS), precision)
-          if precision && adapter_family == :sqlite
+          if precision && !dialect.datetime_precision_supported?
             raise NotImplementedError,
               "#{name} takes no precision on #{@model.connection_db_config.adapter}"
           end
@@ -184,7 +184,7 @@ module ActiveRecord
       # ArgumentError on every adapter.
       def extract(field, expr)
         node = AST::Extract.new(field, expr)
-        if adapter_family == :sqlite
+        unless dialect.extract_supported?
           raise NotImplementedError,
             "extract has no equivalent on #{@model.connection_db_config.adapter}"
         end
@@ -264,14 +264,7 @@ module ActiveRecord
       # is what makes a negative come back as MySQL has it -- 64 bits of two's
       # complement rather than as many as the column happens to be wide.
       def bit_count(expr)
-        case adapter_family
-        when :mysql then AST::Function.new("BIT_COUNT", [expr])
-        when :postgresql
-          AST::Function.new("BIT_COUNT", [AST::Cast.new(expr, "bit(64)")])
-        else
-          raise NotImplementedError,
-            "bit_count has no equivalent on #{@model.connection_db_config.adapter}"
-        end
+        dialect.bit_count(expr, @model)
       end
 
       def exists?(relation)
@@ -318,10 +311,7 @@ module ActiveRecord
       # PostgreSQL and SQLite give it a name; MySQL spells the same thing
       # VALUES(column), which takes the column bare.
       def excluded(column)
-        return AST::Column.new(:excluded, column) unless adapter_family == :mysql
-
-        quoted = @model.with_connection { |c| c.quote_column_name(column) }
-        AST::Function.new("VALUES", [Arel::Nodes::SqlLiteral.new(quoted)])
+        dialect.excluded(column, @model)
       end
 
       # CASE.  `case` is a keyword, so Ruby only reaches this one through the
@@ -346,7 +336,7 @@ module ActiveRecord
         # SQLite is the one adapter with no quantifier at all, and what it says
         # when it meets one is a syntax error at the SELECT.
         def quantified(kind, relation)
-          if adapter_family == :sqlite
+          unless dialect.quantifiers_supported?
             raise NotImplementedError,
               "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
           end
@@ -368,6 +358,10 @@ module ActiveRecord
           spellings.fetch(adapter_family) ||
             raise(NotImplementedError,
                   "#{name} has no equivalent on #{@model.connection_db_config.adapter}")
+        end
+
+        def dialect
+          @dialect ||= Dialect.for(@model)
         end
 
         def adapter_family
@@ -675,26 +669,12 @@ module ActiveRecord
           join_class.new(aliased, Arel::Nodes::On.new(on))
         end
 
-        # PostgreSQL has LATERAL and so does MySQL, from 8.0.14.  SQLite has
-        # none, and neither has MariaDB, which answers to the same adapter as
-        # MySQL.  An adapter nobody has classified is left to say for itself.
         def check_lateral_support
-          case AST.adapter_family(klass)
-          when :sqlite
-            refuse_lateral("sqlite3")
-          when :mysql
-            refuse_lateral("MariaDB") if klass.with_connection { |c| c.mariadb? }
-          end
+          Dialect.for(klass).check_lateral(klass)
         end
 
-        def refuse_lateral(database)
-          raise NotImplementedError, "a lateral join has no equivalent on #{database}"
-        end
-
-        # MySQL has no FULL OUTER JOIN, and neither has MariaDB; SQLite has had
-        # one since 3.39 and PostgreSQL always.
         def check_full_outer_support
-          return unless AST.adapter_family(klass) == :mysql
+          return if Dialect.for(klass).full_outer_join_supported?
           raise NotImplementedError, "a full outer join has no equivalent on MySQL"
         end
 
