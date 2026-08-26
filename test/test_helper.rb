@@ -245,8 +245,12 @@ module SqlAssertions
   def normalize_sql(sql)
     sql = sql.tr("`", '"').gsub("\\\\") { "\\" }
     # SQL Server quotes identifiers in [brackets]; string literals are in
-    # single quotes, so what is bracketed is always an identifier.
-    sql = sql.gsub(/\[([^\]]*)\]/, '"\1"') if sqlserver?
+    # single quotes, so what is bracketed is always an identifier.  It also
+    # marks a string literal national with a leading N -- N'x' -- which the
+    # \b keeps to the prefix, off an N inside a value.
+    if sqlserver?
+      sql = sql.gsub(/\[([^\]]*)\]/, '"\1"').gsub(/\bN'/, "'")
+    end
     # Oracle folds a name to upper case only when it was written unquoted, and
     # preserves one quoted with case of its own -- an alias like "postCount".
     # So lower only the all-upper tokens; leave anything with a lower-case
