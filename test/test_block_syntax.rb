@@ -894,7 +894,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_full_outer_joins_says_where_it_cannot_go
-    skip "#{ADAPTER} has FULL OUTER JOIN" unless ADAPTER == "mysql2"
+    skip "#{ADAPTER} has FULL OUTER JOIN" unless mysql?
     e = assert_raises(NotImplementedError) do
       Author.full_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
     end
@@ -912,7 +912,7 @@ class TestBlockSyntax < Minitest::Test
   def test_the_other_outer_joins_need_a_block
     e = assert_raises(ArgumentError) { Author.right_outer_joins(:posts) }
     assert_match(/takes a table and the block/, e.message)
-    unless ADAPTER == "mysql2"
+    unless mysql?
       assert_raises(ArgumentError) { Author.full_outer_joins(:posts) }
     end
   end
@@ -1375,7 +1375,7 @@ class TestBlockSyntax < Minitest::Test
   # rand takes the name back from Kernel#rand, which would otherwise answer
   # inside the block and never reach the database.
   def test_rand
-    expected = ADAPTER == "mysql2" ? "RAND" : "RANDOM"
+    expected = mysql? ? "RAND" : "RANDOM"
     assert_sql(/ORDER BY #{expected}\(\)/, User.order { rand }.to_sql)
   end
 
@@ -1395,7 +1395,7 @@ class TestBlockSyntax < Minitest::Test
   # and reads a printf template as the number zero rather than complaining,
   # so the name carries the printf one and MySQL raises.
   def test_format_is_printf_and_unsupported_on_mysql
-    if ADAPTER == "mysql2"
+    if mysql?
       assert_raises(NotImplementedError) { User.select { format("%s!", :name) } }
     else
       User.delete_all
@@ -1509,7 +1509,7 @@ class TestBlockSyntax < Minitest::Test
   # MySQL spells trunc TRUNCATE, and insists on the second argument the
   # others default to zero.
   def test_trunc
-    expected = ADAPTER == "mysql2" ? "TRUNCATE" : "TRUNC"
+    expected = mysql? ? "TRUNCATE" : "TRUNC"
     assert_sql(/SELECT #{expected}\("users"."age", 0\)/,
       User.select { trunc(:age, 0) }.to_sql)
   end
@@ -1698,11 +1698,13 @@ class TestBlockSyntax < Minitest::Test
   # neither, so it gets the two operations XOR is made of.
   def test_bitwise_xor_is_spelled_per_adapter
     sql = User.select { :flags ^ 10 }.to_sql
-    case ADAPTER
-    when "postgresql" then assert_sql(/SELECT \("users"."flags" # 10\)/, sql)
-    when "mysql2" then assert_sql(/SELECT \("users"."flags" \^ 10\)/, sql)
-    else assert_sql(
-      /SELECT \(\("users"."flags" \| 10\) - \("users"."flags" & 10\)\)/, sql)
+    if ADAPTER == "postgresql"
+      assert_sql(/SELECT \("users"."flags" # 10\)/, sql)
+    elsif mysql?
+      assert_sql(/SELECT \("users"."flags" \^ 10\)/, sql)
+    else
+      assert_sql(
+        /SELECT \(\("users"."flags" \| 10\) - \("users"."flags" & 10\)\)/, sql)
     end
   end
 
@@ -2091,7 +2093,7 @@ class TestBlockSyntax < Minitest::Test
   # MySQL leaves IN and BETWEEN out of its JSON comparisons, so there the
   # set forms are spelled as the comparisons they mean.
   def test_json_sets_expand_on_mysql
-    skip "MySQL is the one that expands them" unless ADAPTER == "mysql2" && !mariadb?
+    skip "MySQL is the one that expands them" unless mysql? && !mariadb?
     assert_sql(/ = CAST.+ OR .+ = CAST/, Doc.where { :meta.dig(:n).in?([5, 9]) })
     assert_sql(/>= CAST.+<= CAST/, Doc.where { :meta.dig(:n).between?(1, 6) })
     assert_sql(/!= CAST.+ AND .+!= CAST/, Doc.where { :meta.dig(:n).not_in?([5, 9]) })
@@ -2100,7 +2102,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_json_comparisons_elsewhere_say_so
     skip "this one has a JSON type" if ADAPTER == "postgresql" ||
-                                       (ADAPTER == "mysql2" && !mariadb?)
+                                       (mysql? && !mariadb?)
     e = assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n) >= 6 } }
     assert_match(/JSON comparison has no equivalent/, e.message)
     assert_raises(NotImplementedError) { Doc.where { :meta.bury(:a, 1) == '{"a": 1}' } }
@@ -2225,7 +2227,7 @@ class TestBlockSyntax < Minitest::Test
   # the MySQL family hands the aggregate a NULL instead, which these keep as
   # JSON null, so there the filter is refused rather than respelled.
   def test_json_arrayagg_filter
-    if ADAPTER == "mysql2"
+    if mysql?
       e = assert_raises(NotImplementedError) do
         Doc.select { json_arrayagg(:name).filter { :name == "one" } }.to_sql
       end
@@ -2268,7 +2270,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_json_aggregate_comparisons_elsewhere_say_so
     skip "this one has a JSON type" if ADAPTER == "postgresql" ||
-                                       (ADAPTER == "mysql2" && !mariadb?)
+                                       (mysql? && !mariadb?)
     assert_raises(NotImplementedError) do
       Doc.having { json_arrayagg(:name) == %w[one two] }.to_sql
     end
@@ -2374,7 +2376,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_json_build_comparisons_elsewhere_say_so
     skip "this one has a JSON type" if ADAPTER == "postgresql" ||
-                                       (ADAPTER == "mysql2" && !mariadb?)
+                                       (mysql? && !mariadb?)
     assert_raises(NotImplementedError) do
       Doc.where { json_object(a: 1) == { "a" => 1 } }.to_sql
     end
@@ -2529,7 +2531,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_filter_is_a_clause_where_there_is_one
-    skip "#{ADAPTER} has no FILTER" if ADAPTER == "mysql2"
+    skip "#{ADAPTER} has no FILTER" if mysql?
     assert_sql(/COUNT\(\*\) FILTER \(WHERE "users"."age" < 50\)/,
       User.select { count(:*).filter { :age < 50 } }.to_sql)
   end
@@ -2537,7 +2539,7 @@ class TestBlockSyntax < Minitest::Test
   # Where there is not, the same rows are reached through a case: an aggregate
   # passes over a NULL, so a row the condition misses is a row it does not see.
   def test_filter_becomes_a_case_where_there_is_no_clause
-    skip "#{ADAPTER} has FILTER" unless ADAPTER == "mysql2"
+    skip "#{ADAPTER} has FILTER" unless mysql?
     assert_sql(/COUNT\(CASE WHEN "users"."age" < 50 THEN 1 END\)/,
       User.select { count(:*).filter { :age < 50 } }.to_sql)
     assert_sql(/SUM\(CASE WHEN "users"."age" < 50 THEN "users"."age" END\)/,
@@ -2659,7 +2661,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_lateral_join_says_where_it_cannot_go
-    skip "this one has LATERAL" if ADAPTER == "postgresql" || (ADAPTER == "mysql2" && !mariadb?)
+    skip "this one has LATERAL" if ADAPTER == "postgresql" || (mysql? && !mariadb?)
     e = assert_raises(NotImplementedError) { Author.joins(top_post.lateral, as: :top) }
     assert_match(/lateral join has no equivalent/, e.message)
   end
@@ -2709,7 +2711,7 @@ class TestBlockSyntax < Minitest::Test
   # WITH ROLLUP trails the whole group list, so on the MySQL family a rollup
   # cannot stand beside other group entries the way ROLLUP(...) can.
   def test_rollup_stands_alone_on_mysql
-    skip "only MySQL spells it WITH ROLLUP" unless ADAPTER == "mysql2"
+    skip "only MySQL spells it WITH ROLLUP" unless mysql?
     e = assert_raises(ArgumentError) { Post.group { [:author_id, rollup(:title)] } }
     assert_match(/whole group list/, e.message)
   end

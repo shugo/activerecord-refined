@@ -4,7 +4,7 @@ require "bundler/gem_tasks"
 require "rake/testtask"
 require "socket"
 
-ADAPTERS = %w[sqlite3 postgresql mysql2].freeze
+ADAPTERS = %w[sqlite3 postgresql mysql2 trilogy].freeze
 
 # The devcontainer serves Oracle's MySQL beside MariaDB, on 3307.  A
 # container from before it existed serves nothing there, and test:all says

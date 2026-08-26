@@ -18,10 +18,16 @@ require "json"
 #   rake test                  # sqlite3
 #   ADAPTER=postgresql rake test
 #   ADAPTER=mysql2 rake test                # MariaDB, on 3306
+#   ADAPTER=trilogy rake test               # the same server through Trilogy
 #   ADAPTER=mysql2 DB_PORT=3307 rake test   # MySQL, where the devcontainer
 #                                           # serves it (rake test:mysql8)
 #   rake test:all              # all of the above in turn
 ADAPTER = ENV.fetch("ADAPTER", "sqlite3")
+
+# Trilogy and mysql2 both reach the MySQL family of servers -- the same
+# MySQL and MariaDB -- and so want the same spellings throughout; mariadb?
+# tells that pair of servers apart where they disagree.
+MYSQL_ADAPTERS = %w[mysql2 trilogy].freeze
 
 DATABASE_NAME = "activerecord_refined_test"
 
@@ -29,12 +35,16 @@ DATABASE_CONFIG =
   case ADAPTER
   when "sqlite3"
     { adapter: "sqlite3", database: ":memory:" }
-  when "postgresql", "mysql2"
+  when "postgresql", *MYSQL_ADAPTERS
     {
       adapter: ADAPTER,
       host: ENV.fetch("DB_HOST", "127.0.0.1"),
       port: ENV["DB_PORT"]&.to_i,
-      username: ENV.fetch("DB_USERNAME") { Etc.getlogin },
+      # getlogin comes back nil in the devcontainer, where there is no
+      # controlling terminal.  mysql2 and pg fill an absent name with the
+      # process's own user, but trilogy sends root and is refused, so the
+      # name is resolved here to the container user either client wants.
+      username: ENV.fetch("DB_USERNAME") { Etc.getlogin || Etc.getpwuid.name },
       password: ENV["DB_PASSWORD"],
       database: DATABASE_NAME,
     }
@@ -61,7 +71,7 @@ module SqlAssertions
   # ones missing from this list.
   REGEXP_OPERATORS = {
     "postgresql" => ["~", "!~"],
-    "mysql2" => ["REGEXP", "NOT REGEXP"],
+    **MYSQL_ADAPTERS.to_h { |adapter| [adapter, ["REGEXP", "NOT REGEXP"]] },
   }.freeze
 
   def skip_without_regexp_support
@@ -71,7 +81,7 @@ module SqlAssertions
   # upsert_all wants to be told which unique index it is upserting against,
   # except on MySQL, which does not accept being told.
   def upsert_target
-    ADAPTER == "mysql2" ? {} : { unique_by: :page }
+    mysql? ? {} : { unique_by: :page }
   end
 
   # JSON containment: PostgreSQL has @>, MySQL JSON_CONTAINS, SQLite neither.
@@ -83,13 +93,13 @@ module SqlAssertions
   # type; SQLite and MariaDB have only the text.
   def skip_without_json_comparisons
     return if ADAPTER == "postgresql"
-    return if ADAPTER == "mysql2" && !mariadb?
+    return if mysql? && !mariadb?
     skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no JSON comparison"
   end
 
   # MySQL is the one without a FULL OUTER JOIN, and so is MariaDB.
   def skip_without_full_outer_joins
-    skip "#{ADAPTER} has no full outer join" if ADAPTER == "mysql2"
+    skip "#{ADAPTER} has no full outer join" if mysql?
   end
 
   # MariaDB's json is a checked longtext, which Active Record sees as a string
@@ -105,11 +115,15 @@ module SqlAssertions
   # How each adapter spells a cast to a whole number: MySQL casts to SIGNED
   # and has no integer at all, PostgreSQL the other way about, SQLite either.
   def integer_type
-    ADAPTER == "mysql2" ? "signed" : "integer"
+    mysql? ? "signed" : "integer"
+  end
+
+  def mysql?
+    MYSQL_ADAPTERS.include?(ADAPTER)
   end
 
   def mariadb?
-    ADAPTER == "mysql2" && ActiveRecord::Base.connection.mariadb?
+    mysql? && ActiveRecord::Base.connection.mariadb?
   end
 
   # GROUPING SETS, ROLLUP and CUBE are PostgreSQL's; MySQL has only WITH
@@ -125,7 +139,7 @@ module SqlAssertions
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
   def skip_without_lateral
     return if ADAPTER == "postgresql"
-    skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no LATERAL" if ADAPTER != "mysql2" || mariadb?
+    skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no LATERAL" if !mysql? || mariadb?
   end
 
   # DISTINCT ON is PostgreSQL's; Arel refuses to write it for the others.
@@ -152,7 +166,7 @@ module SqlAssertions
   # MySQL has no NULLS FIRST/LAST; Arel emulates it with a leading IS NULL
   # ordering, so only the resulting order is portable, not the SQL.
   def skip_without_nulls_ordering_syntax
-    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if ADAPTER == "mysql2"
+    skip "#{ADAPTER} emulates NULLS FIRST/LAST" if mysql?
   end
 
   def regexp_operator
