@@ -169,3 +169,42 @@ jobs:
           bundle config set --local without db
           bundle install
           bundle exec rake test
+
+  # Microsoft SQL Server, reached through the sqlserver adapter over tiny_tds,
+  # which FreeTDS builds and which is kept in an optional bundler group, like
+  # Oracle's client.  The server image has no healthcheck, so the leg waits
+  # for it before the suite connects.
+  sqlserver:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "Str0ng_Passw0rd!"
+        ports:
+          - 1433:1433
+    env:
+      ADAPTER: sqlserver
+      DB_HOST: 127.0.0.1
+      DB_PORT: 1433
+      DB_USERNAME: sa
+      DB_PASSWORD: "Str0ng_Passw0rd!"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: head
+      - name: Install FreeTDS
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y freetds-dev freetds-bin
+      - name: Bundle the sqlserver group, wait for the server, run the suite
+        run: |
+          set -eux
+          bundle config set --local with sqlserver
+          bundle config set --local without db
+          bundle install
+          bundle exec ruby -e 'require "tiny_tds"; 40.times { begin; TinyTds::Client.new(host: "127.0.0.1", port: 1433, username: "sa", password: ENV.fetch("DB_PASSWORD")).execute("SELECT 1").each; exit; rescue StandardError => e; warn e.message; sleep 3; end }; abort "SQL Server did not become ready"'
+          bundle exec rake test

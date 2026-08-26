@@ -29,6 +29,7 @@ ADAPTER = ENV.fetch("ADAPTER", "sqlite3")
 # oracle_enhanced gem (with its Instant Client build) is installed only for
 # this adapter's run -- so it is required here, not through Bundler.require.
 require "active_record/connection_adapters/oracle_enhanced_adapter" if ADAPTER == "oracle_enhanced"
+require "active_record/connection_adapters/sqlserver_adapter" if ADAPTER == "sqlserver"
 
 # Trilogy and mysql2 both reach the MySQL family of servers -- the same
 # MySQL and MariaDB -- and so want the same spellings throughout; mariadb?
@@ -66,15 +67,29 @@ DATABASE_CONFIG =
       username: ENV.fetch("DB_USERNAME"),
       password: ENV.fetch("DB_PASSWORD"),
     }
+  when "sqlserver"
+    {
+      adapter: "sqlserver",
+      host: ENV.fetch("DB_HOST", "127.0.0.1"),
+      port: ENV["DB_PORT"]&.to_i,
+      username: ENV.fetch("DB_USERNAME"),
+      password: ENV.fetch("DB_PASSWORD"),
+      database: DATABASE_NAME,
+    }
   else
     raise ArgumentError, "unknown ADAPTER: #{ADAPTER}"
   end
 
-# PostgreSQL and the MySQL family keep their databases between runs, so
-# create one on first use.  SQLite is in memory and Oracle connects to a
-# schema that already exists, so neither goes through this.
-if ADAPTER == "postgresql" || MYSQL_ADAPTERS.include?(ADAPTER)
-  maintenance_database = ADAPTER == "postgresql" ? "postgres" : "mysql"
+# PostgreSQL, the MySQL family and SQL Server keep their databases between
+# runs, so create one on first use.  SQLite is in memory and Oracle connects
+# to a schema that already exists, so neither goes through this.
+if ADAPTER == "postgresql" || MYSQL_ADAPTERS.include?(ADAPTER) || ADAPTER == "sqlserver"
+  maintenance_database =
+    case ADAPTER
+    when "postgresql" then "postgres"
+    when "sqlserver" then "master"
+    else "mysql"
+    end
   ActiveRecord::Base.establish_connection(
     DATABASE_CONFIG.merge(database: maintenance_database))
   begin
@@ -159,6 +174,10 @@ module SqlAssertions
     ADAPTER == "oracle_enhanced"
   end
 
+  def sqlserver?
+    ADAPTER == "sqlserver"
+  end
+
   def mariadb?
     mysql? && ActiveRecord::Base.connection.mariadb?
   end
@@ -225,6 +244,9 @@ module SqlAssertions
   # quotes, so lowering only what is inside double quotes leaves them alone.
   def normalize_sql(sql)
     sql = sql.tr("`", '"').gsub("\\\\") { "\\" }
+    # SQL Server quotes identifiers in [brackets]; string literals are in
+    # single quotes, so what is bracketed is always an identifier.
+    sql = sql.gsub(/\[([^\]]*)\]/, '"\1"') if sqlserver?
     # Oracle folds a name to upper case only when it was written unquoted, and
     # preserves one quoted with case of its own -- an alias like "postCount".
     # So lower only the all-upper tokens; leave anything with a lower-case

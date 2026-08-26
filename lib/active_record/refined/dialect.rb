@@ -19,6 +19,7 @@ module ActiveRecord
       autoload :Mysql, "active_record/refined/dialect/mysql"
       autoload :Mariadb, "active_record/refined/dialect/mariadb"
       autoload :Oracle, "active_record/refined/dialect/oracle"
+      autoload :SqlServer, "active_record/refined/dialect/sql_server"
 
       # One instance per family, shared across threads.  The dialect carries no
       # state, so sharing is safe; the map is a concurrent one so that building
@@ -44,6 +45,7 @@ module ActiveRecord
             when "mysql2", "trilogy"
               model.with_connection { |connection| connection.mariadb? } ? Mariadb : Mysql
             when "oracle_enhanced" then Oracle
+            when "sqlserver" then SqlServer
             else Dialect
             end
           end
