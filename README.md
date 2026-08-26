@@ -1197,16 +1197,17 @@ differently and CI runs both. Override with `DB_HOST`, `DB_PORT`,
 `DB_USERNAME` and `DB_PASSWORD`. The `activerecord_refined_test` database is
 created on first use.
 
-The `pg` and `mysql2` gems are in the Gemfile's `db` group, since building them
-needs the client libraries installed. Skip them if SQLite is all you need,
-which is what CI's SQLite job does:
+The client gems sit in optional Gemfile groups named after their adapters,
+since building each needs its client library installed. A plain bundle
+serves SQLite with nothing extra; opt in to the adapters you will reach:
 
 ```sh
-bundle config set --local without db
+bundle config set --local with postgresql mysql2 trilogy
 ```
 
-CI runs all three, one job per adapter, with PostgreSQL and MySQL as service
-containers.
+CI runs one job per adapter with the servers as service containers, Oracle
+and SQL Server included — those two have no local server here and run on CI
+alone, their clients opted in the same way.
 
 ## Releasing
 
