@@ -1068,7 +1068,7 @@ module ActiveRecord
         end
 
         def to_arel(table, model)
-          return with_rollup(table, model) if AST.adapter_family(model) == :mysql
+          return with_rollup(table, model) if Dialect.for(model).grouping_by_with_rollup?
 
           KINDS.fetch(kind).new(
             if kind == :grouping_sets

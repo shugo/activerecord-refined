@@ -81,6 +81,8 @@ module ActiveRecord
         def json_aggregate_name(kind)
           kind == :arrayagg ? "jsonb_agg" : "jsonb_object_agg"
         end
+
+        def grouping_supported?(_kind) = true
       end
     end
   end

@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - master
-      # Temporary, while the dialect refactor is brought up on this branch.
-      - dialect
   pull_request:
 
 jobs:

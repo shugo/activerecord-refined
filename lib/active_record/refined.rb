@@ -345,8 +345,7 @@ module ActiveRecord
 
         def grouping(kind, sets)
           node = AST::GroupingSets.new(kind, sets)
-          return node if adapter_family == :postgresql
-          return node if kind == :rollup && adapter_family == :mysql
+          return node if dialect.grouping_supported?(kind)
 
           raise NotImplementedError,
             "#{kind} has no equivalent on #{@model.connection_db_config.adapter}"
@@ -602,7 +601,7 @@ module ActiveRecord
           entries = Array(result)
           return if entries.size == 1
           return unless entries.any? { |node| node.is_a?(AST::GroupingSets) }
-          return unless AST.adapter_family(klass) == :mysql
+          return unless Dialect.for(klass).grouping_by_with_rollup?
 
           raise ArgumentError,
             "WITH ROLLUP takes the whole group list; group by the rollup alone"

@@ -42,6 +42,10 @@ module ActiveRecord
         def json_aggregate_filter_supported? = false
 
         def json_list_by_element? = true
+
+        def grouping_supported?(kind) = kind == :rollup
+
+        def grouping_by_with_rollup? = true
       end
     end
   end

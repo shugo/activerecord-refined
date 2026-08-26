@@ -182,6 +182,15 @@ module ActiveRecord
       # MySQL family, which overrides; the standard leaves it to the IN.
       def json_list_by_element? = false
 
+      # --- Grouping.  GROUPING SETS, ROLLUP and CUBE, which the standard has
+      #     none of; PostgreSQL has all three and the MySQL family rollup alone.
+
+      def grouping_supported?(_kind) = false
+
+      # The MySQL family spells rollup WITH ROLLUP, trailing the group list
+      # rather than wrapping a list of its own, and overrides.
+      def grouping_by_with_rollup? = false
+
       protected
         # The value beside a path in JSON_SET: an expression as it is, a
         # document or boolean as JSON, a bare scalar quoted.
