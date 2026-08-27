@@ -73,7 +73,7 @@ class TestBlockSyntax < Minitest::Test
         User.where { :name.ilike?("ma%") }.to_sql)
       return
     end
-    expected = ADAPTER == "postgresql" ? "ILIKE" : "LIKE"
+    expected = postgresql? ? "ILIKE" : "LIKE"
     assert_sql(/WHERE "users"."name" #{expected} 'ma%'/,
       User.where { :name.ilike?("ma%") }.to_sql)
   end
@@ -111,7 +111,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_not_ilike
-    expected = ADAPTER == "postgresql" ? "ILIKE" : "LIKE"
+    expected = postgresql? ? "ILIKE" : "LIKE"
     assert_sql(/WHERE "users"."name" NOT #{expected} 'tender%'/,
       User.where { :name.not_ilike?("tender%") }.to_sql)
   end
@@ -687,7 +687,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_distinct_from_postgresql_syntax
-    skip "#{ADAPTER} spells it differently" unless ADAPTER == "postgresql"
+    skip "#{ADAPTER} spells it differently" unless postgresql?
     assert_sql(/WHERE "users"."name" IS NOT DISTINCT FROM 'x'/,
       User.where { :name.not_distinct_from?("x") }.to_sql)
     assert_sql(/WHERE "users"."name" IS DISTINCT FROM 'x'/,
@@ -763,7 +763,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_quantifier_is_unsupported_on_sqlite
-    if ADAPTER == "sqlite3"
+    if sqlite?
       e = assert_raises(NotImplementedError) { User.where { :age > any(User.select(:age)) } }
       assert_match(/ANY/, e.message)
     else
@@ -1322,7 +1322,7 @@ class TestBlockSyntax < Minitest::Test
   # A dug value on either side keeps its own grouping, so the unknown
   # operator cannot capture its left side.
   def test_op_parenthesizes_a_dug_side
-    skip "the <@ operator is PostgreSQL's" unless ADAPTER == "postgresql"
+    skip "the <@ operator is PostgreSQL's" unless postgresql?
     seed_docs
     assert_equal(["one"],
       Doc.where { op("<@", :meta.dig(:a), '{"b": "deep", "c": 1}') }.pluck(:name))
@@ -1387,7 +1387,7 @@ class TestBlockSyntax < Minitest::Test
   # SQLite has no CHAR_LENGTH, GREATEST or LEAST, but LENGTH, MAX and MIN
   # mean the same thing there.
   def test_scalar_functions_spelled_differently_on_sqlite
-    expected = if ADAPTER == "sqlite3" then %w[LENGTH MAX MIN]
+    expected = if sqlite? then %w[LENGTH MAX MIN]
     elsif oracle? then %w[LENGTH GREATEST LEAST]
     elsif sqlserver? then %w[LEN GREATEST LEAST]
     else %w[CHAR_LENGTH GREATEST LEAST]
@@ -1422,7 +1422,7 @@ class TestBlockSyntax < Minitest::Test
   # Where an adapter has no equivalent, the block raises instead of leaving
   # the database to reject the SQL.
   def test_unsupported_function_raises
-    if ADAPTER == "postgresql"
+    if postgresql?
       assert_sql(/SELECT DATE_TRUNC\('day', "users"."name"\)/,
         User.select { date_trunc("day", :name) }.to_sql)
     else
@@ -1451,7 +1451,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_now_is_unsupported_on_sqlite
-    if ADAPTER == "sqlite3" || oracle?
+    if sqlite? || oracle?
       assert_raises(NotImplementedError) { User.select { now } }
     else
       assert_sql(/SELECT NOW\(\)/, User.select { now }.to_sql)
@@ -1483,7 +1483,7 @@ class TestBlockSyntax < Minitest::Test
   # The one thing that does go into the parentheses is a precision, which
   # current_date never takes and SQLite never accepts.
   def test_datetime_value_function_with_precision
-    if ADAPTER == "sqlite3" || sqlserver?
+    if sqlite? || sqlserver?
       e = assert_raises(NotImplementedError) { User.select { current_timestamp(3) } }
       assert_match(/precision/, e.message)
     else
@@ -1510,7 +1510,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_localtime_is_unsupported_on_sqlite
-    if ADAPTER == "sqlite3"
+    if sqlite?
       assert_raises(NotImplementedError) { User.select { localtime } }
       assert_raises(NotImplementedError) { User.select { localtimestamp } }
     else
@@ -1553,7 +1553,7 @@ class TestBlockSyntax < Minitest::Test
 
   # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
   def test_log2_is_unsupported_on_postgresql
-    if ADAPTER == "postgresql" || oracle?
+    if postgresql? || oracle?
       assert_raises(NotImplementedError) { User.select { log2(:age) } }
     else
       assert_sql(/SELECT LOG2\("users"."age"\)/, User.select { log2(:age) }.to_sql)
@@ -1572,7 +1572,7 @@ class TestBlockSyntax < Minitest::Test
   # SQLite spells all of this as strftime formats, which no renaming
   # carries.
   def test_extract
-    if ADAPTER == "sqlite3" || sqlserver?
+    if sqlite? || sqlserver?
       e = assert_raises(NotImplementedError) { User.select { extract(:year, :name) } }
       assert_match(/extract/, e.message)
     else
@@ -1590,7 +1590,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_extract_runs
-    skip "#{ADAPTER} has no extract" if ADAPTER == "sqlite3" || sqlserver?
+    skip "#{ADAPTER} has no extract" if sqlite? || sqlserver?
     User.delete_all
     User.create!(name: "alice")
     assert_equal(2026,
@@ -1753,7 +1753,7 @@ class TestBlockSyntax < Minitest::Test
   # neither, so it gets the two operations XOR is made of.
   def test_bitwise_xor_is_spelled_per_adapter
     sql = User.select { :flags ^ 10 }.to_sql
-    if ADAPTER == "postgresql"
+    if postgresql?
       assert_sql(/SELECT \("users"."flags" # 10\)/, sql)
     elsif mysql?
       assert_sql(/SELECT \("users"."flags" \^ 10\)/, sql)
@@ -1812,7 +1812,7 @@ class TestBlockSyntax < Minitest::Test
   # PostgreSQL counts the bits of a bit string rather than of a number, so the
   # argument is cast there; bit(64) is what makes a negative answer alike.
   def test_bit_count
-    if ADAPTER == "sqlite3" || oracle? || sqlserver?
+    if sqlite? || oracle? || sqlserver?
       assert_raises(NotImplementedError) { User.select { bit_count(:flags) } }
       return
     end
@@ -1821,11 +1821,11 @@ class TestBlockSyntax < Minitest::Test
     User.create!(name: "b", flags: -1)
     assert_equal([2, 64], User.select { bit_count(:flags).as(:v) }.order(:name).map { |u| u.v.to_i })
     assert_sql(/BIT_COUNT\(CAST\("users"."flags" AS bit\(64\)\)\)/,
-      User.select { bit_count(:flags) }.to_sql) if ADAPTER == "postgresql"
+      User.select { bit_count(:flags) }.to_sql) if postgresql?
   end
 
   def test_bit_aggregates_are_unsupported_on_sqlite
-    if ADAPTER == "sqlite3" || oracle? || sqlserver?
+    if sqlite? || oracle? || sqlserver?
       e = assert_raises(NotImplementedError) { User.select { bit_or(:flags) } }
       assert_match(/bit_or/, e.message)
     else
@@ -1949,7 +1949,7 @@ class TestBlockSyntax < Minitest::Test
   # bare-name adapters refuse it.  PostgreSQL quotes the name and takes it --
   # its ICU collations are spelled with hyphens.
   def test_collate_hyphen_follows_the_quoting
-    if ADAPTER == "postgresql"
+    if postgresql?
       assert_sql(/COLLATE "en-US-x-icu"/,
         User.select { :name.collate(:"en-US-x-icu") }.to_sql)
     else
@@ -2198,7 +2198,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_comparisons_elsewhere_say_so
-    skip "this one has a JSON type" if ADAPTER == "postgresql" ||
+    skip "this one has a JSON type" if postgresql? ||
                                        (mysql? && !mariadb?)
     e = assert_raises(NotImplementedError) { Doc.where { :meta.dig(:n) >= 6 } }
     assert_match(/JSON comparison has no equivalent/, e.message)
@@ -2311,11 +2311,10 @@ class TestBlockSyntax < Minitest::Test
   def test_json_aggregates_are_spelled_per_adapter
     arrayagg = Doc.select { json_arrayagg(:name) }
     objectagg = Doc.select { json_objectagg(:name, :meta) }
-    case ADAPTER
-    when "sqlite3"
+    if sqlite?
       assert_sql(/json_group_array\("docs"."name"\)/, arrayagg)
       assert_sql(/json_group_object\("docs"."name", "docs"."meta"\)/, objectagg)
-    when "postgresql"
+    elsif postgresql?
       assert_sql(/jsonb_agg\("docs"."name"\)/, arrayagg)
       assert_sql(/jsonb_object_agg\("docs"."name", "docs"."meta"\)/, objectagg)
     else
@@ -2372,7 +2371,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_aggregate_comparisons_elsewhere_say_so
-    skip "this one has a JSON type" if ADAPTER == "postgresql" ||
+    skip "this one has a JSON type" if postgresql? ||
                                        (mysql? && !mariadb?)
     assert_raises(NotImplementedError) do
       Doc.having { json_arrayagg(:name) == %w[one two] }.to_sql
@@ -2398,7 +2397,7 @@ class TestBlockSyntax < Minitest::Test
     seed_docs
     array = json_aggregate(
       Doc.where { :name == "two" }.select { json_arrayagg(:meta).as(:v) })
-    if ADAPTER == "sqlite3"
+    if sqlite?
       assert_equal(['{"n":9}'], array)
     else
       assert_equal([{ "n" => 9 }], array)
@@ -2411,7 +2410,7 @@ class TestBlockSyntax < Minitest::Test
     skip_without_json_aggregate
     Doc.delete_all
     value = Doc.select { json_arrayagg(:name).as(:v) }.to_a.first.v
-    if ADAPTER == "sqlite3"
+    if sqlite?
       assert_equal("[]", value)
     else
       assert_nil(value)
@@ -2457,7 +2456,7 @@ class TestBlockSyntax < Minitest::Test
 
   def test_json_build_is_spelled_per_adapter
     relation = Doc.select { [json_array(:name), json_object(a: :name)] }
-    if ADAPTER == "postgresql"
+    if postgresql?
       assert_sql(/jsonb_build_array\("docs"."name"\)/, relation)
       assert_sql(/jsonb_build_object\('a', "docs"."name"\)/, relation)
     elsif oracle?
@@ -2493,7 +2492,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_build_comparisons_elsewhere_say_so
-    skip "this one has a JSON type" if ADAPTER == "postgresql" ||
+    skip "this one has a JSON type" if postgresql? ||
                                        (mysql? && !mariadb?)
     assert_raises(NotImplementedError) do
       Doc.where { json_object(a: 1) == { "a" => 1 } }.to_sql
@@ -2534,10 +2533,9 @@ class TestBlockSyntax < Minitest::Test
   def test_keys_is_spelled_per_adapter
     skip_without_json_keys
     relation = Doc.select { :meta.keys }
-    case ADAPTER
-    when "sqlite3"
+    if sqlite?
       assert_sql(/CASE WHEN json_type\("docs"."meta"\) = 'object' THEN \(SELECT/, relation)
-    when "postgresql"
+    elsif postgresql?
       assert_sql(/CASE WHEN jsonb_typeof\("docs"."meta"\) = 'object' THEN COALESCE\(\(SELECT/,
         relation)
     else
@@ -2595,7 +2593,7 @@ class TestBlockSyntax < Minitest::Test
   # The ? spelling is the one a GIN index matches; jsonb_exists, the
   # function it is shorthand for, never is.
   def test_key_is_the_indexable_operator_on_postgresql
-    skip "the ? operator is PostgreSQL's" unless ADAPTER == "postgresql"
+    skip "the ? operator is PostgreSQL's" unless postgresql?
     assert_sql(/"docs"."meta" \? 'tags'/, Doc.where { :meta.key?(:tags) })
   end
 
@@ -2607,7 +2605,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_contains_says_where_it_cannot_go
-    skip "#{ADAPTER} has JSON containment" unless ADAPTER == "sqlite3"
+    skip "#{ADAPTER} has JSON containment" unless sqlite?
     assert_raises(NotImplementedError) { Doc.where { :meta.contains?(n: 5) }.to_sql }
   end
 
@@ -2710,7 +2708,7 @@ class TestBlockSyntax < Minitest::Test
   # Arel carries the node and refuses to write it elsewhere, as it does a
   # regexp, so the gem has nothing of its own to say.
   def test_distinct_on_says_where_it_cannot_go
-    skip "#{ADAPTER} has DISTINCT ON" if ADAPTER == "postgresql"
+    skip "#{ADAPTER} has DISTINCT ON" if postgresql?
     assert_raises(NotImplementedError) { Author.distinct_on { :name }.to_sql }
   end
 
@@ -2783,7 +2781,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_lateral_join_says_where_it_cannot_go
-    skip "this one has LATERAL" if ADAPTER == "postgresql" || (mysql? && !mariadb?)
+    skip "this one has LATERAL" if postgresql? || (mysql? && !mariadb?)
     # Oracle has LATERAL too, but the gem does not yet write it there, so it
     # is neither refused with this message nor exercised.
     skip "oracle's LATERAL is not written yet" if oracle?
@@ -2825,7 +2823,7 @@ class TestBlockSyntax < Minitest::Test
     rows = grouped { rollup(:author_id, :title) }
     assert_equal(6, rows.size)   # by both (3), by author (2), the whole (1)
     assert_includes(rows, [nil, nil, 3])
-    if ADAPTER == "postgresql"
+    if postgresql?
       assert_sql(/GROUP BY ROLLUP\( "posts"."author_id", "posts"."title" \)/,
         Post.group { rollup(:author_id, :title) }.to_sql)
     else
@@ -2852,10 +2850,10 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_grouping_sets_say_where_they_cannot_go
-    skip "PostgreSQL has them" if ADAPTER == "postgresql"
+    skip "PostgreSQL has them" if postgresql?
     assert_raises(NotImplementedError) { Post.group { grouping_sets([:title]) } }
     assert_raises(NotImplementedError) { Post.group { cube(:title) } }
-    assert_raises(NotImplementedError) { Post.group { rollup(:title) } } if ADAPTER == "sqlite3"
+    assert_raises(NotImplementedError) { Post.group { rollup(:title) } } if sqlite?
   end
 
   def test_grouping_sets_need_something_to_group_by

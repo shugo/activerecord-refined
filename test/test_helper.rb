@@ -25,16 +25,43 @@ require "json"
 #   rake test:all              # all of the above in turn
 ADAPTER = ENV.fetch("ADAPTER", "sqlite3")
 
-# Active Record 8.1 knows an adapter only once its gem is loaded, and the
-# oracle_enhanced gem (with its Instant Client build) is installed only for
-# this adapter's run -- so it is required here, not through Bundler.require.
-require "active_record/connection_adapters/oracle_enhanced_adapter" if ADAPTER == "oracle_enhanced"
-require "active_record/connection_adapters/sqlserver_adapter" if ADAPTER == "sqlserver"
-
 # Trilogy and mysql2 both reach the MySQL family of servers -- the same
 # MySQL and MariaDB -- and so want the same spellings throughout; mariadb?
 # tells that pair of servers apart where they disagree.
 MYSQL_ADAPTERS = %w[mysql2 trilogy].freeze
+
+# The adapter of the run, asked as a question.  At the top level rather than
+# in SqlAssertions so that the setup below and the tests ask alike.
+def sqlite?
+  ADAPTER == "sqlite3"
+end
+
+def postgresql?
+  ADAPTER == "postgresql"
+end
+
+def mysql?
+  MYSQL_ADAPTERS.include?(ADAPTER)
+end
+
+def oracle?
+  ADAPTER == "oracle_enhanced"
+end
+
+def sqlserver?
+  ADAPTER == "sqlserver"
+end
+
+# This one asks the server, so it waits for a connection.
+def mariadb?
+  mysql? && ActiveRecord::Base.connection.mariadb?
+end
+
+# Active Record 8.1 knows an adapter only once its gem is loaded, and the
+# oracle_enhanced gem (with its Instant Client build) is installed only for
+# this adapter's run -- so it is required here, not through Bundler.require.
+require "active_record/connection_adapters/oracle_enhanced_adapter" if oracle?
+require "active_record/connection_adapters/sqlserver_adapter" if sqlserver?
 
 DATABASE_NAME = "activerecord_refined_test"
 
@@ -83,7 +110,7 @@ DATABASE_CONFIG =
 # PostgreSQL, the MySQL family and SQL Server keep their databases between
 # runs, so create one on first use.  SQLite is in memory and Oracle connects
 # to a schema that already exists, so neither goes through this.
-if ADAPTER == "postgresql" || MYSQL_ADAPTERS.include?(ADAPTER) || ADAPTER == "sqlserver"
+if postgresql? || mysql? || sqlserver?
   maintenance_database =
     case ADAPTER
     when "postgresql" then "postgres"
@@ -140,7 +167,7 @@ module SqlAssertions
   # Comparing a JSON value with a Ruby one is for jsonb and MySQL's JSON
   # type; SQLite and MariaDB have only the text.
   def skip_without_json_comparisons
-    return if ADAPTER == "postgresql"
+    return if postgresql?
     return if mysql? && !mariadb?
     skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no JSON comparison"
   end
@@ -189,33 +216,13 @@ module SqlAssertions
 
   # PostgreSQL quotes the collation name; the rest take it bare.
   def collation_sql
-    ADAPTER == "postgresql" ? %("#{binary_collation}") : binary_collation.to_s
-  end
-
-  def sqlite?
-    ADAPTER == "sqlite3"
-  end
-
-  def mysql?
-    MYSQL_ADAPTERS.include?(ADAPTER)
-  end
-
-  def oracle?
-    ADAPTER == "oracle_enhanced"
-  end
-
-  def sqlserver?
-    ADAPTER == "sqlserver"
-  end
-
-  def mariadb?
-    mysql? && ActiveRecord::Base.connection.mariadb?
+    postgresql? ? %("#{binary_collation}") : binary_collation.to_s
   end
 
   # GROUPING SETS, ROLLUP and CUBE are PostgreSQL's; MySQL has only WITH
   # ROLLUP, which carries rollup and only rollup, and SQLite has none.
   def skip_without_grouping_sets
-    skip "#{ADAPTER} has no GROUPING SETS" unless ADAPTER == "postgresql"
+    skip "#{ADAPTER} has no GROUPING SETS" unless postgresql?
   end
 
   # Oracle has ROLLUP, but Arel's oracle_enhanced visitor cannot write the
@@ -226,13 +233,13 @@ module SqlAssertions
 
   # LATERAL is PostgreSQL's and MySQL 8's; MariaDB and SQLite have none.
   def skip_without_lateral
-    return if ADAPTER == "postgresql"
+    return if postgresql?
     skip "#{mariadb? ? 'MariaDB' : ADAPTER} has no LATERAL" if !mysql? || mariadb?
   end
 
   # DISTINCT ON is PostgreSQL's; Arel refuses to write it for the others.
   def skip_without_distinct_on
-    skip "#{ADAPTER} has no DISTINCT ON" unless ADAPTER == "postgresql"
+    skip "#{ADAPTER} has no DISTINCT ON" unless postgresql?
   end
 
   # ANY and ALL over a subquery are PostgreSQL's and MySQL's alike; SQLite
@@ -248,7 +255,7 @@ module SqlAssertions
   end
 
   def skip_without_array_columns
-    skip "#{ADAPTER} has no array columns" unless ADAPTER == "postgresql"
+    skip "#{ADAPTER} has no array columns" unless postgresql?
   end
 
   # MySQL has no NULLS FIRST/LAST; Arel emulates it with a leading IS NULL
@@ -336,7 +343,7 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
       t.integer :age
       t.boolean :active
       t.integer :flags
-      t.string :tags, array: true if ADAPTER == "postgresql"
+      t.string :tags, array: true if postgresql?
     end
     create_table(:authors) { |t| t.string :name }
     create_table(:posts) { |t| t.string :title; t.integer :author_id }
@@ -351,9 +358,9 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
       # Oracle's native JSON type is one ruby-oci8 cannot fetch (datatype
       # 119), so the document is kept in a CLOB as text; Oracle's JSON
       # functions read and write JSON in a CLOB just the same.
-      if ADAPTER == "postgresql"
+      if postgresql?
         t.jsonb(:meta)
-      elsif ADAPTER == "oracle_enhanced"
+      elsif oracle?
         t.text(:meta)
       else
         t.json(:meta)
