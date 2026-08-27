@@ -1923,6 +1923,40 @@ class TestBlockSyntax < Minitest::Test
       User.order { [:age.desc, :name.asc] }.to_sql)
   end
 
+  # collate names a collation for a comparison or an ordering, and gives back
+  # an expression, so the collation carries into either.
+  def test_collate_carries_a_collation
+    User.delete_all
+    User.create!([{ name: "alice" }, { name: "Alice" }, { name: "bob" }])
+    coll = binary_collation
+    assert_sql(/"users"."name" COLLATE #{Regexp.escape(collation_sql)} = 'alice'/,
+      User.where { :name.collate(coll) == "alice" })
+    # A binary collation is case-sensitive, so only the exact case matches,
+    assert_equal(["alice"], User.where { :name.collate(coll) == "alice" }.pluck(:name))
+    # and it orders upper case before lower, by code point.
+    assert_equal(%w[Alice alice bob], User.order { :name.collate(coll).asc }.pluck(:name))
+  end
+
+  # A space, a quote or a semicolon is no collation name anywhere, quoted or
+  # bare, so it is refused before it can reach the database.
+  def test_collate_refuses_an_unsafe_name
+    [:"a b", :"a;b", :'a"b'].each do |bad|
+      assert_raises(ArgumentError) { User.select { :name.collate(bad) }.to_sql }
+    end
+  end
+
+  # A hyphen unquoted would read as the collation minus a number, so the
+  # bare-name adapters refuse it.  PostgreSQL quotes the name and takes it --
+  # its ICU collations are spelled with hyphens.
+  def test_collate_hyphen_follows_the_quoting
+    if ADAPTER == "postgresql"
+      assert_sql(/COLLATE "en-US-x-icu"/,
+        User.select { :name.collate(:"en-US-x-icu") }.to_sql)
+    else
+      assert_raises(ArgumentError) { User.select { :name.collate(:"nocase-1") }.to_sql }
+    end
+  end
+
   def test_order_nulls_first
     skip_without_nulls_ordering_syntax
     assert_sql(/ORDER BY "users"."age" ASC NULLS FIRST/,

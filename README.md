@@ -1071,6 +1071,29 @@ Author.
   }
 ```
 
+### Collation
+
+`.collate` names a collation for a comparison or an ordering — how the
+database decides two strings are equal and which comes first — and gives back
+an expression, so the collation carries into either:
+
+```ruby
+Author.where { :name.collate(:nocase) == "alice" }
+# WHERE "authors"."name" COLLATE nocase = 'alice'
+
+Author.order { :name.collate(:nocase).asc }
+```
+
+The collation names are the database's own, so they are not portable — SQLite's
+`nocase`, PostgreSQL's `"C"`, MySQL's `utf8mb4_bin`. PostgreSQL folds an
+unquoted name to lower case, where its built-in names are upper, so it quotes
+the name for you.
+
+On the databases that take the name bare, it has to be a plain identifier: a
+hyphen would read as a subtraction, so a name with one is refused. PostgreSQL
+quotes the name, so a hyphen is safe there, and its ICU collations —
+`en-US-x-icu` and the rest — are spelled with them.
+
 ### Writing
 
 `update_all` reads its hash the way Active Record does — `update_all(likes: :likes)`

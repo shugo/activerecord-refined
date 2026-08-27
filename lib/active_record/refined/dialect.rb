@@ -132,6 +132,18 @@ module ActiveRecord
         Arel::Nodes::InfixOperation.new(negated ? "IS NOT" : "IS", operand, literal)
       end
 
+      # COLLATE, which every family spells `expr COLLATE name` -- the name a
+      # bare identifier, no Arel node for it.  Written bare it has to be a
+      # plain one, so it is checked here; PostgreSQL quotes it and widens what
+      # it takes, overriding.  PostgreSQL also folds an unquoted name to lower
+      # case, where its built-in names are upper -- "C", "POSIX" -- another
+      # reason it quotes rather than inheriting this.
+      def collate(operand, name, _model)
+        AST.check_name(name, AST::COLLATION_NAME, "collation name")
+        Arel::Nodes::InfixOperation.new(
+          "COLLATE", operand, Arel::Nodes::SqlLiteral.new(name))
+      end
+
       # XOR, which no two families spell alike.  The standard is the two
       # operations it is made of, naming each operand twice, as SQLite needs;
       # PostgreSQL and the MySQL family have an operator and override.

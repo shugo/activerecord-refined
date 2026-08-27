@@ -177,6 +177,21 @@ module SqlAssertions
     mysql? ? "signed" : "integer"
   end
 
+  # A case-sensitive collation every adapter has, so a comparison under it
+  # tells the cases apart wherever the suite runs.
+  def binary_collation
+    if sqlite? || oracle? then :BINARY
+    elsif mysql? then :utf8mb4_bin
+    elsif sqlserver? then :Latin1_General_BIN2
+    else :C # postgresql
+    end
+  end
+
+  # PostgreSQL quotes the collation name; the rest take it bare.
+  def collation_sql
+    ADAPTER == "postgresql" ? %("#{binary_collation}") : binary_collation.to_s
+  end
+
   def sqlite?
     ADAPTER == "sqlite3"
   end

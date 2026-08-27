@@ -9,6 +9,11 @@ module ActiveRecord
       NAME = /[[:alpha:]_][[:alnum:]_$]*/
       ALIAS_NAME = /\A#{NAME}\z/
       FUNCTION_NAME = /\A#{NAME}(\.#{NAME})?\z/
+      # A collation name where the family writes it bare, as all but PostgreSQL
+      # do.  A plain identifier: a hyphen unquoted would read as the collation
+      # minus a number, `x COLLATE nocase-1` as `(x COLLATE nocase) - 1`, valid
+      # and wrong.  PostgreSQL quotes the name and widens this; see its dialect.
+      COLLATION_NAME = /\A#{NAME}\z/
       # A SQL type as cast writes it: words, at most parenthesized with
       # lengths -- double precision, decimal(10,2).
       TYPE_NAME = /\A[[:alpha:]_][[:alnum:]_ ]*(\(\d+(, ?\d+)?\))?\z/
@@ -380,6 +385,10 @@ module ActiveRecord
 
         def desc
           Ordering.new(self, :desc)
+        end
+
+        def collate(name)
+          Collate.new(self, name)
         end
 
         private
@@ -1446,6 +1455,29 @@ module ActiveRecord
             return name unless quote
             model.with_connection { |connection| connection.quote_column_name(name) }
           end
+      end
+
+      # A collation named for a comparison or an ordering: `:name.collate(:ci)`.
+      # It stands as an expression -- compared, ordered by, selected -- and
+      # gives back one of its own, so the collation carries through.
+      #
+      # The name follows COLLATE as a bare identifier with no Arel node of its
+      # own.  What names are safe turns on whether the family quotes it -- only
+      # PostgreSQL does -- so the dialect checks the name as it builds the
+      # clause, rather than this node holding one rule for all of them.
+      class Collate < Node
+        include Predications
+
+        attr_reader :operand, :name
+
+        def initialize(operand, name)
+          @name = name.to_s
+          @operand = operand
+        end
+
+        def to_arel(table, model)
+          Dialect.for(model).collate(to_arel_operand(operand, table, model), name, model)
+        end
       end
 
       class Ordering < Node
