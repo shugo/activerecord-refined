@@ -173,6 +173,13 @@ show("NULLS LAST",
   LineItem.order { [:category.asc.nulls_last, :sku.asc] },
   LineItem.order { [:category.asc.nulls_last, :sku.asc] }.pluck(:category, :sku))
 
+# collate names a collation -- how the database compares and orders strings --
+# and gives back an expression, so it carries into a comparison or an order.
+# The names are the database's own; nocase is SQLite's case-insensitive one.
+show("a case-insensitive comparison under a collation",
+  LineItem.where { :category.collate(:nocase) == "TOOLS" },
+  LineItem.where { :category.collate(:nocase) == "TOOLS" }.pluck(:sku))
+
 # Aggregates and expressions can be ordered by, too.
 show("grouped, aggregated and ordered by the aggregate",
   LineItem.

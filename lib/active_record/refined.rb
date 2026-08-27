@@ -19,6 +19,10 @@ module ActiveRecord
           AST::Ordering.new(self, :desc)
         end
 
+        def collate(name)
+          AST::Collate.new(self, name)
+        end
+
         def [](column_name)
           AST::Column.new(self, column_name)
         end

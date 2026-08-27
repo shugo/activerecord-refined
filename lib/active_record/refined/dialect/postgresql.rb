@@ -85,6 +85,23 @@ module ActiveRecord
         end
 
         def grouping_supported?(_kind) = true
+
+        # The names PostgreSQL knows, letters and digits and the _ . - its
+        # catalog spells them with.  Wider than the bare families' plain
+        # identifier because the name is quoted, so a hyphen is safe -- and
+        # every ICU collation, en-US-x-icu among them, is spelled with one.
+        COLLATION_NAME = /\A[[:alnum:]_.-]+\z/
+
+        # PostgreSQL's own collation names are case-sensitive and upper, "C",
+        # "POSIX", so the name is quoted as an identifier to keep it from
+        # folding to lower case.  The quoter is asked to spell it, as
+        # excluded's VALUES(column) is on MySQL.
+        def collate(operand, name, model)
+          AST.check_name(name, COLLATION_NAME, "collation name")
+          quoted = model.with_connection { |connection| connection.quote_column_name(name) }
+          Arel::Nodes::InfixOperation.new(
+            "COLLATE", operand, Arel::Nodes::SqlLiteral.new(quoted))
+        end
       end
     end
   end

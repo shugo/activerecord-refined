@@ -414,6 +414,16 @@ show Author.from(ranked, :authors).where { :rn == 1 }.order { :country }`,
         code: `show Author.order { :country.asc.nulls_last }.select { [:name, :country] }`,
       },
       {
+        title: 'Collation',
+        slug: 'collate',
+        code: `# collate names a collation -- how strings are compared and ordered -- and
+# gives back an expression, so it carries into a comparison or an order.  The
+# names are the database's own and not portable, so this only shows the SQL:
+# nocase is SQLite's, and PostgreSQL quotes the name, where its own are upper.
+sql Author.where { :name.collate(:nocase) == "alice" }
+sql Author.order { :name.collate(:nocase).asc }`,
+      },
+      {
         title: 'All of it at once',
         slug: 'all-at-once',
         code: `show Author.
