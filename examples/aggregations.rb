@@ -91,3 +91,21 @@ query3 =
 puts "--- 3. Comment score aggregation across multi-table JOIN ---"
 puts query3.to_sql
 puts
+
+# 4. The titles of each author's posts joined into one string
+#    string_agg + order inside the aggregate + filter; group_concat on SQLite
+query4 =
+  Author.
+    joins(:posts) { :posts[:author_id] == :authors[:id] }.
+    group { :authors[:id] }.
+    select {
+      [
+        :authors[:name],
+        string_agg(:posts[:title], ", ").order(:posts[:title]).as(:titles),
+        string_agg(:posts[:title], ", ").filter { :posts[:published] == true }.as(:published),
+      ]
+    }
+
+puts "--- 4. Titles per author, joined (string_agg / order / filter) ---"
+puts query4.to_sql
+puts

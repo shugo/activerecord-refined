@@ -2733,6 +2733,83 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/not both/, e.message)
   end
 
+  # string_agg: the strings of a group joined into one.  Every family has it
+  # under a name of its own, with the ORDER BY in a place of its own.
+  def seed_for_string_agg
+    Post.delete_all
+    Post.create!(title: "b", author_id: 1)
+    Post.create!(title: "a", author_id: 1)
+    Post.create!(title: "c", author_id: 2)
+  end
+
+  def test_string_agg_spelling
+    relation = Post.select { string_agg(:title, ", ").order(:title) }
+    if sqlite?
+      assert_sql(/group_concat\("posts"."title", ', ' ORDER BY "posts"."title"\)/, relation)
+    elsif postgresql?
+      assert_sql(/STRING_AGG\("posts"."title", ', ' ORDER BY "posts"."title"\)/, relation)
+      assert_sql(/STRING_AGG\(CAST\("posts"."author_id" AS text\), ','\)/,
+        Post.select { string_agg(:author_id) })
+    elsif mysql?
+      assert_sql(/GROUP_CONCAT\("posts"."title" ORDER BY "posts"."title" SEPARATOR ', '\)/,
+        relation)
+    elsif sqlserver?
+      assert_sql(/STRING_AGG\("posts"."title", ', '\) WITHIN GROUP \(ORDER BY "posts"."title"\)/,
+        relation)
+    else
+      assert_sql(/LISTAGG\("posts"."title", ', '\) WITHIN GROUP \(ORDER BY "posts"."title"\)/,
+        relation)
+    end
+  end
+
+  def test_string_agg_joins_a_group
+    seed_for_string_agg
+    rows = Post.group { :author_id }.
+      select { [:author_id, string_agg(:title, ", ").order(:title).as(:titles)] }.
+      order(:author_id).map { |row| [row.author_id, row.titles] }
+    assert_equal([[1, "a, b"], [2, "c"]], rows)
+  end
+
+  def test_string_agg_orders_and_separates_as_asked
+    seed_for_string_agg
+    assert_equal("c-b-a",
+      Post.select { string_agg(:title, "-").order(:title.desc).as(:v) }.sole.v)
+    assert_equal("a,b,c",
+      Post.select { string_agg(:title).order(:title).as(:v) }.sole.v)
+  end
+
+  # A number joins as the string that spells it, cast on PostgreSQL and
+  # converted by the others.
+  def test_string_agg_of_a_number
+    seed_for_string_agg
+    assert_equal("1,1,2",
+      Post.select { string_agg(:author_id).order(:author_id).as(:v) }.sole.v)
+  end
+
+  def test_string_agg_filter
+    seed_for_string_agg
+    assert_equal("a,b",
+      Post.select { string_agg(:title).order(:title).filter { :author_id == 1 }.as(:v) }.sole.v)
+  end
+
+  def test_string_agg_over_a_window
+    seed_for_string_agg
+    if mysql? || sqlserver?
+      assert_raises(NotImplementedError) do
+        Post.select { string_agg(:title).over.partition(:author_id) }.to_sql
+      end
+    else
+      joined = Post.select { [:title, string_agg(:title).over.partition(:author_id).as(:v)] }.
+        order(:title).map { |row| row.v.split(",").sort }
+      assert_equal([%w[a b], %w[a b], %w[c]], joined)
+    end
+  end
+
+  def test_string_agg_refuses_what_it_cannot_write
+    assert_raises(ArgumentError) { Post.select { string_agg(:title, 1) } }
+    assert_raises(ArgumentError) { Post.select { string_agg(:title).order } }
+  end
+
   # DISTINCT ON keeps the first row of each group the order brings up.
   def seed_for_distinct_on
     Author.delete_all

@@ -45,6 +45,21 @@ module ActiveRecord
              Arel::Nodes.build_quoted(subtract ? -amount : amount), date])
         end
 
+        # STRING_AGG, with the WITHIN GROUP only when there is an order to
+        # put in it.
+        def string_agg(operand, separator, orders, _string, model)
+          call = Arel::Nodes::NamedFunction.new(
+            "STRING_AGG", [operand, Arel::Nodes.build_quoted(separator)])
+          return call if orders.empty?
+          Arel.sql("#{compile(call, model)} WITHIN GROUP " \
+                   "(ORDER BY #{compile_list(orders, model)})")
+        end
+
+        def check_string_aggregate_window(model)
+          raise NotImplementedError,
+            "string_agg over a window has no equivalent on #{model.connection_db_config.adapter}"
+        end
+
         # dig_text reads a scalar out with JSON_VALUE; dig keeps JSON with
         # JSON_QUERY, which returns a fragment and NULL for a scalar leaf.
         def json_path(document, dollar_path, _steps, json_value, _model)

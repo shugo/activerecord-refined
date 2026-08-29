@@ -80,6 +80,12 @@ module ActiveRecord
         AST::JsonAggregate.new(:objectagg, [key, value])
       end
 
+      # The strings of a group joined into one, a separator between; the
+      # default is the one GROUP_CONCAT keeps.
+      def string_agg(value, separator = ",")
+        AST::StringAggregate.new(value, separator)
+      end
+
       # A JSON document built in the row: json_array from the values given,
       # json_object from a Ruby hash whose values are expressions.
       def json_array(*values)

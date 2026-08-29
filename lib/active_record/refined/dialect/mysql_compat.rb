@@ -43,6 +43,19 @@ module ActiveRecord
 
         def json_aggregate_filter_supported? = false
 
+        # GROUP_CONCAT, its separator a keyword after the operand and after
+        # the ORDER BY when there is one.
+        def string_agg(operand, separator, orders, _string, model)
+          order = orders.empty? ? "" : " ORDER BY #{compile_list(orders, model)}"
+          Arel.sql("GROUP_CONCAT(#{compile(operand, model)}#{order} " \
+                   "SEPARATOR #{quote(separator, model)})")
+        end
+
+        def check_string_aggregate_window(model)
+          raise NotImplementedError,
+            "string_agg over a window has no equivalent on #{model.connection_db_config.adapter}"
+        end
+
         def json_list_by_element? = true
 
         def grouping_supported?(kind) = kind == :rollup

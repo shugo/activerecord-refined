@@ -46,6 +46,11 @@ module ActiveRecord
         def json_aggregate_name(kind)
           kind == :arrayagg ? "json_group_array" : "json_group_object"
         end
+
+        # group_concat, with the ORDER BY inside the call from 3.44 on.
+        def string_agg(operand, separator, orders, _string, model)
+          string_agg_call("group_concat", operand, separator, orders, model)
+        end
       end
     end
   end

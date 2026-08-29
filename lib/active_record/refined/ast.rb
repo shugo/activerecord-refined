@@ -1320,9 +1320,9 @@ module ActiveRecord
           orders.each { |expr| window.order(to_arel_operand(expr, table, model)) }
           frame_arel(window) if frame
 
-          # The JSON aggregates cannot ride a window everywhere; the node
-          # itself says where, once the adapter is known.
-          function.check_window(model) if function.is_a?(JsonAggregate)
+          # Not every aggregate can ride a window everywhere; the node itself
+          # says where, once the adapter is known.
+          function.check_window(model) if function.respond_to?(:check_window)
 
           # A window-only function refuses to build on its own; here is where
           # it is asked for the call itself.
@@ -1476,6 +1476,65 @@ module ActiveRecord
         private
           def json_source
             "json_#{kind}"
+          end
+      end
+
+      # The strings of a group joined into one, a separator between:
+      # `string_agg(:title, ", ")`, with `.order` for the order they are
+      # joined in.  Every family has it under a name of its own with the
+      # ORDER BY in a place of its own, and Arel has no node for an ORDER BY
+      # inside a call, so the dialect writes the call.  A NULL is passed
+      # over as by any aggregate, so the CASE that stands in for FILTER
+      # means the same here and is not refused as the JSON aggregates' is.
+      class StringAggregate < Node
+        include Predications
+        include Windowing
+
+        attr_reader :operand, :separator, :orders, :condition
+
+        def initialize(operand, separator, orders: [], condition: nil)
+          unless separator.is_a?(::String)
+            raise ArgumentError, "#{separator.inspect} is not a String separator"
+          end
+          @operand = operand
+          @separator = separator
+          @orders = orders
+          @condition = condition
+        end
+
+        def order(*exprs)
+          raise ArgumentError, "order needs an expression" if exprs.empty?
+          StringAggregate.new(operand, separator, orders: orders + exprs, condition: condition)
+        end
+
+        def filter(condition = nil, &block)
+          StringAggregate.new(operand, separator, orders: orders,
+                              condition: Case.argument(:filter, condition, block))
+        end
+
+        def check_window(model)
+          Dialect.for(model).check_string_aggregate_window(model)
+        end
+
+        def to_arel(table, model)
+          dialect = Dialect.for(model)
+          kept = condition && !dialect.filter_supported? ?
+            Case.new.when(condition).then(operand) : operand
+          call = dialect.string_agg(
+            to_arel_argument(kept, table, model), separator,
+            orders.map { |expr| to_arel_operand(expr, table, model) },
+            string_operand?(model), model)
+          return call unless condition && dialect.filter_supported?
+          Arel::Nodes::Filter.new(call, condition.to_arel(table, model))
+        end
+
+        private
+          # Whether the operand is a column the model declares a string.
+          # PostgreSQL asks, its STRING_AGG taking text and nothing else; the
+          # others convert for themselves.
+          def string_operand?(model)
+            operand.is_a?(::Symbol) &&
+              %i[string text].include?(model.type_for_attribute(operand).type)
           end
       end
 

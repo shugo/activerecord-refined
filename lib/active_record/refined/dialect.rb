@@ -262,6 +262,23 @@ module ActiveRecord
       # A family that cannot take these two as window functions refuses one.
       def check_json_aggregate_window(_source, _model); end
 
+      # string_agg: the strings of a group joined into one.  The standard's is
+      # LISTAGG(x, ', ') WITHIN GROUP (ORDER BY ...), which Oracle reads, and
+      # the ORDER BY is not optional there: an aggregate asked for no order
+      # is given the values' own, which costs the caller nothing to have.
+      # PostgreSQL and SQLite carry the ORDER BY inside the call, SQL Server
+      # takes the WITHIN GROUP only when there is an order, and the MySQL
+      # family has GROUP_CONCAT; every one of them overrides.  `string` says
+      # the operand is a column declared one, which PostgreSQL alone asks.
+      def string_agg(operand, separator, orders, _string, model)
+        orders = [operand] if orders.empty?
+        Arel.sql("LISTAGG(#{compile(operand, model)}, #{quote(separator, model)}) " \
+                 "WITHIN GROUP (ORDER BY #{compile_list(orders, model)})")
+      end
+
+      # A family that cannot take string_agg as a window function refuses one.
+      def check_string_aggregate_window(_model); end
+
       # A JSON value in an IN list or a range is compared per element on the
       # MySQL family, which overrides; the standard leaves it to the IN.
       def json_list_by_element? = false
@@ -291,10 +308,28 @@ module ActiveRecord
           keys.zip(args).flat_map { |key, arg| [Arel::Nodes.build_quoted(key), arg] }
         end
 
+        # The name(x, ', ' ORDER BY ...) shape of string_agg, PostgreSQL's and
+        # SQLite's; a node while there is no order, since Arel has one for
+        # that much.
+        def string_agg_call(name, operand, separator, orders, model)
+          if orders.empty?
+            return Arel::Nodes::NamedFunction.new(
+              name, [operand, Arel::Nodes.build_quoted(separator)])
+          end
+          Arel.sql("#{name}(#{compile(operand, model)}, #{quote(separator, model)} " \
+                   "ORDER BY #{compile_list(orders, model)})")
+        end
+
         # The connection's own visitor and quoting, for the families that write
         # a call out because its grammar no Arel node carries.
         def compile(node, model)
           model.with_connection { |connection| connection.visitor.compile(node) }
+        end
+
+        def compile_list(nodes, model)
+          model.with_connection do |connection|
+            nodes.map { |node| connection.visitor.compile(node) }.join(", ")
+          end
         end
 
         def quote(value, model)

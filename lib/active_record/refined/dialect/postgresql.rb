@@ -84,6 +84,17 @@ module ActiveRecord
           kind == :arrayagg ? "jsonb_agg" : "jsonb_object_agg"
         end
 
+        # STRING_AGG takes text and nothing else -- over an integer column it
+        # is a function that does not exist -- so the operand is cast unless
+        # the model says it is a string already.
+        def string_agg(operand, separator, orders, string, model)
+          unless string
+            operand = Arel::Nodes::NamedFunction.new(
+              "CAST", [Arel::Nodes::As.new(operand, Arel::Nodes::SqlLiteral.new("text"))])
+          end
+          string_agg_call("STRING_AGG", operand, separator, orders, model)
+        end
+
         def grouping_supported?(_kind) = true
 
         # The names PostgreSQL knows, letters and digits and the _ . - its

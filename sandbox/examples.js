@@ -343,6 +343,16 @@ show Author.select {
 sql Author.select { count(:*).filter { :age < 50 } }`,
       },
       {
+        title: 'Strings joined per group',
+        slug: 'string-agg',
+        code: `# string_agg joins the strings of a group into one, a separator between,
+# and order says the order they are joined in.  Each database has it under
+# a name of its own: STRING_AGG on PostgreSQL, group_concat on SQLite.
+show Post.group { :author_id }.select {
+  [:author_id, string_agg(:title, ', ').order(:title).as(:titles)]
+}.order { :author_id }`,
+      },
+      {
         title: 'Scalar functions',
         slug: 'functions',
         code: `show Author.select { [:name, upper(:name).as(:upper_name), length(:name).as(:len)] }

@@ -506,6 +506,29 @@ Author.group { :country }.having { count(:*) > 1 }
 Post.select { count(:author_id, distinct: true) }   # COUNT(DISTINCT "author_id")
 ```
 
+`string_agg` joins the strings of a group into one, a separator between —
+`,` unless another is given — and `.order` says the order they are joined
+in. Each database has it under a name of its own, with the `ORDER BY` in a
+place of its own:
+
+```ruby
+Post.group { :author_id }.select { string_agg(:title, ", ").order(:title).as(:titles) }
+# STRING_AGG("title", ', ' ORDER BY "title")                  PostgreSQL
+# group_concat("title", ', ' ORDER BY "title")                SQLite
+# GROUP_CONCAT("title" ORDER BY "title" SEPARATOR ', ')       MySQL
+# STRING_AGG("title", ', ') WITHIN GROUP (ORDER BY "title")   SQL Server
+# LISTAGG("title", ', ') WITHIN GROUP (ORDER BY "title")      Oracle
+```
+
+`filter` and `over` come along as with any aggregate, `over` where the
+database takes it — the MySQL family and SQL Server do not, and raise.
+Oracle's insists on an order and is given the values' own when none is asked
+for. What is joined is text: PostgreSQL's `STRING_AGG` takes nothing else, so
+a column the model does not declare a string is cast there, where the others
+convert for themselves. MySQL cuts the result at `group_concat_max_len`, 1024
+bytes unless the session says otherwise, and the `ORDER BY` inside SQLite's
+call needs SQLite 3.44.
+
 The scalar functions are real methods rather than anything caught dynamically,
 so a misspelling is a `NoMethodError` where you wrote it, and a name Ruby also
 answers to — `rand` — means the SQL one inside a block:
