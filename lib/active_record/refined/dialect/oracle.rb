@@ -13,6 +13,18 @@ module ActiveRecord
           bit_and: nil, bit_or: nil, bit_xor: nil,
         }.freeze
 
+        # An INTERVAL literal would do, but its leading field is two digits
+        # wide unless told otherwise, so INTERVAL '100' DAY is an error.  The
+        # functions that make an interval of a number take any size, one for
+        # the year-month intervals and one for the day-second.
+        def add_interval(date, amount, unit, subtract, _date_only)
+          interval = Arel::Nodes::NamedFunction.new(
+            unit == :year || unit == :month ? "NUMTOYMINTERVAL" : "NUMTODSINTERVAL",
+            [Arel::Nodes.build_quoted(amount), Arel::Nodes.build_quoted(unit.to_s.upcase)])
+          Arel::Nodes::Grouping.new(
+            Arel::Nodes::InfixOperation.new(subtract ? :- : :+, date, interval))
+        end
+
         # Oracle keeps scalars and structures in different functions: JSON_VALUE
         # reads a scalar out as text, JSON_QUERY a fragment as JSON.  dig keeps
         # JSON, so it takes JSON_QUERY with 23ai's ALLOW SCALARS, which returns

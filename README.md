@@ -646,6 +646,26 @@ Post.select { cast(:price, "decimal(10,2)").as(:price) }
 # SELECT CAST("posts"."price" AS decimal(10,2)) AS price
 ```
 
+A duration moves a date. Active Support's `7.days` and the rest go on the
+right of `+` or `-`, and the move comes out the way the adapter spells it — an
+`INTERVAL` literal on PostgreSQL and MySQL, `DATEADD` on SQL Server,
+`datetime(x, '-7 day')` on SQLite:
+
+```ruby
+Post.where { :created_at > current_timestamp - 7.days }
+# WHERE "posts"."created_at" > (CURRENT_TIMESTAMP - INTERVAL '7' DAY)
+
+Post.select { (:published_on + 1.month).as(:review_on) }
+```
+
+A duration of several parts, `1.month + 2.days`, is applied a part at a time
+in the order Active Support keeps them, and a week is seven days, which is
+what SQLite and Oracle have of one. Each part has to be a whole number, since
+it is written into the SQL as one: `1.5.days` raises `ArgumentError`. SQLite
+has no date type, so there a column the model declares a date is moved by
+`date()` and stays a date; everything else goes through `datetime()` and comes
+back with a time of day.
+
 ### Expressions
 
 `+`, `-`, `*` and `/` build arithmetic. Ruby puts them above the comparison

@@ -1609,6 +1609,60 @@ class TestBlockSyntax < Minitest::Test
       User.select { cast("12.5", "decimal(10,2)").as(:v) }.sole.v.to_f)
   end
 
+  # A Duration on the right of + or - moves a date, and each family spells
+  # the move its own way.
+  def test_duration_moves_a_date
+    relation = User.where { :joined_at > current_timestamp - 7.days }
+    if sqlite?
+      assert_sql(/> datetime\(CURRENT_TIMESTAMP, '-7 day'\)/, relation.to_sql)
+    elsif sqlserver?
+      assert_sql(/> DATEADD\(day, -7, CURRENT_TIMESTAMP\)/, relation.to_sql)
+    elsif oracle?
+      assert_sql(/> \(CURRENT_TIMESTAMP - NUMTODSINTERVAL\(7, 'DAY'\)\)/, relation.to_sql)
+    else
+      assert_sql(/> \(CURRENT_TIMESTAMP - INTERVAL '7' DAY\)/, relation.to_sql)
+    end
+  end
+
+  def test_duration_moves_a_date_column
+    User.delete_all
+    User.create!(name: "alice", born_on: Date.new(2026, 1, 5))
+    moved = ->(&block) { User.select(&block).sole.v.to_s[0, 10] }
+    assert_equal("2026-01-15", moved.call { (:born_on + 10.days).as(:v) })
+    assert_equal("2026-02-05", moved.call { (:born_on + 1.month).as(:v) })
+    assert_equal("2025-12-29", moved.call { (:born_on - 1.week).as(:v) })
+    assert_equal("2026-02-07", moved.call { (:born_on + (1.month + 2.days)).as(:v) })
+    assert_equal("2025-01-05", moved.call { (:born_on - 1.year).as(:v) })
+  end
+
+  def test_duration_moves_a_datetime_in_a_condition
+    User.delete_all
+    User.create!(name: "alice", joined_at: Time.utc(2026, 1, 5, 10))
+    User.create!(name: "bob", joined_at: Time.utc(2026, 1, 5, 13))
+    assert_equal(["bob"],
+      User.where { :joined_at + 2.hours > Time.utc(2026, 1, 5, 12, 30) }.pluck(:name))
+    assert_equal(["alice"],
+      User.where { :joined_at - 90.minutes < Time.utc(2026, 1, 5, 9) }.pluck(:name))
+  end
+
+  # The day after is the same day written bare, not a midnight past it --
+  # which is what SQLite's datetime() would make of a date column.
+  def test_duration_keeps_a_date_a_date
+    User.delete_all
+    User.create!(name: "alice", born_on: Date.new(2026, 1, 5))
+    assert_equal(["alice"],
+      User.where { :born_on + 1.day <= Date.new(2026, 1, 6) }.pluck(:name))
+    assert_equal(["alice"],
+      User.where { :born_on >= current_date - 200.years }.pluck(:name))
+  end
+
+  # The amount is written into the SQL as a number, so it has to be a whole
+  # one; and a date is only ever added to or subtracted from.
+  def test_duration_refuses_what_it_cannot_spell
+    assert_raises(ArgumentError) { User.select { :born_on * 2.days }.to_sql }
+    assert_raises(ArgumentError) { User.select { :born_on + 1.5.days }.to_sql }
+  end
+
   # The type is written into the SQL as given, so it has to look like one:
   # a plain name, at most parenthesized with lengths.  The adapters' own
   # spellings with a space in them pass too.

@@ -362,6 +362,15 @@ sql Item.select { greatest(20 - :quantity, 0).as(:shortfall) }`,
 sql Post.select { date_trunc('day', :created_at) }`,
       },
       {
+        title: 'A duration moves a date',
+        slug: 'duration',
+        code: `# Active Support's durations move a date, and each database spells the
+# move its own way: an INTERVAL literal on PostgreSQL, datetime(x, '-7 day')
+# on SQLite.  A duration of several parts is applied a part at a time.
+sql Post.where { :created_at > current_timestamp - 7.days }
+sql Post.select { (:created_at + 1.month + 2.days).as(:review_at) }`,
+      },
+      {
         title: 'fn reaches any function',
         slug: 'fn',
         code: `# Functions without a method of their own go through fn.

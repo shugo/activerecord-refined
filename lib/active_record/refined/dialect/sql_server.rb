@@ -33,6 +33,15 @@ module ActiveRecord
           negated ? Arel::Nodes::Not.new(equals) : equals
         end
 
+        # DATEADD(day, 3, x), the unit a bare keyword; a subtraction is a
+        # negative amount, there being no DATESUB.
+        def add_interval(date, amount, unit, subtract, _date_only)
+          Arel::Nodes::NamedFunction.new(
+            "DATEADD",
+            [Arel::Nodes::SqlLiteral.new(unit.to_s),
+             Arel::Nodes.build_quoted(subtract ? -amount : amount), date])
+        end
+
         # dig_text reads a scalar out with JSON_VALUE; dig keeps JSON with
         # JSON_QUERY, which returns a fragment and NULL for a scalar leaf.
         def json_path(document, dollar_path, _steps, json_value, _model)

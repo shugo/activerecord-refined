@@ -144,6 +144,19 @@ module ActiveRecord
           "COLLATE", operand, Arel::Nodes::SqlLiteral.new(name))
       end
 
+      # A date moved by a duration: `:due_on + 3.days`.  The standard adds an
+      # interval literal, `x + INTERVAL '3' DAY`, which PostgreSQL and the
+      # MySQL family both read; SQLite, SQL Server and Oracle each spell the
+      # move their own way and override.  The amount is a whole number and
+      # the unit one of six names, both checked by the node, so both are
+      # written into the SQL as they are.  date_only says the operand is a
+      # date rather than a datetime, which only SQLite has to be told.
+      def add_interval(date, amount, unit, subtract, _date_only)
+        interval = Arel::Nodes::SqlLiteral.new("INTERVAL '#{amount}' #{unit.to_s.upcase}")
+        Arel::Nodes::Grouping.new(
+          Arel::Nodes::InfixOperation.new(subtract ? :- : :+, date, interval))
+      end
+
       # XOR, which no two families spell alike.  The standard is the two
       # operations it is made of, naming each operand twice, as SQLite needs;
       # PostgreSQL and the MySQL family have an operator and override.

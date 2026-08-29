@@ -1103,9 +1103,22 @@ module ActiveRecord
       # Arithmetic on columns and expressions.  Ruby's precedence puts these
       # above the comparison operators, so :price * :quantity > 100 groups the
       # way it reads.
+      #
+      # A Duration on the right moves a date: `:due_on + 3.days`.  No two
+      # families spell the move alike, so the dialect writes it, a part of the
+      # duration at a time.
       class Arithmetic < Node
         include Predications
         include Arithmetics
+
+        # Active Support's parts, as the units the SQL takes.  A week is seven
+        # days: SQLite and Oracle have no week.
+        UNITS = {
+          years: :year, months: :month, weeks: :day, days: :day,
+          hours: :hour, minutes: :minute, seconds: :second,
+        }.freeze
+
+        DATE_UNITS = %i[year month day].freeze
 
         attr_reader :left, :operator, :right
 
@@ -1117,11 +1130,53 @@ module ActiveRecord
 
         def to_arel(table, model)
           arel_left = to_arel_operand(left, table, model)
+          return move_date(arel_left, model) if right.is_a?(::ActiveSupport::Duration)
           # The operator dispatches Arel's Math, which a bare number carries
           # none of; quoted, it is a node with the same methods.
           arel_left = Arel::Nodes.build_quoted(arel_left) if arel_left.is_a?(::Numeric)
           arel_left.public_send(operator, to_arel_operand(right, table, model))
         end
+
+        # SQLite has no date type, and its datetime() gives whatever it is
+        # handed a time of day, so a date column moved by a day would come
+        # back a midnight and sort past the same day written bare.  Its
+        # dialect has date() for what is a date to begin with, and this is
+        # what says so: a column the model declares a date, CURRENT_DATE, or
+        # one of those already moved by a date's units.  The other families
+        # keep the type themselves and never ask.
+        def self.date_operand?(operand, model)
+          case operand
+          when ::Symbol then model.type_for_attribute(operand).type == :date
+          when DatetimeValueFunction then operand.name == "CURRENT_DATE"
+          when Arithmetic
+            operand.right.is_a?(::ActiveSupport::Duration) &&
+              date_operand?(operand.left, model) &&
+              operand.right.parts.keys.all? { |part| DATE_UNITS.include?(UNITS[part]) }
+          else false
+          end
+        end
+
+        private
+          # Each amount is written into the SQL as a number, and a fraction
+          # of a unit is not one every family takes, so it has to be a whole
+          # one.
+          def move_date(date, model)
+            unless operator == :+ || operator == :-
+              raise ArgumentError,
+                "a duration is added to a date or subtracted from it, not #{operator}"
+            end
+            dialect = Dialect.for(model)
+            date_only = Arithmetic.date_operand?(left, model)
+            right.parts.reduce(date) do |arel, (part, amount)|
+              unless amount.is_a?(::Integer)
+                raise ArgumentError, "#{amount.inspect} #{part} is not a whole number of them"
+              end
+              unit = UNITS.fetch(part)
+              amount *= 7 if part == :weeks
+              dialect.add_interval(arel, amount, unit, operator == :-,
+                                   date_only && DATE_UNITS.include?(unit))
+            end
+          end
       end
 
       # What the bitwise operators refuse.  Both refusals are there because

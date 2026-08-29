@@ -22,6 +22,16 @@ module ActiveRecord
             "a lateral join has no equivalent on #{model.connection_db_config.adapter}"
         end
 
+        # A date is moved by a modifier to date() or datetime(), '+3 day';
+        # the unit's own name reads there, singular.  datetime() answers with a
+        # time of day whatever it is given, so a date column, as the node
+        # tells one, goes through date() and stays a date.
+        def add_interval(date, amount, unit, subtract, date_only)
+          modifier = format("%+d %s", subtract ? -amount : amount, unit)
+          Arel::Nodes::NamedFunction.new(
+            date_only ? "date" : "datetime", [date, Arel::Nodes.build_quoted(modifier)])
+        end
+
         def json_keys(document, model)
           sql = compile(document, model)
           Arel.sql("CASE WHEN json_type(#{sql}) = 'object' " \

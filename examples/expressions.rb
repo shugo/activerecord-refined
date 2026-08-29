@@ -16,6 +16,7 @@ class Setup < ActiveRecord::Migration[8.1]
       t.integer :price
       t.integer :quantity
       t.integer :flags
+      t.date :ordered_on
     end
   end
 end
@@ -24,10 +25,14 @@ Setup.new.up
 class LineItem < ActiveRecord::Base
 end
 
-LineItem.create!(sku: "A-1", category: "tools",  price: 1200, quantity: 2,  flags: 12)
-LineItem.create!(sku: "A-2", category: "tools",  price: 300,  quantity: 5,  flags: 10)
-LineItem.create!(sku: "B-1", category: "paper",  price: 80,   quantity: 10, flags: 3)
-LineItem.create!(sku: "C-1", category: nil,      price: 50,   quantity: 1,  flags: 4)
+LineItem.create!(sku: "A-1", category: "tools",  price: 1200, quantity: 2,  flags: 12,
+                 ordered_on: Date.new(2026, 1, 5))
+LineItem.create!(sku: "A-2", category: "tools",  price: 300,  quantity: 5,  flags: 10,
+                 ordered_on: Date.new(2026, 1, 20))
+LineItem.create!(sku: "B-1", category: "paper",  price: 80,   quantity: 10, flags: 3,
+                 ordered_on: Date.new(2026, 2, 3))
+LineItem.create!(sku: "C-1", category: nil,      price: 50,   quantity: 1,  flags: 4,
+                 ordered_on: Date.new(2026, 2, 14))
 
 def show(title, relation, rows = nil)
   puts "--- #{title} ---"
@@ -63,6 +68,17 @@ show("a tax through BigDecimal, exact on the wire",
   LineItem.select { [:sku, (BigDecimal("1.1") * :price).as(:taxed)] },
   LineItem.select { [:sku, (BigDecimal("1.1") * :price).as(:taxed)] }.
     map { |i| [i.sku, i.taxed] })
+
+# A duration moves a date.  Each adapter spells the move its own way; SQLite
+# has date() and datetime(), and a date column keeps being a date.
+show("a date moved by a duration",
+  LineItem.where { :ordered_on + 30.days < Date.new(2026, 2, 10) },
+  LineItem.where { :ordered_on + 30.days < Date.new(2026, 2, 10) }.pluck(:sku))
+
+show("a due date a month on",
+  LineItem.select { [:sku, (:ordered_on + 1.month).as(:due_on)] },
+  LineItem.select { [:sku, (:ordered_on + 1.month).as(:due_on)] }.
+    map { |i| [i.sku, i.due_on] })
 
 # The bitwise operators.  & and | are AND and OR between conditions, which is
 # what leaves them free here.  Each expression parenthesises itself, so the

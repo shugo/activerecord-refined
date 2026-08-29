@@ -343,6 +343,8 @@ class CreateAllTables < ActiveRecord::Migration[8.1]
       t.integer :age
       t.boolean :active
       t.integer :flags
+      t.date :born_on
+      t.datetime :joined_at
       t.string :tags, array: true if postgresql?
     end
     create_table(:authors) { |t| t.string :name }
