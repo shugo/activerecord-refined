@@ -1376,11 +1376,16 @@ module ActiveRecord
         include Arithmetics
         include Windowing
 
+        # The aggregates DISTINCT changes: over each value once, count counts
+        # fewer and sum and avg reckon less.  min and max give the same
+        # either way, so a DISTINCT there is refused as saying nothing.
+        DISTINCT_FUNCTIONS = %i[count sum average].freeze
+
         attr_reader :operand, :function, :distinct, :condition
 
         def initialize(operand, function, distinct: false, condition: nil)
-          if distinct && function != :count
-            raise ArgumentError, "#{function} does not take distinct"
+          if distinct && !DISTINCT_FUNCTIONS.include?(function)
+            raise ArgumentError, "#{function} does not take distinct; it would give the same"
           end
           if distinct && operand == :*
             raise ArgumentError, "count(:*) does not take distinct; name a column"
@@ -1416,11 +1421,10 @@ module ActiveRecord
         private
           def aggregate(over, table, model)
             arel_operand = to_arel_operand(over, table, model)
-            if function == :count
-              arel_operand.count(distinct)
-            else
-              arel_operand.public_send(function)
-            end
+            return arel_operand.count(distinct) if function == :count
+            call = arel_operand.public_send(function)
+            call.distinct = distinct
+            call
           end
       end
 

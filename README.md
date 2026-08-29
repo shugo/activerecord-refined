@@ -497,13 +497,16 @@ a row the condition misses is a row it does not see, and the number that comes
 back is the same on all three.
 
 Pass `:*` to `count` for `COUNT(*)`, and `distinct: true` for
-`COUNT(DISTINCT ...)`:
+`COUNT(DISTINCT ...)`. `sum` and `avg` take `distinct: true` as well, for the
+aggregate over each value once; `min` and `max` would give the same with or
+without it, so they take no such thing:
 
 ```ruby
 Author.group { :country }.having { count(:*) > 1 }
 # SELECT "authors".* FROM "authors" GROUP BY "authors"."country" HAVING COUNT(*) > 1
 
 Post.select { count(:author_id, distinct: true) }   # COUNT(DISTINCT "author_id")
+Post.select { sum(:likes, distinct: true) }         # SUM(DISTINCT "likes")
 ```
 
 `string_agg` joins the strings of a group into one, a separator between —

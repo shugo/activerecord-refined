@@ -323,7 +323,10 @@ show Employee.cross_joins(:posts).select { [:employees[:name], :posts[:title]] }
         title: 'count(:*) and DISTINCT',
         slug: 'count',
         code: `sql Author.group { :country }.having { count(:*) > 1 }
-sql Post.select { count(:author_id, distinct: true) }`,
+sql Post.select { count(:author_id, distinct: true) }
+
+# sum and avg take distinct: true as well, over each value once.
+sql Post.select { sum(:likes, distinct: true) }`,
       },
       {
         title: 'filter',

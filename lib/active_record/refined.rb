@@ -61,8 +61,17 @@ module ActiveRecord
         sum: :sum, avg: :average, min: :minimum, max: :maximum,
       }.freeze
 
+      # count, sum and avg take distinct: true, for the aggregate over each
+      # value once; min and max would answer the same with or without it,
+      # so they take no such thing.
       AGGREGATE_FUNCTIONS.each do |name, arel_func|
-        define_method(name) { |column| AST::Aggregate.new(column, arel_func) }
+        if AST::Aggregate::DISTINCT_FUNCTIONS.include?(arel_func)
+          define_method(name) do |column, distinct: false|
+            AST::Aggregate.new(column, arel_func, distinct: distinct)
+          end
+        else
+          define_method(name) { |column| AST::Aggregate.new(column, arel_func) }
+        end
       end
 
       def count(column, distinct: false)

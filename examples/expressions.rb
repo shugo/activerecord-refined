@@ -31,6 +31,8 @@ LineItem.create!(sku: "A-2", category: "tools",  price: 300,  quantity: 5,  flag
                  ordered_on: Date.new(2026, 1, 20))
 LineItem.create!(sku: "B-1", category: "paper",  price: 80,   quantity: 10, flags: 3,
                  ordered_on: Date.new(2026, 2, 3))
+LineItem.create!(sku: "B-2", category: "paper",  price: 80,   quantity: 10, flags: 3,
+                 ordered_on: Date.new(2026, 2, 3))
 LineItem.create!(sku: "C-1", category: nil,      price: 50,   quantity: 1,  flags: 4,
                  ordered_on: Date.new(2026, 2, 14))
 
@@ -105,11 +107,16 @@ rescue ArgumentError => e
 end
 
 # 2. Aggregates.  count takes :* for COUNT(*) and distinct: true for
-#    COUNT(DISTINCT ...); the rest are sum, avg, min and max.
+#    COUNT(DISTINCT ...), which sum and avg take too; the rest are min and max.
 show("COUNT(*) and COUNT(DISTINCT ...)",
   LineItem.select { [count(:*).as(:rows), count(:category, distinct: true).as(:categories)] },
   LineItem.select { [count(:*).as(:rows), count(:category, distinct: true).as(:categories)] }.
     map { |i| [i.rows, i.categories] })
+
+show("SUM(DISTINCT ...), each quantity counted once",
+  LineItem.select { [sum(:quantity).as(:all), sum(:quantity, distinct: true).as(:once)] },
+  LineItem.select { [sum(:quantity).as(:all), sum(:quantity, distinct: true).as(:once)] }.
+    map { |i| [i.all, i.once] })
 
 # filter takes the aggregate over the rows a condition holds for.  SQLite and
 # PostgreSQL have the FILTER clause; MySQL gets the CASE that means the same,

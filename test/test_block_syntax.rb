@@ -1160,11 +1160,33 @@ class TestBlockSyntax < Minitest::Test
       User.group(:age).having { count(:name, distinct: true) > 1 }.to_sql)
   end
 
-  # DISTINCT is Arel's only aggregate modifier, and COUNT(DISTINCT *) is not
-  # valid SQL.
-  def test_distinct_is_rejected_for_other_aggregates
+  # sum and avg take DISTINCT as count does, over each value once.
+  def test_sum_and_avg_distinct
+    assert_sql(/SELECT SUM\(DISTINCT "users"."age"\)/,
+      User.select { sum(:age, distinct: true) }.to_sql)
+    assert_sql(/SELECT AVG\(DISTINCT "users"."age"\) AS "v"/,
+      User.select { avg(:age, distinct: true).as(:v) }.to_sql)
+  end
+
+  def test_sum_and_avg_distinct_run
+    User.delete_all
+    User.create!(name: "a", age: 10)
+    User.create!(name: "b", age: 10)
+    User.create!(name: "c", age: 20)
+    assert_equal(40, User.select { sum(:age).as(:v) }.to_a.first.v.to_i)
+    assert_equal(30, User.select { sum(:age, distinct: true).as(:v) }.to_a.first.v.to_i)
+    assert_equal(15.0, User.select { avg(:age, distinct: true).as(:v) }.to_a.first.v.to_f)
+    assert_equal(10,
+      User.select { sum(:age, distinct: true).filter { :age < 20 }.as(:v) }.to_a.first.v.to_i)
+  end
+
+  # min and max would give the same with or without it, and COUNT(DISTINCT *)
+  # is not valid SQL.
+  def test_distinct_is_rejected_where_it_says_nothing
+    assert_raises(ArgumentError) { User.select { min(:age, distinct: true) } }
+    assert_raises(ArgumentError) { User.select { max(:age, distinct: true) } }
     assert_raises(ArgumentError) do
-      ActiveRecord::Refined::AST::Aggregate.new(:age, :sum, distinct: true)
+      ActiveRecord::Refined::AST::Aggregate.new(:age, :minimum, distinct: true)
     end
   end
 
