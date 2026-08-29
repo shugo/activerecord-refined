@@ -622,7 +622,7 @@ written as calls, PostgreSQL and SQLite would reject them. What does go into
 parentheses is an optional precision — `current_timestamp(3)` — which
 `current_date` never takes and SQLite never accepts. `current_timestamp` is
 the portable spelling of what `now` means, and reaches SQLite where `now`
-does not:
+does not — and SQL Server, which has none of the other four:
 
 ```ruby
 Post.where { :published_at <= current_timestamp }

@@ -1463,8 +1463,13 @@ class TestBlockSyntax < Minitest::Test
   def test_datetime_value_functions_are_emitted_bare
     assert_sql(/SELECT CURRENT_TIMESTAMP FROM/,
       User.select { current_timestamp }.to_sql)
-    assert_sql(/SELECT CURRENT_DATE FROM/, User.select { current_date }.to_sql)
-    assert_sql(/SELECT CURRENT_TIME FROM/, User.select { current_time }.to_sql)
+    if sqlserver?
+      assert_raises(NotImplementedError) { User.select { current_date } }
+      assert_raises(NotImplementedError) { User.select { current_time } }
+    else
+      assert_sql(/SELECT CURRENT_DATE FROM/, User.select { current_date }.to_sql)
+      assert_sql(/SELECT CURRENT_TIME FROM/, User.select { current_time }.to_sql)
+    end
   end
 
   def test_datetime_value_function_in_comparison_and_alias
@@ -1509,8 +1514,8 @@ class TestBlockSyntax < Minitest::Test
     end
   end
 
-  def test_localtime_is_unsupported_on_sqlite
-    if sqlite?
+  def test_localtime_is_unsupported_on_sqlite_and_sqlserver
+    if sqlite? || sqlserver?
       assert_raises(NotImplementedError) { User.select { localtime } }
       assert_raises(NotImplementedError) { User.select { localtimestamp } }
     else
@@ -1652,8 +1657,10 @@ class TestBlockSyntax < Minitest::Test
     User.create!(name: "alice", born_on: Date.new(2026, 1, 5))
     assert_equal(["alice"],
       User.where { :born_on + 1.day <= Date.new(2026, 1, 6) }.pluck(:name))
-    assert_equal(["alice"],
-      User.where { :born_on >= current_date - 200.years }.pluck(:name))
+    unless sqlserver?
+      assert_equal(["alice"],
+        User.where { :born_on >= current_date - 200.years }.pluck(:name))
+    end
   end
 
   # The amount is written into the SQL as a number, so it has to be a whole

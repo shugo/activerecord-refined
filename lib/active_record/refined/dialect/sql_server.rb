@@ -8,10 +8,13 @@ module ActiveRecord
       class SqlServer < Dialect
         # LEN is its length; it has no printf FORMAT, no per-row random it
         # would spell RAND, no date_trunc, and none of the bit aggregates.
+        # Of the datetime value functions it has CURRENT_TIMESTAMP alone:
+        # the other four are reserved words there that stand for nothing.
         FUNCTIONS = {
           char_length: "LEN",
           format: nil, rand: nil, date_trunc: nil,
           bit_and: nil, bit_or: nil, bit_xor: nil,
+          current_date: nil, current_time: nil, localtime: nil, localtimestamp: nil,
         }.freeze
 
         # No FILTER clause, so the aggregate node builds the CASE instead.
