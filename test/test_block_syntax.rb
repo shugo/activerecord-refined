@@ -2686,6 +2686,9 @@ class TestBlockSyntax < Minitest::Test
     User.create!(name: "b", age: 100)
   end
 
+  # to_a.first rather than sole: sole's LIMIT reaches Oracle as ROWNUM in
+  # the WHERE, which cuts the rows before the aggregate sees them, and SQL
+  # Server as an ORDER BY the primary key, which an aggregate cannot have.
   def aggregate(&block)
     User.select(&block).to_a.first.v
   end
@@ -2773,9 +2776,9 @@ class TestBlockSyntax < Minitest::Test
   def test_string_agg_orders_and_separates_as_asked
     seed_for_string_agg
     assert_equal("c-b-a",
-      Post.select { string_agg(:title, "-").order(:title.desc).as(:v) }.sole.v)
+      Post.select { string_agg(:title, "-").order(:title.desc).as(:v) }.to_a.first.v)
     assert_equal("a,b,c",
-      Post.select { string_agg(:title).order(:title).as(:v) }.sole.v)
+      Post.select { string_agg(:title).order(:title).as(:v) }.to_a.first.v)
   end
 
   # A number joins as the string that spells it, cast on PostgreSQL and
@@ -2783,13 +2786,13 @@ class TestBlockSyntax < Minitest::Test
   def test_string_agg_of_a_number
     seed_for_string_agg
     assert_equal("1,1,2",
-      Post.select { string_agg(:author_id).order(:author_id).as(:v) }.sole.v)
+      Post.select { string_agg(:author_id).order(:author_id).as(:v) }.to_a.first.v)
   end
 
   def test_string_agg_filter
     seed_for_string_agg
     assert_equal("a,b",
-      Post.select { string_agg(:title).order(:title).filter { :author_id == 1 }.as(:v) }.sole.v)
+      Post.select { string_agg(:title).order(:title).filter { :author_id == 1 }.as(:v) }.to_a.first.v)
   end
 
   def test_string_agg_over_a_window
