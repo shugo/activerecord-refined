@@ -66,152 +66,25 @@ Or install it yourself as:
 
 ## Usage
 
-Just require the gem, and `where`, `select`, `joins`, `left_outer_joins`, `having`,
-`order` and `group` will accept a block.
+Just require the gem, and `where`, `select`, `joins`, `left_outer_joins`,
+`having`, `order` and `group` will accept a block:
 
 ```ruby
 require "activerecord-refined"
 ```
 
-Inside the block, symbols denote columns of the receiver's table, and `:table[:column]`
-denotes a qualified column. That holds in every position — on the right of a
-comparison too, so `:age == :retirement_age` compares two columns. A value is
-written as its literal, an enum's as its string; a symbol naming no column of
-the model is refused rather than compared against nothing anyone meant.
+## Documentation
 
-The reference — every method a symbol answers to inside a block, every
-function a block can call, and what the relation takes — is on
-[rubydoc.info](https://rubydoc.info/gems/activerecord-refined):
-[`BlockSyntax`](https://rubydoc.info/gems/activerecord-refined/ActiveRecord/Refined/BlockSyntax)
-for the symbol,
-[`BlockContext`](https://rubydoc.info/gems/activerecord-refined/ActiveRecord/Refined/BlockContext)
-for the block, and
-[`QueryMethods`](https://rubydoc.info/gems/activerecord-refined/ActiveRecord/Refined/QueryMethods)
-for the relation. What follows is a tour, a topic at a time; each has a page
-of its own under [docs/](docs/) that says the rest.
+https://rubydoc.info/gems/activerecord-refined/
 
-### Conditions
+## Adapters
 
-```ruby
-Author.where { :age.between?(20, 40) & :name.like?("A%") }
-Author.where { :country.in?(%w[JP US]) | :country.null? }
-Author.where { !:name.start_with?("A") }
-Author.where { :id.in?(Post.select(:author_id)) }               # IN (subquery)
-Author.where { exists?(Post.where { :posts[:author_id] == :authors[:id] }) }
-```
-
-`&`, `|` and `!` are AND, OR and NOT. A value on the right is quoted as Active
-Record quotes it, a column compares against a column, a relation is a
-subquery. [docs/conditions.md](docs/conditions.md) has the rest: the
-negations SQL spells for itself, `true?` and NULL, regular expressions,
-`ANY` and `ALL`, PostgreSQL arrays.
-
-### Joins
-
-```ruby
-Author.joins(:posts) { :posts[:author_id] == :authors[:id] }
-Employee.joins(:employees, as: :managers) { :managers[:id] == :employees[:manager_id] }
-```
-
-`joins`, `left_outer_joins`, `right_outer_joins`, `full_outer_joins` and
-`cross_joins` take the `ON` as a block and `as:` for a table alias; a
-relation joins as a subquery, and one marked `lateral` as a `LATERAL` one.
-[docs/joins.md](docs/joins.md).
-
-### Aggregates and functions
-
-```ruby
-Author.group { :country }.having { count(:*) > 1 }
-Author.select { [count(:*).filter { :age < 50 }.as(:young), avg(:age).as(:average)] }
-Post.group { :author_id }.select { string_agg(:title, ", ").order(:title).as(:titles) }
-Post.where { :created_at > current_timestamp - 7.days }
-Post.select { cast(:price, "decimal(10,2)").as(:price) }
-```
-
-The scalar functions are methods — `upper`, `coalesce`, `round` and the rest
-— spelled the adapter's way where the adapters differ, and `fn` reaches any
-other by name. [docs/functions.md](docs/functions.md).
-
-### Expressions
-
-```ruby
-LineItem.where { :price * :quantity > 1000 }
-Post.where { :flags & 4 > 0 }
-Author.select { :country.when("JP").then("Japan").else("elsewhere").as(:where) }
-Author.select { case_when { :age >= 60 }.then("senior").else("adult").as(:band) }
-```
-
-Arithmetic, the bitwise operators and `CASE` are expressions like a column,
-so they compare, alias and aggregate. [docs/expressions.md](docs/expressions.md).
-
-### JSON
-
-```ruby
-Doc.where { :meta.dig_text(:author, :name) == "alice" }
-Doc.where { :meta.key?(:draft) }
-Doc.update_all { { meta: :meta.bury(:author, :name, "alice") } }
-Post.group { :author_id }.select { json_arrayagg(:title).as(:titles) }
-```
-
-`dig` and `dig_text`, `bury`, `except`, `key?` and `keys` read and change a
-document by the names Hash uses; `json_object` and `json_arrayagg` build one. The same block
-runs on PostgreSQL's `jsonb`, MySQL's JSON and SQLite's.
-[docs/json.md](docs/json.md).
-
-### Window functions
-
-```ruby
-Author.select { [:name, row_number.over.partition(:country).order(:age.desc).as(:rank)] }
-Post.select { sum(:likes).over.order(:created_at).rows(..0).as(:running_total) }
-```
-
-`over` on any aggregate or window function, then `partition`, `order`,
-`rows` and `range`. [docs/windows.md](docs/windows.md).
-
-### Ordering, aliases and collation
-
-```ruby
-Author.order { :country.asc.nulls_last }
-Author.select { upper(:name).as(:author) }
-Author.where { :name.collate(:nocase) == "alice" }
-```
-
-[docs/ordering.md](docs/ordering.md).
-
-### Grouping, CTEs and DISTINCT ON
-
-```ruby
-Sale.group { rollup(:region, :product) }
-Post.distinct_on { :author_id }.order { [:author_id, :likes.desc] }       # PostgreSQL
-Node.with_recursive(tree: [Node.where { :id == 1 }, Node.joins(:tree) { :nodes[:parent_id] == :tree[:id] }]).from_cte(:tree)
-```
-
-[docs/grouping.md](docs/grouping.md) and [docs/ctes.md](docs/ctes.md).
-
-### Writing
-
-```ruby
-Post.where { :published == true }.update_all { { likes: :likes + 1 } }
-Tally.upsert_all(rows, unique_by: :page) { { hits: :hits + excluded(:hits) } }
-```
-
-[docs/writing.md](docs/writing.md).
-
-### Time zones
-
-Active Record stores in UTC and a `Time` in a block is quoted the way Active
-Record quotes one, so `where { :created_at > Time.current - 1.day }` is right
-whatever `Time.zone` is; what the database says the time is —
-`current_timestamp`, `extract` — is the session's business.
-[docs/time_zones.md](docs/time_zones.md).
-
-## Other adapters
-
-SQLite, PostgreSQL, MySQL, MariaDB, Oracle and SQL Server are built in: each
+SQLite, PostgreSQL, MySQL, MariaDB, Oracle and SQL Server are supported: each
 is a `Dialect`, one class per family of spellings, asked for whatever the
-databases write differently. An adapter the gem does not know keeps the
-standard spellings, which reach further than you might expect; where they
-fall short, a dialect of your own says the rest. Subclass
+databases write differently, so that one block builds the right SQL on all
+six. An adapter the gem does not know keeps the standard spellings, which
+reach further than you might expect; where they fall short, a dialect of
+your own says the rest. Subclass
 `ActiveRecord::Refined::Dialect` — or the built-in family the database
 descends from — override only what it spells differently, and register it
 under the adapter's name:

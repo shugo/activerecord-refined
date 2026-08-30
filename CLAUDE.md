@@ -49,8 +49,19 @@
   where there is something to say.
 - Do not document what is absent.  If a method is not defined, the code
   already says so; explaining the omission is a comment Shugo deletes.
-- The README carries the user-facing explanation and the code comment
-  carries the constraint.  Neither should be a copy of the other.
+- The docstring carries the user-facing explanation and the comment below
+  it carries the constraint.  A public method's comment opens with what it
+  builds -- one sentence, the SQL, an `@example` -- and the constraint, when
+  there is one, follows after a bare `#` line; YARD shows the first
+  paragraph as the summary.  Neither half should be a copy of the other,
+  and neither should repeat the guide in `docs/`.
+- A method made by `define_method` is invisible to YARD and gets a
+  `@!method` directive in the comment above the table that makes it; a
+  method inside `refine Symbol do ... end` likewise, declared on
+  `BlockSyntax` outside the block.  A constant that is a lookup table or a
+  pattern is tagged `@private`, so that the reference lists what a user
+  writes and nothing else.  `bundle exec yard doc -n` says what is
+  undocumented; `yard server --reload` shows the result.
 - Rationale, rejected alternatives and history go in the commit message, not
   in the code.
 - A Markdown table needs a header row with something in it.  GitHub renders
@@ -93,7 +104,9 @@ rake test:all                # all of the above; MySQL skipped when 3307 is empt
 
 - `examples/*.rb` are runnable and each prints the SQL it builds.  All but
   `postgresql.rb` need nothing but SQLite.
-- New DSL surface belongs in three places: the README, `examples/`, and
+- New DSL surface belongs in four places: the docstring, the guide under
+  `docs/` for its topic (the README carries none of this -- it points at
+  rubydoc.info, whose front page is `docs/index.md`), `examples/`, and
   `sandbox/examples.js`.  An example that only builds a relation and never
   prints prints nothing; `sandbox/check-examples.mjs` will say so.
 
