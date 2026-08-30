@@ -6,20 +6,26 @@ require "json"
 module ActiveRecord
   module Refined
     module AST
+      # @private
       NAME = /[[:alpha:]_][[:alnum:]_$]*/
+      # @private
       ALIAS_NAME = /\A#{NAME}\z/
+      # @private
       FUNCTION_NAME = /\A#{NAME}(\.#{NAME})?\z/
       # A collation name where the family writes it bare, as all but PostgreSQL
       # do.  A plain identifier: a hyphen unquoted would read as the collation
       # minus a number, `x COLLATE nocase-1` as `(x COLLATE nocase) - 1`, valid
       # and wrong.  PostgreSQL quotes the name and widens this; see its dialect.
+      # @private
       COLLATION_NAME = /\A#{NAME}\z/
       # A SQL type as cast writes it: words, at most parenthesized with
       # lengths -- double precision, decimal(10,2).
+      # @private
       TYPE_NAME = /\A[[:alpha:]_][[:alnum:]_ ]*(\(\d+(, ?\d+)?\))?\z/
       # The characters PostgreSQL allows an operator to be made of, the
       # widest operator alphabet of the three; op admits nothing else, so a
       # letter, a space or a quote never reaches the SQL as an operator.
+      # @private
       OPERATOR = %r{\A[+\-*/<>=~!@\#%^&|`?]+\z}
 
       def self.check_name(name, pattern, what)
@@ -1239,6 +1245,7 @@ module ActiveRecord
       # Each set is a list of its own, so grouping_sets takes lists and rollup
       # and cube take the columns themselves.
       class GroupingSets < Node
+        # @private
         KINDS = {
           grouping_sets: Arel::Nodes::GroupingSet,
           rollup: Arel::Nodes::RollUp,
@@ -1311,11 +1318,13 @@ module ActiveRecord
 
         # Active Support's parts, as the units the SQL takes.  A week is seven
         # days: SQLite and Oracle have no week.
+        # @private
         UNITS = {
           years: :year, months: :month, weeks: :day, days: :day,
           hours: :hour, minutes: :minute, seconds: :second,
         }.freeze
 
+        # @private
         DATE_UNITS = %i[year month day].freeze
 
         attr_reader :left, :operator, :right
@@ -1410,6 +1419,7 @@ module ActiveRecord
         include Arithmetics
         include BitwiseOperands
 
+        # @private
         NODES = {
           :& => Arel::Nodes::BitwiseAnd,
           :| => Arel::Nodes::BitwiseOr,
@@ -1593,6 +1603,7 @@ module ActiveRecord
         # The aggregates DISTINCT changes: over each value once, count counts
         # fewer and sum and avg reckon less.  min and max give the same
         # either way, so a DISTINCT there is refused as saying nothing.
+        # @private
         DISTINCT_FUNCTIONS = %i[count sum average].freeze
 
         attr_reader :operand, :function, :distinct, :condition
@@ -2001,6 +2012,7 @@ module ActiveRecord
       # or an Array compares against a PostgreSQL range or array column, the way
       # Active Record's own force_equality? types do.
       class Comparison < Predicate
+        # @private
         OPERATOR_MAP = {
           :== => :eq, :!= => :not_eq,
           :> => :gt, :>= => :gteq, :< => :lt, :<= => :lteq
@@ -2205,6 +2217,7 @@ module ActiveRecord
       end
 
       class Like < Predicate
+        # @private
         ESCAPE = "\\"
 
         # Escapes % and _ so that they match literally. The pattern built from

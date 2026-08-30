@@ -101,6 +101,7 @@ module ActiveRecord
         # catalog spells them with.  Wider than the bare families' plain
         # identifier because the name is quoted, so a hyphen is safe -- and
         # every ICU collation, en-US-x-icu among them, is spelled with one.
+        # @private
         COLLATION_NAME = /\A[[:alnum:]_.-]+\z/
 
         # PostgreSQL's own collation names are case-sensitive and upper, "C",

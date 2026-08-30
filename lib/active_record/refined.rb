@@ -152,6 +152,7 @@ module ActiveRecord
       # @!method max(column)
       #   `MAX(column)`.
       #   @return [AST::Aggregate]
+      # @private
       AGGREGATE_FUNCTIONS = {
         sum: :sum, avg: :average, min: :minimum, max: :maximum,
       }.freeze
@@ -380,6 +381,7 @@ module ActiveRecord
       # cannot quietly mean something else.  Where one is spelled other than as
       # its plain upper-cased name, and where a family has no equivalent, is
       # the dialect's to say; here is only the list of them.
+      # @private
       SCALAR_FUNCTIONS = %i[
         abs acos asin atan atan2 ceil coalesce concat cos exp floor length ln
         log lower ltrim mod nullif power replace round rtrim sign sin sqrt
@@ -422,6 +424,7 @@ module ActiveRecord
       # takes and SQLite never accepts.  The table reads like
       # SCALAR_FUNCTIONS; current_timestamp is the portable spelling of what
       # now means, reaching SQLite where now does not.
+      # @private
       DATETIME_VALUE_FUNCTIONS = %i[
         current_date current_time current_timestamp localtime localtimestamp
       ].freeze
