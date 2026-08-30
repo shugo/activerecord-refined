@@ -4,6 +4,7 @@
 --readme docs/index.md
 lib/**/*.rb
 -
+docs/index.md
 docs/conditions.md
 docs/joins.md
 docs/functions.md
