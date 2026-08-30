@@ -81,6 +81,12 @@ DATABASE_CONFIG =
       username: ENV.fetch("DB_USERNAME") { Etc.getlogin || Etc.getpwuid.name },
       password: ENV["DB_PASSWORD"],
       database: DATABASE_NAME,
+      # Active Record stores a datetime in UTC and sets the session's zone to
+      # match on PostgreSQL alone; MySQL's session keeps the server's own, so
+      # CURRENT_TIMESTAMP there is whatever the server's clock says, and a
+      # server in Tokyo answers nine hours off the stored values.  The suite
+      # pins the session to UTC, as an application on such a server would.
+      **(mysql? ? { variables: { time_zone: "+00:00" } } : {}),
     }
   when "oracle_enhanced"
     # database is the service name; unlike the others there is no schema-less
