@@ -13,6 +13,9 @@ Gem::Specification.new do |gem|
   gem.description   = "Adding clean and powerful query syntax on Active Record using refinements"
   gem.summary       = "Write Active Record queries as Ruby expressions"
   gem.homepage      = "https://github.com/shugo/activerecord-refined"
+  gem.metadata      = {
+    "documentation_uri" => "https://rubydoc.info/gems/activerecord-refined",
+  }
 
   # sandbox/ is a site, not part of the library: its Gemfile.lock and
   # package-lock.json have no business in anyone's bundle.  CLAUDE.md and
@@ -44,4 +47,11 @@ Gem::Specification.new do |gem|
   gem.add_development_dependency "rubocop-performance", [">= 0"]
   gem.add_development_dependency "rubocop-rails", [">= 0"]
   gem.add_development_dependency "rubocop-md", [">= 0"]
+  # What renders the reference: `yard server --reload` serves it locally, and
+  # rubydoc.info renders the same .yardopts.  The plugin turns the README's
+  # relative links to docs/*.md -- which GitHub follows as they are -- into
+  # links to YARD's file pages; where it is not installed, rubydoc.info among
+  # them, YARD says so and leaves the links relative.
+  gem.add_development_dependency "yard", [">= 0"]
+  gem.add_development_dependency "yard-markdown-relative-links", [">= 0"]
 end

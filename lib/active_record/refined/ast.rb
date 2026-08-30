@@ -36,10 +36,25 @@ module ActiveRecord
         Dialect.for(model).json_argument(value, model)
       end
 
+      # The conditions a column or an expression can be put in.  Every one
+      # gives back a condition that combines with `&`, `|` and `!`, and the
+      # comparisons quote a Ruby value on the right the way Active Record
+      # does, or take a column, an expression or a subquery there.
+      #
+      # @example
+      #   Author.where { :age.between?(20, 40) & :name.like?("A%") }
+      #   Author.where { :id.in?(Post.select(:author_id)) }
+      #
       # Predicate builders shared by symbols, qualified columns and
       # expressions. Imported into the Symbol refinement with
       # Refinement#import_methods, so every method must be defined with def.
       module Predications
+        # `=`.  A value, a column, an expression or a scalar subquery on the right; `nil` is refused, since `= NULL` is never true -- {#null?} is the spelling.
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :name == "alice" }
+        #   Author.where { :age == Author.select { max(:age) } }
+        #
         # == and != mean SQL = and <>, and = NULL is never true there, so nil
         # is rejected rather than silently rewritten to IS NULL.  null? builds
         # its node directly and stays clear of this check.
@@ -50,6 +65,8 @@ module ActiveRecord
           Comparison.new(self, :==, other)
         end
 
+        # `!=`; `nil` is refused, as with `==`.
+        # @return [AST::Predicate]
         def !=(other)
           if other.nil?
             raise ArgumentError, "!= does not take nil; use !null? instead"
@@ -57,30 +74,50 @@ module ActiveRecord
           Comparison.new(self, :!=, other)
         end
 
+        # `>`.
+        # @return [AST::Predicate]
         def >(other)
           Comparison.new(self, :>, other)
         end
 
+        # `>=`.
+        # @return [AST::Predicate]
         def >=(other)
           Comparison.new(self, :>=, other)
         end
 
+        # `<`.
+        # @return [AST::Predicate]
         def <(other)
           Comparison.new(self, :<, other)
         end
 
+        # `<=`.
+        # @return [AST::Predicate]
         def <=(other)
           Comparison.new(self, :<=, other)
         end
 
+        # A regular expression match: `~` on PostgreSQL, `REGEXP` on MySQL, and what the adapter has elsewhere.  A Ruby Regexp's source is the pattern.
+        # @param pattern [Regexp, String]
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :name =~ /^A/ }
         def =~(pattern)
           Match.new(self, pattern)
         end
 
+        # The negated regular expression match.
+        # @return [AST::Predicate]
         def !~(pattern)
           Match.new(self, pattern, negated: true)
         end
 
+        # `IS NULL`.
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :country.null? }
+        #
         # `!` negates any predicate, so these are here for the four that SQL
         # spells for itself: IS NOT NULL rather than NOT (... IS NULL), and
         # likewise NOT IN and NOT LIKE.  They mean the same thing either way,
@@ -89,10 +126,17 @@ module ActiveRecord
           Comparison.new(self, :==, nil)
         end
 
+        # `IS NOT NULL`.
+        # @return [AST::Predicate]
         def not_null?
           Comparison.new(self, :!=, nil)
         end
 
+        # `IS TRUE`: true of the rows where the boolean is true, false where it is false or NULL -- where `== true` would be NULL.
+        # @return [AST::Predicate]
+        # @example
+        #   Post.where { :published.true? }
+        #
         # IS TRUE and IS FALSE differ from a comparison against the literal in
         # what they make of NULL: `flag = TRUE` is itself NULL there, and a
         # NULL predicate selects nothing, while these two answer false.  So the
@@ -102,36 +146,62 @@ module ActiveRecord
           TruthValue.new(self, true)
         end
 
+        # `IS NOT TRUE`: keeps the NULL rows that `!(:flag == true)` drops.
+        # @return [AST::Predicate]
         def not_true?
           TruthValue.new(self, true, negated: true)
         end
 
+        # `IS FALSE`.
+        # @return [AST::Predicate]
         def false?
           TruthValue.new(self, false)
         end
 
+        # `IS NOT FALSE`.
+        # @return [AST::Predicate]
         def not_false?
           TruthValue.new(self, false, negated: true)
         end
 
+        # `IN (...)`: an array of values, a range, or a relation as a subquery.
+        # @param values [Array, Range, ActiveRecord::Relation]
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :country.in?(%w[JP US]) }
+        #   Author.where { :id.in?(Post.select(:author_id)) }
         def in?(values)
           In.new(self, values)
         end
 
+        # `NOT IN (...)`.
+        # @return [AST::Predicate]
         def not_in?(values)
           In.new(self, values, negated: true)
         end
 
+        # `BETWEEN min AND max`, with either end a value, a column or an expression.
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :age.between?(20, 40) }
+        #
         # Not min..max: an endpoint may be an expression, which Range would
         # refuse to hold, since expressions do not compare among themselves.
         def between?(min, max)
           In.new(self, In::QuotedRange.new(min, max, false))
         end
 
+        # `NOT BETWEEN min AND max`.
+        # @return [AST::Predicate]
         def not_between?(min, max)
           In.new(self, In::QuotedRange.new(min, max, false), negated: true)
         end
 
+        # `CASE column WHEN value THEN ...`: a CASE with this as the operand, each `when` a value it is compared against, followed by `then` and finally `else`.
+        # @return [AST::Case::When]
+        # @example
+        #   Author.select { :country.when("JP").then("Japan").else("elsewhere").as(:where) }
+        #
         # CASE with this as the operand, compared against each `when`:
         # `:age.when(10).then(1).else(0)`.  The other shape, where each `when`
         # carries its own condition, starts at `case_when`.
@@ -139,22 +209,38 @@ module ActiveRecord
           Case.new(self).when(value, &block)
         end
 
+        # `LIKE pattern`, the pattern as written: `%` and `_` are its wildcards.
+        # @param pattern [String]
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :name.like?("A%") }
         def like?(pattern)
           Like.new(self, pattern)
         end
 
+        # `NOT LIKE pattern`.
+        # @return [AST::Predicate]
         def not_like?(pattern)
           Like.new(self, pattern, negated: true)
         end
 
+        # A case-insensitive `LIKE`: `ILIKE` on PostgreSQL, and `LIKE` over both sides lower-cased elsewhere.
+        # @return [AST::Predicate]
         def ilike?(pattern)
           Like.new(self, pattern, nil, case_sensitive: false)
         end
 
+        # The negated case-insensitive `LIKE`.
+        # @return [AST::Predicate]
         def not_ilike?(pattern)
           Like.new(self, pattern, nil, case_sensitive: false, negated: true)
         end
 
+        # Case-insensitive equality: `LOWER(column) = LOWER(value)`.
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :name.casecmp?("Alice") }
+        #
         # Case-insensitive equality, folded on both sides rather than left to
         # the collation, so it means the same thing on every adapter.
         def casecmp?(value)
@@ -165,16 +251,27 @@ module ActiveRecord
                          Function.new("LOWER", [value]))
         end
 
+        # `IS DISTINCT FROM`: `!=` that treats NULL as a value.  `IS NOT` on SQLite, `NOT <=>` on MySQL.
+        # @return [AST::Predicate]
+        #
         # Null-safe comparison: unlike = and <>, these treat NULL as a value,
         # so not_distinct_from? is the one equality that may take nil.
         def distinct_from?(value)
           DistinctFrom.new(self, value, negated: true)
         end
 
+        # `IS NOT DISTINCT FROM`: `=` that treats NULL as a value, so this is the one equality that takes `nil`.
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :country.not_distinct_from?(nil) }
         def not_distinct_from?(value)
           DistinctFrom.new(self, value)
         end
 
+        # `LIKE 'prefix%'`, the prefix escaped so that a `%` or `_` in it is itself; several prefixes are `OR`ed.
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :name.start_with?("A", "B") }
         def start_with?(*prefixes)
           if prefixes.empty?
             raise ArgumentError, "start_with? needs at least one prefix"
@@ -182,6 +279,8 @@ module ActiveRecord
           Like.any(self, prefixes.map { |prefix| "#{Like.escape(prefix)}%" })
         end
 
+        # `LIKE '%suffix'`, escaped as {#start_with?} escapes.
+        # @return [AST::Predicate]
         def end_with?(*suffixes)
           if suffixes.empty?
             raise ArgumentError, "end_with? needs at least one suffix"
@@ -189,10 +288,19 @@ module ActiveRecord
           Like.any(self, suffixes.map { |suffix| "%#{Like.escape(suffix)}" })
         end
 
+        # `LIKE '%substring%'`, escaped as {#start_with?} escapes.
+        # @return [AST::Predicate]
+        # @example
+        #   Post.where { :title.include?("ruby") }
         def include?(substring)
           Like.new(self, "%#{Like.escape(substring)}%", Like::ESCAPE)
         end
 
+        # Whether a PostgreSQL array column holds the element: `@> ARRAY[element]`.
+        # @return [AST::Predicate]
+        # @example
+        #   Post.where { :tags.member?("ruby") }
+        #
         # The array comparisons carry the meaning of their Ruby namesakes.
         # member? is Enumerable's element test, so an Array argument is
         # rejected rather than quietly meaning something Array#member? does
@@ -205,18 +313,32 @@ module ActiveRecord
           ArrayPredicate.new(self, :"@>", [element])
         end
 
+        # Whether an array column holds every element given: `@>`.
+        # @return [AST::Predicate]
         def superset?(elements)
           ArrayPredicate.new(self, :"@>", ArrayPredicate.elements(elements, "superset?"))
         end
 
+        # Whether every element of an array column is among those given: `<@`.
+        # @return [AST::Predicate]
         def subset?(elements)
           ArrayPredicate.new(self, :"<@", ArrayPredicate.elements(elements, "subset?"))
         end
 
+        # Whether an array column and the elements given share any: `&&`.
+        # @return [AST::Predicate]
+        # @example
+        #   Post.where { :tags.intersect?(%w[ruby sql]) }
         def intersect?(elements)
           ArrayPredicate.new(self, :"&&", ArrayPredicate.elements(elements, "intersect?"))
         end
 
+        # The JSON at a path into a JSON column, still JSON -- to be dug further, compared with a Ruby value, or asked {#key?} and the rest.  A string or a symbol steps into an object, an integer into an array.  `#>` on PostgreSQL, `JSON_EXTRACT` on MySQL, `->` on SQLite.
+        # @return [AST::JsonPath]
+        # @example
+        #   Doc.select { :meta.dig(:author).as(:author) }
+        #   Doc.where { :meta.dig(:author).key?(:name) }
+        #
         # Reading inside a JSON document, by the name of what Hash does.  A
         # string or symbol steps into an object, an integer into an array, and
         # what comes back is still JSON, the way Hash#dig hands back the
@@ -227,10 +349,19 @@ module ActiveRecord
           JsonPath.new(self, path)
         end
 
+        # The value at a path as text, which is what a comparison against a string wants where the JSON type would not do: `#>>` on PostgreSQL, `JSON_UNQUOTE(JSON_EXTRACT(...))` on MySQL, `->>` on SQLite.
+        # @return [AST::JsonPath]
+        # @example
+        #   Doc.where { :meta.dig_text(:author, :name) == "alice" }
         def dig_text(*path)
           JsonPath.new(self, path, json_value: false)
         end
 
+        # The document without the keys given, as Hash#except gives it; an expression, for `update_all` to write back.
+        # @return [AST::JsonExcept]
+        # @example
+        #   Doc.update_all { { meta: :meta.except(:draft) } }
+        #
         # Keys taken out of a JSON document, by the name of what Hash does,
         # and taking keys as Hash#except takes them.  Like bury it gives back
         # the document changed rather than writing it anywhere.
@@ -238,6 +369,11 @@ module ActiveRecord
           JsonExcept.new(self, keys)
         end
 
+        # The document with a value set at a path, as {#dig} reads one; an expression, for `update_all` to write back.
+        # @return [AST::JsonSet]
+        # @example
+        #   Doc.update_all { { meta: :meta.bury(:author, :name, "alice") } }
+        #
         # What dig reads, bury sets: the last argument is the value and the
         # rest are the path to it.  The document comes back changed rather
         # than being written anywhere, which update_all is for.
@@ -245,12 +381,22 @@ module ActiveRecord
           JsonSet.new(self, path, value)
         end
 
+        # Whether the document contains the Ruby document given, which SQL calls containment: `@>` on PostgreSQL, `JSON_CONTAINS` on MySQL.  SQLite and MariaDB have none.
+        # @return [AST::Predicate]
+        # @example
+        #   Doc.where { :meta.contains?(author: { name: "alice" }) }
+        #
         # Whether the document holds what is given, which SQL calls
         # containment.  SQLite has no equivalent.
         def contains?(value)
           JsonContains.new(self, value)
         end
 
+        # Whether the object has the key, as Hash#key? asks.
+        # @return [AST::Predicate]
+        # @example
+        #   Doc.where { :meta.key?(:author) }
+        #
         # Whether the key is there at all, as Hash#key? asks.  Hash has
         # has_key? too; one name is enough, and this is the one Ruby's own
         # style prefers.
@@ -258,32 +404,55 @@ module ActiveRecord
           JsonHasKey.new(self, key)
         end
 
+        # The keys of the object as a JSON array, as Hash#keys gives them.  Oracle has none.
+        # @return [AST::JsonKeys]
+        #
         # The keys of the document, as Hash#keys gives them: a JSON array.
         def keys
           JsonKeys.new(self)
         end
       end
 
+      # The arithmetic and the bitwise operators on a column or an
+      # expression.  Ruby puts all of them above the comparisons, so
+      # `:price * :quantity > 100` groups the way it reads, and a number on
+      # the left -- `20 - :quantity` -- builds the same expression.
+      #
+      # @example
+      #   LineItem.where { :price * :quantity > 1000 }
+      #   LineItem.select { (:flags & 4).as(:featured) }
+      #
       # Arithmetic builders shared by symbols, qualified columns and
       # expressions.  Imported into the Symbol refinement like Predications,
       # so every method must be defined with def.
       module Arithmetics
+        # `+`; with an Active Support duration on the right, a date moved: `:due_on + 3.days`.
+        # @return [AST::Arithmetic]
         def +(other)
           Arithmetic.new(self, :+, other)
         end
 
+        # `-`; with a duration on the right, a date moved back.
+        # @return [AST::Arithmetic]
         def -(other)
           Arithmetic.new(self, :-, other)
         end
 
+        # `*`.
+        # @return [AST::Arithmetic]
         def *(other)
           Arithmetic.new(self, :*, other)
         end
 
+        # `/`.
+        # @return [AST::Arithmetic]
         def /(other)
           Arithmetic.new(self, :/, other)
         end
 
+        # Bitwise AND.  `&` between two conditions is AND, which leaves this free to mean the SQL operator.
+        # @return [AST::Bitwise]
+        #
         # SQL's bitwise operators.  & and | are AND and OR between conditions
         # and are defined there, which is what leaves them free to mean here
         # what SQL means by them.  Ruby's precedence puts all six above the
@@ -292,22 +461,32 @@ module ActiveRecord
           Bitwise.new(self, :&, other)
         end
 
+        # Bitwise OR.
+        # @return [AST::Bitwise]
         def |(other)
           Bitwise.new(self, :|, other)
         end
 
+        # Bitwise XOR: `#` on PostgreSQL, `^` on MySQL, and the two operations it is made of on SQLite.
+        # @return [AST::Bitwise]
         def ^(other)
           Bitwise.new(self, :^, other)
         end
 
+        # A shift left.
+        # @return [AST::Bitwise]
         def <<(other)
           Bitwise.new(self, :<<, other)
         end
 
+        # A shift right.
+        # @return [AST::Bitwise]
         def >>(other)
           Bitwise.new(self, :>>, other)
         end
 
+        # Bitwise NOT.
+        # @return [AST::BitwiseNot]
         def ~
           BitwiseNot.new(self)
         end
@@ -318,6 +497,7 @@ module ActiveRecord
       # a column or an expression on the right means a query; anything else
       # goes back to the number through super, so 1 + 2 is 3 inside a block
       # too.
+      # @private
       module NumericArithmetics
         def +(other)
           return super unless other.is_a?(::Symbol) || other.is_a?(Node)
@@ -375,18 +555,27 @@ module ActiveRecord
           raise ScriptError, "subclass must override this method"
         end
 
+        # The expression under an alias, as {BlockSyntax#as} gives a column
+        # one.
+        # @return [AST::As]
         def as(alias_name, quote: true)
           As.new(self, alias_name, quote: quote)
         end
 
+        # An ascending ordering by the expression.
+        # @return [AST::Ordering]
         def asc
           Ordering.new(self, :asc)
         end
 
+        # A descending ordering by the expression.
+        # @return [AST::Ordering]
         def desc
           Ordering.new(self, :desc)
         end
 
+        # The expression under a collation, as {BlockSyntax#collate}.
+        # @return [AST::Collate]
         def collate(name)
           Collate.new(self, name)
         end
@@ -544,16 +733,23 @@ module ActiveRecord
           @default = default
         end
 
+        # The next `WHEN`: a value to compare the operand against, or a condition as a value or a block.
+        # @return [AST::Case::When]
         def when(value = nil, &block)
           Pending.new(self, Case.argument(:when, value, block))
         end
 
+        # `THEN`, which belongs after a `when`; here it says so.
+        # @raise [ArgumentError]
+        #
         # Kernel#then is on every object, so `then` in the wrong place would be
         # answered by it -- with no block, silently, with an Enumerator.
         def then(*)
           raise ArgumentError, "then follows a when, and there is none to follow here"
         end
 
+        # `ELSE value`, as a value or a block, closing the CASE.  Without one the CASE gives NULL where no `when` matched.
+        # @return [AST::Case]
         def else(value = nil, &block)
           Case.new(operand, whens, Case.argument(:else, value, block))
         end
@@ -592,6 +788,8 @@ module ActiveRecord
             @condition = condition
           end
 
+          # `THEN value`, as a value or a block, for the `when` before it.
+          # @return [AST::Case]
           def then(value = nil, &block)
             Case.new(@kase.operand,
                      @kase.whens + [[@condition, Case.argument(:then, value, block)]],
@@ -1275,6 +1473,12 @@ module ActiveRecord
       # OVER, on the two things that can carry a window: an aggregate, and a
       # function.
       module Windowing
+        # `OVER ()`, an empty window to be filled by {Over#partition},
+        # {Over#order}, {Over#rows} and {Over#range}.
+        # @return [AST::Over]
+        # @example
+        #   Author.select { avg(:age).over.partition(:country).as(:country_average) }
+        #   Post.select { sum(:likes).over.order(:created_at).rows(..0).as(:running) }
         def over
           Over.new(self)
         end
@@ -1296,20 +1500,30 @@ module ActiveRecord
           @frame = frame
         end
 
+        # `PARTITION BY`, the columns or expressions given.
+        # @return [AST::Over]
         def partition(*exprs)
           raise ArgumentError, "partition needs an expression" if exprs.empty?
           Over.new(function, partitions + exprs, orders, frame)
         end
 
+        # `ORDER BY` within the window: columns, or orderings such as `:age.desc`.
+        # @return [AST::Over]
         def order(*exprs)
           raise ArgumentError, "order needs an expression" if exprs.empty?
           Over.new(function, partitions, orders + exprs, frame)
         end
 
+        # `ROWS BETWEEN`, as a range of rows counted from the current one: negative before it, positive after, `0` the row itself, an open end unbounded.  `rows(..0)` is a running total, `rows(-1..1)` the row and its neighbours.
+        # @param bounds [Range]
+        # @return [AST::Over]
         def rows(bounds)
           Over.new(function, partitions, orders, framing(:rows, bounds))
         end
 
+        # `RANGE BETWEEN`, with the bounds as {#rows} takes them.
+        # @param bounds [Range]
+        # @return [AST::Over]
         def range(bounds)
           Over.new(function, partitions, orders, framing(:range, bounds))
         end
@@ -1396,8 +1610,12 @@ module ActiveRecord
           @condition = condition
         end
 
-        # FILTER (WHERE ...): the aggregate is taken over the rows the
-        # condition holds for.  A value or a block, as `when` takes them.
+        # `FILTER (WHERE condition)`: the aggregate taken over the rows the
+        # condition holds for, as a value or a block.  Where there is no
+        # FILTER clause -- MySQL, SQL Server -- the CASE that means the same.
+        # @return [AST::Aggregate]
+        # @example
+        #   Author.select { [count(:*).as(:all), count(:*).filter { :age < 50 }.as(:young)] }
         def filter(condition = nil, &block)
           Aggregate.new(operand, function, distinct: distinct,
                         condition: Case.argument(:filter, condition, block))
@@ -1447,6 +1665,10 @@ module ActiveRecord
           @condition = condition
         end
 
+        # `FILTER (WHERE condition)`, as {Aggregate#filter}; refused on the
+        # MySQL family, where the CASE that stands in would leave a JSON null
+        # for every row it drops.
+        # @return [AST::JsonAggregate]
         def filter(condition = nil, &block)
           JsonAggregate.new(kind, operands,
                             condition: Case.argument(:filter, condition, block))
@@ -1506,11 +1728,16 @@ module ActiveRecord
           @condition = condition
         end
 
+        # The order the strings are joined in: columns, or orderings such as
+        # `:title.desc`.
+        # @return [AST::StringAggregate]
         def order(*exprs)
           raise ArgumentError, "order needs an expression" if exprs.empty?
           StringAggregate.new(operand, separator, orders: orders + exprs, condition: condition)
         end
 
+        # `FILTER (WHERE condition)`, as {Aggregate#filter}.
+        # @return [AST::StringAggregate]
         def filter(condition = nil, &block)
           StringAggregate.new(operand, separator, orders: orders,
                               condition: Case.argument(:filter, condition, block))
@@ -1607,12 +1834,18 @@ module ActiveRecord
           @nulls = nulls
         end
 
+        # `NULLS FIRST`; portable, since Arel emulates it where MySQL has
+        # none.
+        # @return [AST::Ordering]
+        #
         # MySQL has no NULLS FIRST/LAST, but Arel emulates it there with a
         # leading IS NULL ordering, so these are portable.
         def nulls_first
           Ordering.new(operand, direction, :nulls_first)
         end
 
+        # `NULLS LAST`.
+        # @return [AST::Ordering]
         def nulls_last
           Ordering.new(operand, direction, :nulls_last)
         end
