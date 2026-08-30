@@ -1,0 +1,17 @@
+--markup markdown
+--plugin markdown-relative-links
+--no-private
+--title "ActiveRecord::Refined"
+lib/**/*.rb
+-
+docs/conditions.md
+docs/joins.md
+docs/functions.md
+docs/expressions.md
+docs/json.md
+docs/windows.md
+docs/ordering.md
+docs/grouping.md
+docs/ctes.md
+docs/writing.md
+docs/time_zones.md
