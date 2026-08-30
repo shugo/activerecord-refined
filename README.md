@@ -66,8 +66,9 @@ Or install it yourself as:
 
 ## Usage
 
-Just require the gem, and `where`, `select`, `joins`, `left_outer_joins`,
-`having`, `order` and `group` will accept a block:
+With Bundler — a Rails application — there is nothing to write: the gem in
+the Gemfile is loaded, and `where`, `select`, `joins`, `left_outer_joins`,
+`having`, `order` and `group` accept a block. Elsewhere, require it:
 
 ```ruby
 require "activerecord-refined"

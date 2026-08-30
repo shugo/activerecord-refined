@@ -15,8 +15,9 @@ Author.
 Ruby 4.1, Active Record, SQLite and PostgreSQL run in the page, so the examples
 build real SQL and return real rows without a `ruby-master` build of your own.
 
-Just require the gem, and `where`, `select`, `joins`, `left_outer_joins`,
-`having`, `order` and `group` will accept a block:
+With Bundler — a Rails application — there is nothing to write: the gem in
+the Gemfile is loaded, and `where`, `select`, `joins`, `left_outer_joins`,
+`having`, `order` and `group` accept a block. Elsewhere, require it:
 
 ```ruby
 require "activerecord-refined"
