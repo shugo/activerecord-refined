@@ -13,17 +13,12 @@ Gem::Specification.new do |gem|
   gem.description   = "Adding clean and powerful query syntax on Active Record using refinements"
   gem.summary       = "Write Active Record queries as Ruby expressions"
   gem.homepage      = "https://github.com/shugo/activerecord-refined"
+  gem.license       = "MIT"
   gem.metadata      = {
     "documentation_uri" => "https://rubydoc.info/gems/activerecord-refined",
   }
 
-  # sandbox/ is a site, not part of the library: its Gemfile.lock and
-  # package-lock.json have no business in anyone's bundle.  CLAUDE.md and
-  # .claude/ are addressed to whoever is working on the repository, not to
-  # anyone using it.
-  gem.files         = `git ls-files`.split($/).grep_v(%r{^sandbox/|^CLAUDE\.md$|^\.claude/})
-  gem.executables   = gem.files.grep(%r{^bin/}).map { |f| File.basename(f) }
-  gem.test_files    = gem.files.grep(%r{^(test|spec|features)/})
+  gem.files         = `git ls-files -- lib docs examples README.md LICENSE.txt .yardopts activerecord-refined.gemspec`.split($/)
   gem.require_paths = ["lib"]
 
   # Proc#refined is available since Ruby 4.1. 4.1.0.dev is required to allow
