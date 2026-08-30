@@ -744,9 +744,13 @@ module ActiveRecord
         AST::Case.new.when(value, &block)
       end
 
-      # @!endgroup
-
       private
+        # @!endgroup
+        #
+        # The group closes here rather than above `private`: a comment on
+        # that line belongs to the `private` call, which reads no
+        # directives, and the group would run on into the next module.
+        #
         # SQLite is the one adapter with no quantifier at all, and what it says
         # when it meets one is a syntax error at the SELECT.
         def quantified(kind, relation)
