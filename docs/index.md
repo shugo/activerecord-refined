@@ -11,7 +11,7 @@ Author.
 #   WHERE "authors"."age" BETWEEN 20 AND 40 AND "posts"."published" = TRUE
 ```
 
-Inside the block, symbols denote columns of the receiver's table, and
+Inside a block, symbols denote columns of the receiver's table, and
 `:table[:column]` denotes a qualified column. That holds in every position —
 on the right of a comparison too, so `:age == :retirement_age` compares two
 columns. A value is written as its literal, an enum's as its string; a symbol

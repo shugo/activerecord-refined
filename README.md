@@ -14,41 +14,21 @@ Author.
 #   WHERE "authors"."age" BETWEEN 20 AND 40 AND "posts"."published" = TRUE
 ```
 
+Inside a block, symbols denote columns of the receiver's table, and
+`:table[:column]` denotes a qualified column. That holds in every position —
+on the right of a comparison too, so `:age == :retirement_age` compares two
+columns. A value is written as its literal, an enum's as its string; a symbol
+naming no column of the model is refused rather than compared against nothing
+anyone meant.
+
 **[Try it in your browser](https://shugo.github.io/activerecord-refined/)** —
 Ruby 4.1, Active Record, SQLite and PostgreSQL run in the page, so the examples
 build real SQL and return real rows without a `ruby-master` build of your own.
-
-## History
-
-This gem was formerly known as **activerecord-refinements**, created by Akira Matsuda
-to experiment with the initial implementation of Ruby 2.0 Refinements. Because of the
-Refinements' spec change, that implementation stopped working on Ruby 2.0.0 stable, and
-the project was left dormant for a long time.
-
-It has now been renamed to **activerecord-refined** and reimplemented on top of
-[`Proc#refined`](https://docs.ruby-lang.org/en/master/Proc.html#method-i-refined),
-which will be introduced in Ruby 4.1. `Proc#refined` returns a new proc that
-is evaluated with the given refinements activated, so a block written by the caller can
-be re-interpreted under the query DSL's refinements:
-
-```ruby
-def evaluate_block(&block)
-  refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
-  BlockContext.new.instance_exec(&refined_block)
-end
-```
-
-This is exactly what the old implementation needed and could not do, so the query syntax
-works again without monkey-patching `Symbol` globally.
 
 ## Requirements
 
 * Ruby 4.1 or later (for `Proc#refined`; not released yet, so a `ruby-master` build is needed for now)
 * Active Record 7.0 or later
-
-The [sandbox](https://shugo.github.io/activerecord-refined/) is there to skip
-that build: it carries its own Ruby 4.1. `sandbox/` in this repository is what
-it is made of.
 
 ## Installation
 
@@ -152,6 +132,29 @@ once, as normal code is — building query blocks with a string `eval` mints
 a fresh instruction sequence per pass, each earning a copy of its own, and
 the memo keeps both alive for the life of the process.
 
+## History
+
+This gem was formerly known as **activerecord-refinements**, created by Akira Matsuda
+to experiment with the initial implementation of Ruby 2.0 Refinements. Because of the
+Refinements' spec change, that implementation stopped working on Ruby 2.0.0 stable, and
+the project was left dormant for a long time.
+
+It has now been renamed to **activerecord-refined** and reimplemented on top of
+[`Proc#refined`](https://docs.ruby-lang.org/en/master/Proc.html#method-i-refined),
+which will be introduced in Ruby 4.1. `Proc#refined` returns a new proc that
+is evaluated with the given refinements activated, so a block written by the caller can
+be re-interpreted under the query DSL's refinements:
+
+```ruby
+def evaluate_block(&block)
+  refined_block = block.refined(ActiveRecord::Refined::BlockSyntax)
+  BlockContext.new.instance_exec(&refined_block)
+end
+```
+
+This is exactly what the old implementation needed and could not do, so the query syntax
+works again without monkey-patching `Symbol` globally.
+
 ## Running the tests
 
 The tests only build SQL, but they need a live connection to do it. SQLite is
@@ -194,11 +197,3 @@ stored anywhere.
 bundle exec bump patch --tag # or bump {major,minor} etc.
 git push --follow-tags
 ```
-
-## Contributing
-
-1. Fork it
-2. Create your feature branch (`git checkout -b my-new-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin my-new-feature`)
-5. Create new Pull Request
