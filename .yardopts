@@ -1,7 +1,7 @@
 --markup markdown
---plugin markdown-relative-links
 --no-private
 --title "ActiveRecord::Refined"
+--readme docs/index.md
 lib/**/*.rb
 -
 docs/conditions.md

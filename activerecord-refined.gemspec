@@ -42,11 +42,7 @@ Gem::Specification.new do |gem|
   gem.add_development_dependency "rubocop-performance", [">= 0"]
   gem.add_development_dependency "rubocop-rails", [">= 0"]
   gem.add_development_dependency "rubocop-md", [">= 0"]
-  # What renders the reference: `yard server --reload` serves it locally, and
-  # rubydoc.info renders the same .yardopts.  The plugin turns the README's
-  # relative links to docs/*.md -- which GitHub follows as they are -- into
-  # links to YARD's file pages; where it is not installed, rubydoc.info among
-  # them, YARD says so and leaves the links relative.
+  # What renders the reference: `yard server --reload` serves it locally,
+  # and rubydoc.info renders the same .yardopts.
   gem.add_development_dependency "yard", [">= 0"]
-  gem.add_development_dependency "yard-markdown-relative-links", [">= 0"]
 end
