@@ -64,7 +64,3 @@ differ:
 - {file:docs/writing.md Writing} — `update_all` and `upsert_all`.
 - {file:docs/time_zones.md Time zones} — what a block converts and what it
   leaves to the session.
-
-The repository's README, on
-[GitHub](https://github.com/shugo/activerecord-refined), has the history,
-the requirements, and how the tests and the release are run.
