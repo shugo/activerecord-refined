@@ -961,7 +961,7 @@ module ActiveRecord
       # subquery rather than the join.  SQLite and MariaDB have none.
       # @example
       #   top = Post.where { :posts[:author_id] == :authors[:id] }.order { :likes.desc }.limit(1)
-      #   Author.left_outer_joins(top.lateral, as: :top) { true }.select { [:name, :top[:title]] }
+      #   Author.left_outer_joins(top.lateral, as: :top).select { [:name, :top[:title]] }
       def lateral
         spawn.lateral!
       end
