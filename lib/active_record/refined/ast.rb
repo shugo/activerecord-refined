@@ -48,6 +48,39 @@ module ActiveRecord
         Dialect.for(model).json_argument(value, model)
       end
 
+      # Whether a node is one of the three things a condition can be: a
+      # predicate, or either of the escape hatches, which are conditions
+      # whenever what was written inside them is one.
+      # @private
+      def self.condition?(node)
+        node.is_a?(Predicate) || node.is_a?(Sql) || node.is_a?(Operation)
+      end
+
+      # @private
+      def self.check_condition(node, operator)
+        return node if condition?(node)
+        raise ArgumentError,
+          "#{operator} joins conditions; " \
+          "#{node.is_a?(Node) ? 'an expression' : node.inspect} is not one"
+      end
+
+      # What `&` and `|` say when the left side is not a condition.  They
+      # mean AND and OR, so what was meant is either the bitwise operation,
+      # which has a name of its own, or a comparison whose parentheses Ruby's
+      # precedence ate; which one it is the other operand tells.
+      # @private
+      def self.refuse_logical(operator, logical, named, operand)
+        raise ArgumentError,
+          if condition?(operand)
+            "#{operator} joins conditions, and the left side is not one; " \
+            "a comparison there needs parentheses of its own: " \
+            "(:age >= 18) #{operator} ..."
+          else
+            "#{operator} between conditions is #{logical}; " \
+            "#{named} is SQL's bitwise operator"
+          end
+      end
+
       # The conditions a column or an expression can be put in.  Every one
       # gives back a condition that combines with `&`, `|` and `!`, and the
       # comparisons quote a Ruby value on the right the way Active Record
@@ -425,14 +458,19 @@ module ActiveRecord
         end
       end
 
-      # The arithmetic and the bitwise operators on a column or an
-      # expression.  Ruby puts all of them above the comparisons, so
+      # The arithmetic and the bitwise operations on a column or an
+      # expression.  Ruby puts the operators above the comparisons, so
       # `:price * :quantity > 100` groups the way it reads, and a number on
       # the left -- `20 - :quantity` -- builds the same expression.
       #
+      # Bitwise AND and OR are named, not spelled `&` and `|`: those two are
+      # AND and OR between conditions and mean nothing else anywhere.  The
+      # rest keep their operators, with {#bitwise_xor} and {#bitwise_not}
+      # beside `^` and `~` for a reader who would rather have the name.
+      #
       # @example
       #   LineItem.where { :price * :quantity > 1000 }
-      #   LineItem.select { (:flags & 4).as(:featured) }
+      #   LineItem.select { :flags.bitwise_and(4).as(:featured) }
       #
       # Arithmetic builders shared by symbols, qualified columns and
       # expressions.  Imported into the Symbol refinement like Predications,
@@ -462,26 +500,45 @@ module ActiveRecord
           Arithmetic.new(self, :/, other)
         end
 
-        # Bitwise AND.  `&` between two conditions is AND, which leaves this free to mean the SQL operator.
-        # @return [AST::Bitwise]
-        #
-        # SQL's bitwise operators.  & and | are AND and OR between conditions
-        # and are defined there, which is what leaves them free to mean here
-        # what SQL means by them.  Ruby's precedence puts all six above the
-        # comparisons, so `:flags & 4 > 0` groups the way it reads.
+        # `&` is AND, and a column is not a condition, so this refuses:
+        # {#bitwise_and} is the SQL operator, and `.true?` makes a boolean
+        # column a condition.
+        # @raise [ArgumentError]
         def &(other)
+          AST.refuse_logical(:&, "AND", "bitwise_and", other)
+        end
+
+        # `|` is OR, and refuses here as `&` does.
+        # @raise [ArgumentError]
+        def |(other)
+          AST.refuse_logical(:|, "OR", "bitwise_or", other)
+        end
+
+        # Bitwise AND: `"flags" & 4`.  It is spelled as a name because `&`
+        # is AND, and a method binds tighter than any comparison, so nothing
+        # has to be parenthesised to be compared.
+        # @return [AST::Bitwise]
+        # @example
+        #   Post.where { :flags.bitwise_and(4) > 0 }
+        def bitwise_and(other)
           Bitwise.new(self, :&, other)
         end
 
         # Bitwise OR.
         # @return [AST::Bitwise]
-        def |(other)
+        def bitwise_or(other)
           Bitwise.new(self, :|, other)
         end
 
         # Bitwise XOR: `#` on PostgreSQL, `^` on MySQL, and the two operations it is made of on SQLite.
         # @return [AST::Bitwise]
         def ^(other)
+          Bitwise.new(self, :^, other)
+        end
+
+        # {#^} under a name.
+        # @return [AST::Bitwise]
+        def bitwise_xor(other)
           Bitwise.new(self, :^, other)
         end
 
@@ -502,13 +559,21 @@ module ActiveRecord
         def ~
           BitwiseNot.new(self)
         end
+
+        # {#~} under a name.  `!` is not the one to reach for: it is Ruby's
+        # own on a column and answers `false`, which no query ever wanted.
+        # @return [AST::BitwiseNot]
+        def bitwise_not
+          BitwiseNot.new(self)
+        end
       end
 
       # Arithmetic with the number on the left, imported into the numeric
       # refinements: 20 - :quantity builds what :quantity + 20 builds.  Only
       # a column or an expression on the right means a query; anything else
       # goes back to the number through super, so 1 + 2 is 3 inside a block
-      # too.
+      # too, and 4 & 5 is 4.  & and | refuse a query the way they do on a
+      # column, bitwise_and and its kin carrying those two operations.
       # @private
       module NumericArithmetics
         def +(other)
@@ -533,12 +598,12 @@ module ActiveRecord
 
         def &(other)
           return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Bitwise.new(self, :&, other)
+          AST.refuse_logical(:&, "AND", "bitwise_and", other)
         end
 
         def |(other)
           return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Bitwise.new(self, :|, other)
+          AST.refuse_logical(:|, "OR", "bitwise_or", other)
         end
 
         def ^(other)
@@ -554,6 +619,18 @@ module ActiveRecord
         def >>(other)
           return super unless other.is_a?(::Symbol) || other.is_a?(Node)
           Bitwise.new(self, :>>, other)
+        end
+
+        def bitwise_and(other)
+          Bitwise.new(self, :&, other)
+        end
+
+        def bitwise_or(other)
+          Bitwise.new(self, :|, other)
+        end
+
+        def bitwise_xor(other)
+          Bitwise.new(self, :^, other)
         end
       end
 
@@ -912,7 +989,7 @@ module ActiveRecord
         def between?(min, max) = super(comparison_value(min), comparison_value(max))
         def not_between?(min, max) = super(comparison_value(min), comparison_value(max))
 
-        %i[+ - * / & | ^ << >>].each do |operator|
+        %i[+ - * / & | ^ << >> bitwise_and bitwise_or bitwise_xor].each do |operator|
           define_method(operator) do |_other|
             raise ArgumentError, arithmetic_refusal(operator)
           end
@@ -920,6 +997,10 @@ module ActiveRecord
 
         def ~
           raise ArgumentError, arithmetic_refusal(:~)
+        end
+
+        def bitwise_not
+          raise ArgumentError, arithmetic_refusal(:bitwise_not)
         end
 
         private
@@ -1452,35 +1533,39 @@ module ActiveRecord
           end
       end
 
-      # What the bitwise operators refuse.  Both refusals are there because
+      # What the bitwise operations refuse.  Both refusals are there because
       # the same Ruby would otherwise mean different things per adapter: MySQL
       # and SQLite take a boolean for the one bit it is stored as, so
-      # `published & active` would quietly be the AND it looks like, while
-      # PostgreSQL has no such operator and would say so.
+      # `published.bitwise_and(active)` would quietly be the AND it looks
+      # like, while PostgreSQL has no such operator and would say so.
       # @private
       module BitwiseOperands
         private
-          def check_operand(operand, operator)
+          # A predicate alone is refused.  The escape hatches are not: what
+          # sql() or op() holds is as often an expression as a condition, and
+          # here it is being read as the former.
+          def check_operand(operand)
             return operand unless operand.is_a?(Predicate)
             raise ArgumentError,
-              "a condition cannot be an operand of #{operator}; " \
+              "a condition cannot be an operand of a bitwise operation; " \
               "& and | between conditions are AND and OR"
           end
 
           # Only the unqualified column can be checked, since that is the one
           # the model is known to have.
-          def check_not_boolean(operand, operator, model)
+          def check_not_boolean(operand, model)
             return unless operand.is_a?(::Symbol)
             return unless model.type_for_attribute(operand).type == :boolean
             raise ArgumentError,
-              "#{operand.inspect} is a boolean column, which #{operator} does " \
-              "not take; #{operand.inspect}.true? is the condition"
+              "#{operand.inspect} is a boolean column, which the bitwise " \
+              "operations do not take; #{operand.inspect}.true? is the condition"
           end
       end
 
-      # SQL's bitwise operators.  Each parenthesises itself, which is what
-      # keeps Ruby's grouping: PostgreSQL gives & and | the same precedence
-      # and reads a | b & c from the left, where Ruby reads the & first.
+      # SQL's bitwise operations.  Each parenthesises itself, which is what
+      # keeps the grouping the Ruby asked for: PostgreSQL gives & and | the
+      # same precedence and reads a | b & c from the left, where
+      # a.bitwise_or(b.bitwise_and(c)) means the other thing.
       class Bitwise < Node
         include Predications
         include Arithmetics
@@ -1500,13 +1585,13 @@ module ActiveRecord
         def initialize(left, operator, right)
           @left = left
           @operator = operator
-          @right = check_operand(right, operator)
+          @right = check_operand(right)
         end
 
         # @private
         def to_arel(table, model)
-          check_not_boolean(left, operator, model)
-          check_not_boolean(right, operator, model)
+          check_not_boolean(left, model)
+          check_not_boolean(right, model)
           arel_left = to_arel_operand(left, table, model)
           arel_right = to_arel_argument(right, table, model)
           Arel::Nodes::Grouping.new(
@@ -1540,12 +1625,12 @@ module ActiveRecord
         attr_reader :operand
 
         def initialize(operand)
-          @operand = check_operand(operand, :~)
+          @operand = check_operand(operand)
         end
 
         # @private
         def to_arel(table, model)
-          check_not_boolean(operand, :~, model)
+          check_not_boolean(operand, model)
           Arel::Nodes::Grouping.new(
             Arel::Nodes::BitwiseNot.new(to_arel_operand(operand, table, model)))
         end
@@ -2506,8 +2591,8 @@ module ActiveRecord
         attr_reader :left, :right
 
         def initialize(left, right)
-          @left = left
-          @right = right
+          @left = AST.check_condition(left, :&)
+          @right = AST.check_condition(right, :&)
         end
 
         # @private
@@ -2522,8 +2607,8 @@ module ActiveRecord
         attr_reader :left, :right
 
         def initialize(left, right)
-          @left = left
-          @right = right
+          @left = AST.check_condition(left, :|)
+          @right = AST.check_condition(right, :|)
         end
 
         # @private
@@ -2538,7 +2623,7 @@ module ActiveRecord
         attr_reader :operand
 
         def initialize(operand)
-          @operand = operand
+          @operand = AST.check_condition(operand, :!)
         end
 
         # @private

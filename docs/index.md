@@ -50,7 +50,7 @@ differ:
 - {file:docs/functions.md Aggregates and functions} — `count`, `filter`,
   `string_agg`, the scalar functions, the clock, durations, `extract` and
   `cast`.
-- {file:docs/expressions.md Expressions} — arithmetic, the bitwise operators,
+- {file:docs/expressions.md Expressions} — arithmetic, the bitwise operations,
   `CASE`.
 - {file:docs/json.md JSON} — `dig`, `bury`, `except`, `key?`, `keys`, the
   JSON aggregates, and where the adapters' JSON types part.

@@ -196,12 +196,12 @@ show Item.select { [:name, (:price * :quantity).as(:total)] }
 show Item.select { [:name, (12 - :quantity).as(:to_the_dozen)] }`,
       },
       {
-        title: 'Bitwise operators',
+        title: 'Bitwise operations',
         slug: 'bitwise',
-        code: `# & | ^ ~ << >> are SQL's bit operations here.  Between conditions & and
-# | are AND and OR, which is what leaves them free on a column.  flags is
-# 1 comments open, 2 pinned, 4 featured.
-show Post.select { [:title, :flags, (:flags & 4).as(:featured)] }
+        code: `# bitwise_and, bitwise_or, ^, ~, << and >> are SQL's bit operations here.
+# The first two go by name because & and | are AND and OR between
+# conditions.  flags is 1 comments open, 2 pinned, 4 featured.
+show Post.select { [:title, :flags, :flags.bitwise_and(4).as(:featured)] }
 
 # SQLite has no XOR at all, so it gets the two operations XOR is made of.
 # PostgreSQL would say #, MySQL ^ -- and each is wrong on the other.
@@ -209,7 +209,7 @@ show Post.select { [:title, (:flags ^ 1).as(:toggled)] }
 
 # A boolean column is refused: two adapters would answer as AND does and
 # PostgreSQL has no such operator, so one block would mean two things.
-Post.where { :published & :published }`,
+Post.where { :published.bitwise_and(:published) }`,
       },
       {
         title: 'op reaches any operator',

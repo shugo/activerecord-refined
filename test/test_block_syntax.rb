@@ -1750,7 +1750,7 @@ class TestBlockSyntax < Minitest::Test
     assert_equal(70, User.select { (100 - :age).as(:v) }.first.v.to_i)
     assert_equal(15, User.select { (0.5 * :age).as(:v) }.first.v.to_f.to_i)
     # Oracle has no bitwise & operator, so that operand is left to the others.
-    assert_equal(0, User.select { (4 & :flags).as(:v) }.first.v.to_i) unless oracle?
+    assert_equal(0, User.select { 4.bitwise_and(:flags).as(:v) }.first.v.to_i) unless oracle?
     assert_sql(/> 30/, User.where { :age > 10 + 20 })
   end
 
@@ -1809,17 +1809,26 @@ class TestBlockSyntax < Minitest::Test
 
   def test_bitwise_and_or
     assert_sql(/SELECT \("users"."flags" & 4\) AS "masked"/,
-      User.select { (:flags & 4).as(:masked) }.to_sql)
+      User.select { :flags.bitwise_and(4).as(:masked) }.to_sql)
     assert_sql(/SELECT \("users"."flags" \| 4\) AS "set"/,
-      User.select { (:flags | 4).as(:set) }.to_sql)
+      User.select { :flags.bitwise_or(4).as(:set) }.to_sql)
   end
 
-  # Ruby puts & above >, so this groups the way it reads, and the node
-  # parenthesises itself so that the adapter's own precedence cannot regroup
-  # it -- PostgreSQL gives & and | the same one.
+  # A method binds tighter than any comparison, so the operation needs no
+  # parentheses of its own, and the node parenthesises itself so that the
+  # adapter's precedence cannot regroup it -- PostgreSQL gives & and | the
+  # same one.
   def test_bitwise_in_where_without_parentheses
     assert_sql(/WHERE \("users"."flags" & 4\) > 0/,
-      User.where { :flags & 4 > 0 }.to_sql)
+      User.where { :flags.bitwise_and(4) > 0 }.to_sql)
+  end
+
+  # The two that kept their operators answer to a name as well.
+  def test_bitwise_xor_and_not_under_their_names
+    assert_equal(User.select { (:flags ^ 10).as(:v) }.to_sql,
+                 User.select { :flags.bitwise_xor(10).as(:v) }.to_sql)
+    assert_equal(User.select { (~:flags).as(:v) }.to_sql,
+                 User.select { :flags.bitwise_not.as(:v) }.to_sql)
   end
 
   def test_bitwise_shifts
@@ -1853,27 +1862,45 @@ class TestBlockSyntax < Minitest::Test
     skip "oracle has no bitwise operators" if oracle?
     User.delete_all
     User.create!(name: "a", flags: 12)
-    assert_equal(8, User.select { (:flags & 10).as(:v) }.take.v.to_i)
-    assert_equal(14, User.select { (:flags | 10).as(:v) }.take.v.to_i)
+    assert_equal(8, User.select { :flags.bitwise_and(10).as(:v) }.take.v.to_i)
+    assert_equal(14, User.select { :flags.bitwise_or(10).as(:v) }.take.v.to_i)
     assert_equal(6, User.select { (:flags ^ 10).as(:v) }.take.v.to_i)
     assert_equal(48, User.select { (:flags << 2).as(:v) }.take.v.to_i)
     assert_equal(6, User.select { (:flags >> 1).as(:v) }.take.v.to_i)
     # MariaDB reads ~ back as the unsigned 64-bit number where the others give
     # a negative one, so the assertion is on the bits rather than the value.
-    assert_equal(243, User.select { (~:flags & 255).as(:v) }.take.v.to_i)
+    assert_equal(243, User.select { (~:flags).bitwise_and(255).as(:v) }.take.v.to_i)
   end
 
-  # AND and OR are the conditions' own & and |, and an operand that is a
-  # condition means one of the two was meant.
+  # & and | are AND and OR wherever they stand, so a column reaching for one
+  # is told the name the bitwise operation goes by.
+  def test_and_or_refuse_a_column
+    e = assert_raises(ArgumentError) { User.where { :flags & 4 } }
+    assert_match(/bitwise_and/, e.message)
+    e = assert_raises(ArgumentError) { User.where { :flags | 4 } }
+    assert_match(/bitwise_or/, e.message)
+  end
+
+  # A condition on one side and something else on the other is the shape a
+  # comparison takes when Ruby's precedence has eaten its parentheses.
+  def test_and_or_refuse_one_side_that_is_not_a_condition
+    e = assert_raises(ArgumentError) { User.where { :age >= 18 & :name.like?("a%") } }
+    assert_match(/parentheses/, e.message)
+    e = assert_raises(ArgumentError) { User.where { (:age == 1) & 4 } }
+    assert_match(/joins conditions/, e.message)
+  end
+
+  # AND and OR are the conditions' own & and |, and a condition handed to a
+  # bitwise operation means one of the two was meant.
   def test_bitwise_refuses_a_condition
-    e = assert_raises(ArgumentError) { User.where { :flags & (:age == 1) } }
+    e = assert_raises(ArgumentError) { User.where { :flags.bitwise_and(:age == 1) } }
     assert_match(/AND and OR/, e.message)
   end
 
   # MySQL and SQLite would take a boolean for the bit it is stored as and
   # quietly answer as AND would; PostgreSQL has no such operator.
   def test_bitwise_refuses_a_boolean_column
-    e = assert_raises(ArgumentError) { User.where { (:active & :active) > 0 }.to_sql }
+    e = assert_raises(ArgumentError) { User.select { :active.bitwise_and(:active) }.to_sql }
     assert_match(/true\?/, e.message)
     assert_raises(ArgumentError) { User.select { ~:active }.to_sql }
   end

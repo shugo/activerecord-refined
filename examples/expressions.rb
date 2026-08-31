@@ -82,12 +82,12 @@ show("a due date a month on",
   LineItem.select { [:sku, (:ordered_on + 1.month).as(:due_on)] }.
     map { |i| [i.sku, i.due_on] })
 
-# The bitwise operators.  & and | are AND and OR between conditions, which is
-# what leaves them free here.  Each expression parenthesises itself, so the
-# grouping is Ruby's rather than the adapter's.
+# The bitwise operations.  AND and OR are what & and | mean, so those two go
+# by name here; a method binds tighter than any comparison, and the expression
+# parenthesises itself in the SQL so the adapter cannot regroup it.
 show("a bit test in a condition",
-  LineItem.where { :flags & 4 > 0 },
-  LineItem.where { :flags & 4 > 0 }.pluck(:sku))
+  LineItem.where { :flags.bitwise_and(4) > 0 },
+  LineItem.where { :flags.bitwise_and(4) > 0 }.pluck(:sku))
 
 # XOR is the one the three adapters do not share.  SQLite has none, so it gets
 # the two operations XOR is made of; PostgreSQL would say #, MySQL ^.
@@ -99,9 +99,9 @@ show("xor, spelled the way the adapter spells it",
 # the three adapters would quietly answer as AND does and the third has no
 # such operator, so the block refuses instead.
 begin
-  LineItem.where { :flags & (:price == 1) }
+  LineItem.where { :flags.bitwise_and(:price == 1) }
 rescue ArgumentError => e
-  puts "--- a condition is not an operand of & ---"
+  puts "--- a condition is not an operand of a bitwise operation ---"
   puts "  #{e.message}"
   puts
 end

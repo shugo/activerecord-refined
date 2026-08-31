@@ -20,21 +20,31 @@ Item.select { greatest(20 - :quantity, 0).as(:shortfall) }
 Item.where { BigDecimal("1.08") * :price > 500 }
 ```
 
-`&`, `|`, `^`, `~`, `<<` and `>>` are SQL's bitwise operators. Between
-conditions `&` and `|` are AND and OR, and that is where they are defined,
-which leaves them free to mean here what SQL means by them:
+`bitwise_and`, `bitwise_or`, `^`, `~`, `<<` and `>>` are SQL's bitwise
+operations. The first two are named rather than spelled `&` and `|`, which
+mean AND and OR between conditions and nothing else anywhere; `bitwise_xor`
+and `bitwise_not` stand beside `^` and `~` for a reader who would rather have
+the name:
 
 ```ruby
-Post.where { :flags & 4 > 0 }
+Post.where { :flags.bitwise_and(4) > 0 }
 # WHERE ("posts"."flags" & 4) > 0
 
-Post.select { (:flags | 4).as(:flags) }
+Post.select { :flags.bitwise_or(4).as(:flags) }
 Post.select { (~:flags).as(:inverted) }
 ```
 
-Each parenthesises itself, which is what keeps Ruby's grouping: PostgreSQL
-gives `&` and `|` the same precedence and reads `a | b & c` from the left,
-where Ruby reads the `&` first.
+A method binds tighter than any comparison, so nothing has to be parenthesised
+to be compared. Each operation parenthesises itself in the SQL as well, since
+PostgreSQL gives `&` and `|` the same precedence and reads `a | b & c` from
+the left.
+
+Reaching for the operator on a column says which name was meant:
+
+```ruby
+Post.where { :flags & 4 }
+# ArgumentError: & between conditions is AND; bitwise_and is SQL's bitwise operator
+```
 
 A boolean column is refused rather than taken for the one bit it is stored as.
 MySQL and SQLite would quietly answer as `AND` would, PostgreSQL has no such
