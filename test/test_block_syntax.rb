@@ -1890,6 +1890,23 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/joins conditions/, e.message)
   end
 
+  # true, false and nil carry & | ^ of Ruby's own, which answer a bare
+  # boolean: :active == true & cond is :active == (true & cond), and the
+  # condition would vanish from the query without a word.
+  def test_a_literal_refuses_to_swallow_a_condition
+    e = assert_raises(ArgumentError) { User.where { :active == true & :name.like?("a%") } }
+    assert_match(/parentheses/, e.message)
+    e = assert_raises(ArgumentError) { User.where { :active == false | :name.like?("a%") } }
+    assert_match(/Ruby's own/, e.message)
+    assert_raises(ArgumentError) { User.where { :active == true ^ :name.like?("a%") } }
+    assert_raises(ArgumentError) { User.where { :age == nil | :name.like?("a%") } }
+    # Over plain values the three stay Ruby's own, so a flag computed in the
+    # block still computes.
+    User.delete_all
+    User.create!(name: "a", active: false)
+    assert_equal(1, User.where { :active == (true & false) }.count)
+  end
+
   # AND and OR are the conditions' own & and |, and a condition handed to a
   # bitwise operation means one of the two was meant.
   def test_bitwise_refuses_a_condition

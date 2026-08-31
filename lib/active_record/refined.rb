@@ -117,6 +117,31 @@ module ActiveRecord
           AST::As.new(AST::Value.new(self), alias_name, quote: quote)
         end
       end
+
+      # true, false and nil are refined not for the query's sake but for the
+      # mistake's: their own & | ^ answer a bare boolean, so Ruby reads
+      # `:active == true & cond` as `:active == (true & cond)` and the
+      # condition vanishes without an error.  Beside a column or a node of
+      # the query's they refuse instead; over plain values they stay Ruby's
+      # through super, so a flag computed in the block still computes.
+      [TrueClass, FalseClass, NilClass].each do |klass|
+        refine klass do
+          def &(other)
+            return super unless other.is_a?(::Symbol) || other.is_a?(AST::Node)
+            AST.refuse_ruby_operator(self, :&)
+          end
+
+          def |(other)
+            return super unless other.is_a?(::Symbol) || other.is_a?(AST::Node)
+            AST.refuse_ruby_operator(self, :|)
+          end
+
+          def ^(other)
+            return super unless other.is_a?(::Symbol) || other.is_a?(AST::Node)
+            AST.refuse_ruby_operator(self, :^)
+          end
+        end
+      end
     end
 
     # What a block can call: the aggregates, the functions, CASE, and the
