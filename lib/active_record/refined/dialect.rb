@@ -317,8 +317,8 @@ module ActiveRecord
       # --- Grouping.  GROUPING SETS, ROLLUP and CUBE, which the standard has
       #     none of; PostgreSQL has all three and the MySQL family rollup alone.
 
-      # Whether the family has the kind of grouping asked for.
-      # @param kind [Symbol] `:grouping_sets`, `:rollup` or `:cube`
+      # Whether the family has the kind of grouping asked for, one of
+      # `:grouping_sets`, `:rollup` and `:cube`.
       def grouping_supported?(_kind) = false
 
       # The MySQL family spells rollup WITH ROLLUP, trailing the group list
