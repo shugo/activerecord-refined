@@ -798,7 +798,7 @@ module ActiveRecord
       # {BlockSyntax}, combined with `&`, `|` and `!`.
       # @yieldreturn [AST::Predicate, AST::Sql, AST::Operation]
       # @example
-      #   Author.where { :age >= 18 & :country.in?(%w[JP US]) }
+      #   Author.where { (:age >= 18) & :country.in?(%w[JP US]) }
       #   Author.where { !:name.like?("A%") }
       def where(opts = nil, *rest, &block)
         if block
