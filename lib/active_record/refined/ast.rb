@@ -5,6 +5,10 @@ require "json"
 
 module ActiveRecord
   module Refined
+    # The nodes a block's expressions build, compiled to Arel when the
+    # relation writes its SQL.  What a user writes is the methods of
+    # {Predications}, {Arithmetics}, {BlockSyntax} and {BlockContext};
+    # what those give back is a node here.
     module AST
       # @private
       NAME = /[[:alpha:]_][[:alnum:]_$]*/
@@ -28,6 +32,7 @@ module ActiveRecord
       # @private
       OPERATOR = %r{\A[+\-*/<>=~!@\#%^&|`?]+\z}
 
+      # @private
       def self.check_name(name, pattern, what)
         return name if pattern.match?(name.to_s)
         raise ArgumentError, "#{name.inspect} is not a plain #{what}"
@@ -38,6 +43,7 @@ module ActiveRecord
       # SQLite's own 1.  SQLite's json() marks the literal for the JSON
       # functions; the MySQL family, which has no json(), reads it with
       # JSON_EXTRACT.
+      # @private
       def self.json_argument(value, model)
         Dialect.for(model).json_argument(value, model)
       end
@@ -551,12 +557,16 @@ module ActiveRecord
         end
       end
 
+      # An expression a block has built, whatever it was built from.  The
+      # methods here are what every one takes; most subclasses add the
+      # conditions of {Predications} and the operators of {Arithmetics}.
       class Node
         # The model travels with the table because some SQL cannot be written
         # without knowing the adapter, and a node is built before anything
         # knows which one it will be rendered for -- a symbol becomes a node
         # inside a refinement, where there is no model to ask.  Most nodes
         # never look at it and only pass it on.
+        # @private
         def to_arel(table, model)
           raise ScriptError, "subclass must override this method"
         end
@@ -643,15 +653,29 @@ module ActiveRecord
           end
       end
 
+      # A condition: what a comparison or one of the tests gives back, and
+      # what `where`, `having` and a join's block hand the relation.
       class Predicate < Node
+        # `AND`.
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { :age.between?(20, 40) & (:country == "JP") }
         def &(other)
           And.new(self, other)
         end
 
+        # `OR`.
+        # @return [AST::Predicate]
         def |(other)
           Or.new(self, other)
         end
 
+        # `NOT (condition)`, negating anything; the negations SQL spells for
+        # itself, `IS NOT NULL` and its kin, have names of their own under
+        # {Predications}.
+        # @return [AST::Predicate]
+        # @example
+        #   Author.where { !:name.like?("A%") }
         def !
           Not.new(self)
         end
@@ -668,12 +692,14 @@ module ActiveRecord
         include Predications
         include Arithmetics
 
+        # @private
         attr_reader :value
 
         def initialize(value)
           @value = value
         end
 
+        # @private
         def to_arel(_table, _model)
           Arel::Nodes.build_quoted(value)
         end
@@ -694,6 +720,7 @@ module ActiveRecord
         include Predications
         include Arithmetics
 
+        # @private
         attr_reader :statement, :binds
 
         def initialize(statement, binds)
@@ -705,10 +732,12 @@ module ActiveRecord
           @binds = binds
         end
 
+        # @private
         def to_arel(_table, model)
           Arel::Nodes::Grouping.new(field_arel(model))
         end
 
+        # @private
         def field_arel(model)
           return Arel.sql(statement) if binds.empty?
 
@@ -731,6 +760,7 @@ module ActiveRecord
         NOTHING = Object.new.freeze
         private_constant :NOTHING
 
+        # @private
         attr_reader :operand, :whens, :default
 
         def initialize(operand = nil, whens = [], default = NOTHING)
@@ -760,6 +790,7 @@ module ActiveRecord
           Case.new(operand, whens, Case.argument(:else, value, block))
         end
 
+        # @private
         def to_arel(table, model)
           raise ArgumentError, "case needs a when before it means anything" if whens.empty?
 
@@ -776,6 +807,7 @@ module ActiveRecord
         # A value or a block, and exactly one of them: the block is what makes
         # `when { :age >= 60 }` read like the blocks around it, and the value is
         # what makes `when(10)` possible at all.
+        # @private
         def self.argument(name, value, block)
           if block
             raise ArgumentError, "#{name} takes a value or a block, not both" unless value.nil?
@@ -802,6 +834,7 @@ module ActiveRecord
                      @kase.default)
           end
 
+          # @private
           def to_arel(_table, _model)
             raise ArgumentError, "when needs a matching then"
           end
@@ -810,6 +843,7 @@ module ActiveRecord
 
       # A path into a JSON document, spelled the two ways the adapters want it.
       # Shared, because reading a value and setting one walk the same path.
+      # @private
       module JsonSteps
         def check_steps(path, called)
           raise ArgumentError, "#{called} needs a key or an index" if path.empty?
@@ -845,14 +879,6 @@ module ActiveRecord
         end
       end
 
-      # Reading inside a JSON document.  Every adapter can do it and no two
-      # spell it alike: PostgreSQL walks an array of steps, SQLite has the
-      # operators with a $ path, and MySQL has the functions -- which is what
-      # this uses for that family, since MariaDB answers to the same adapter
-      # and has no -> at all.
-      #
-      # The path is turned into a string either way, so a key with a space or
-      # a quote in it travels as itself rather than having to be refused.
       # What a dug value may be compared with.  dig_text gives text on every
       # adapter, and what a text value compared with a number means is a
       # question the three answer three ways: `dig_text(:n) == 5` is true on
@@ -954,12 +980,14 @@ module ActiveRecord
       # since a bare string beside JSON would be a JSON string, and every
       # string outranks every number in its ordering.
       class JsonLiteral < Node
+        # @private
         attr_reader :value
 
         def initialize(value)
           @value = value
         end
 
+        # @private
         def to_arel(_table, model)
           Dialect.for(model).json_literal(Arel::Nodes.build_quoted(JSON.generate(value)), model)
         end
@@ -988,6 +1016,7 @@ module ActiveRecord
       # advice to name.  Included after JsonComparable, whose own
       # arithmetic_refusal it overrides.
       module ComputedJson
+        # @private
         def json_value?
           true
         end
@@ -999,6 +1028,16 @@ module ActiveRecord
           end
       end
 
+      # Reading inside a JSON document, which is what {Predications#dig} and
+      # {Predications#dig_text} build.  Every adapter can do it and no two
+      # spell it alike: PostgreSQL walks an array of steps, SQLite has the
+      # operators with a $ path, and MySQL has the functions -- which is what
+      # this uses for that family, since MariaDB answers to the same adapter
+      # and has no -> at all.
+      #
+      # The path is turned into a string either way, so a key with a space or
+      # a quote in it travels as itself rather than having to be refused.
+      # What a dug value compares with is {JsonComparable}'s to say.
       class JsonPath < Node
         include Predications
         include Arithmetics
@@ -1006,6 +1045,7 @@ module ActiveRecord
         include JsonComparable
         include JsonDocument
 
+        # @private
         attr_reader :operand, :path
 
         def initialize(operand, path, json_value: true)
@@ -1014,10 +1054,12 @@ module ActiveRecord
           @json_value = json_value
         end
 
+        # @private
         def json_value?
           @json_value
         end
 
+        # @private
         def to_arel(table, model)
           Dialect.for(model).json_path(
             to_arel_operand(operand, table, model),
@@ -1038,6 +1080,7 @@ module ActiveRecord
         include JsonSteps
         include JsonComparable
 
+        # @private
         attr_reader :operand, :path, :value
 
         def initialize(operand, path, value)
@@ -1047,10 +1090,12 @@ module ActiveRecord
         end
 
         # Always JSON, which is what the comparison guard asks.
+        # @private
         def json_value?
           true
         end
 
+        # @private
         def to_arel(table, model)
           Dialect.for(model).json_set(
             to_arel_operand(operand, table, model),
@@ -1075,6 +1120,7 @@ module ActiveRecord
         include JsonSteps
         include JsonComparable
 
+        # @private
         attr_reader :operand, :keys
 
         def initialize(operand, keys)
@@ -1082,10 +1128,12 @@ module ActiveRecord
           @keys = check_keys(keys)
         end
 
+        # @private
         def json_value?
           true
         end
 
+        # @private
         def to_arel(table, model)
           Dialect.for(model).json_remove(
             to_arel_operand(operand, table, model),
@@ -1113,6 +1161,7 @@ module ActiveRecord
 
       # JSON containment: whether the document holds what is given.
       class JsonContains < Predicate
+        # @private
         attr_reader :operand, :value
 
         def initialize(operand, value)
@@ -1120,6 +1169,7 @@ module ActiveRecord
           @value = value
         end
 
+        # @private
         def to_arel(table, model)
           Dialect.for(model).json_contains(
             to_arel_operand(operand, table, model),
@@ -1133,6 +1183,7 @@ module ActiveRecord
       # ? is a bind placeholder only to sanitize_sql, which none of the SQL
       # written here passes through.
       class JsonHasKey < Predicate
+        # @private
         attr_reader :operand, :key
 
         def initialize(operand, key)
@@ -1140,6 +1191,7 @@ module ActiveRecord
           @key = key
         end
 
+        # @private
         def to_arel(table, model)
           Dialect.for(model).json_has_key(
             to_arel_operand(operand, table, model),
@@ -1160,12 +1212,14 @@ module ActiveRecord
         include JsonComparable
         include ComputedJson
 
+        # @private
         attr_reader :operand
 
         def initialize(operand)
           @operand = operand
         end
 
+        # @private
         def to_arel(table, model)
           Dialect.for(model).json_keys(to_arel_operand(operand, table, model), model)
         end
@@ -1185,6 +1239,7 @@ module ActiveRecord
         include JsonComparable
         include ComputedJson
 
+        # @private
         attr_reader :kind, :values
 
         def initialize(kind, values)
@@ -1192,6 +1247,7 @@ module ActiveRecord
           @values = kind == :object ? check_pairs(values) : values
         end
 
+        # @private
         def to_arel(table, model)
           dialect = Dialect.for(model)
           if kind == :array
@@ -1252,6 +1308,7 @@ module ActiveRecord
           cube: Arel::Nodes::Cube,
         }.freeze
 
+        # @private
         attr_reader :kind, :sets
 
         def initialize(kind, sets)
@@ -1260,6 +1317,7 @@ module ActiveRecord
           @sets = sets
         end
 
+        # @private
         def to_arel(table, model)
           return with_rollup(table, model) if Dialect.for(model).grouping_by_with_rollup?
 
@@ -1289,10 +1347,14 @@ module ActiveRecord
           end
       end
 
+      # A column of a named table, which is what `:posts[:author_id]` builds
+      # (see {BlockSyntax#[]}): the spelling for another table's column in a
+      # join's ON or a query over one.
       class Column < Node
         include Predications
         include Arithmetics
 
+        # @private
         attr_reader :table_name, :column_name
 
         def initialize(table_name, column_name)
@@ -1300,6 +1362,7 @@ module ActiveRecord
           @column_name = column_name
         end
 
+        # @private
         def to_arel(_table, _model)
           Arel::Table.new(table_name)[column_name]
         end
@@ -1327,6 +1390,7 @@ module ActiveRecord
         # @private
         DATE_UNITS = %i[year month day].freeze
 
+        # @private
         attr_reader :left, :operator, :right
 
         def initialize(left, operator, right)
@@ -1335,6 +1399,7 @@ module ActiveRecord
           @right = right
         end
 
+        # @private
         def to_arel(table, model)
           arel_left = to_arel_operand(left, table, model)
           return move_date(arel_left, model) if right.is_a?(::ActiveSupport::Duration)
@@ -1351,6 +1416,7 @@ module ActiveRecord
         # what says so: a column the model declares a date, CURRENT_DATE, or
         # one of those already moved by a date's units.  The other families
         # keep the type themselves and never ask.
+        # @private
         def self.date_operand?(operand, model)
           case operand
           when ::Symbol then model.type_for_attribute(operand).type == :date
@@ -1391,6 +1457,7 @@ module ActiveRecord
       # and SQLite take a boolean for the one bit it is stored as, so
       # `published & active` would quietly be the AND it looks like, while
       # PostgreSQL has no such operator and would say so.
+      # @private
       module BitwiseOperands
         private
           def check_operand(operand, operator)
@@ -1427,6 +1494,7 @@ module ActiveRecord
           :>> => Arel::Nodes::BitwiseShiftRight,
         }.freeze
 
+        # @private
         attr_reader :left, :operator, :right
 
         def initialize(left, operator, right)
@@ -1435,6 +1503,7 @@ module ActiveRecord
           @right = check_operand(right, operator)
         end
 
+        # @private
         def to_arel(table, model)
           check_not_boolean(left, operator, model)
           check_not_boolean(right, operator, model)
@@ -1467,12 +1536,14 @@ module ActiveRecord
         include Arithmetics
         include BitwiseOperands
 
+        # @private
         attr_reader :operand
 
         def initialize(operand)
           @operand = check_operand(operand, :~)
         end
 
+        # @private
         def to_arel(table, model)
           check_not_boolean(operand, :~, model)
           Arel::Nodes::Grouping.new(
@@ -1501,6 +1572,7 @@ module ActiveRecord
         include Predications
         include Arithmetics
 
+        # @private
         attr_reader :function, :partitions, :orders, :frame
 
         def initialize(function, partitions = [], orders = [], frame = nil)
@@ -1538,6 +1610,7 @@ module ActiveRecord
           Over.new(function, partitions, orders, framing(:range, bounds))
         end
 
+        # @private
         def to_arel(table, model)
           window = Arel::Nodes::Window.new
           partitions.each { |expr| window.partition(to_arel_operand(expr, table, model)) }
@@ -1595,6 +1668,8 @@ module ActiveRecord
           end
       end
 
+      # An aggregate -- `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` -- over a group,
+      # or, given {Windowing#over}, a window.
       class Aggregate < Node
         include Predications
         include Arithmetics
@@ -1606,6 +1681,7 @@ module ActiveRecord
         # @private
         DISTINCT_FUNCTIONS = %i[count sum average].freeze
 
+        # @private
         attr_reader :operand, :function, :distinct, :condition
 
         def initialize(operand, function, distinct: false, condition: nil)
@@ -1632,6 +1708,7 @@ module ActiveRecord
                         condition: Case.argument(:filter, condition, block))
         end
 
+        # @private
         def to_arel(table, model)
           return aggregate(operand, table, model) unless condition
 
@@ -1668,6 +1745,7 @@ module ActiveRecord
         include ComputedJson
         include Windowing
 
+        # @private
         attr_reader :kind, :operands, :condition
 
         def initialize(kind, operands, condition: nil)
@@ -1687,10 +1765,12 @@ module ActiveRecord
 
         # Over asks here before writing a window, since a family may take
         # every other aggregate as one but not these two.
+        # @private
         def check_window(model)
           Dialect.for(model).check_json_aggregate_window(json_source, model)
         end
 
+        # @private
         def to_arel(table, model)
           dialect = Dialect.for(model)
           call = Arel::Nodes::NamedFunction.new(
@@ -1727,6 +1807,7 @@ module ActiveRecord
         include Predications
         include Windowing
 
+        # @private
         attr_reader :operand, :separator, :orders, :condition
 
         def initialize(operand, separator, orders: [], condition: nil)
@@ -1754,10 +1835,12 @@ module ActiveRecord
                               condition: Case.argument(:filter, condition, block))
         end
 
+        # @private
         def check_window(model)
           Dialect.for(model).check_string_aggregate_window(model)
         end
 
+        # @private
         def to_arel(table, model)
           dialect = Dialect.for(model)
           kept = condition && !dialect.filter_supported? ?
@@ -1789,6 +1872,7 @@ module ActiveRecord
       # `quote: false` asks for the name as written, for a schema that wants
       # the folding.
       class As < Node
+        # @private
         attr_reader :operand, :alias_name, :quote
 
         def initialize(operand, alias_name, quote: true)
@@ -1801,6 +1885,7 @@ module ActiveRecord
           @quote = quote
         end
 
+        # @private
         def to_arel(table, model)
           to_arel_operand(operand, table, model).as(alias_sql(model))
         end
@@ -1824,6 +1909,7 @@ module ActiveRecord
       class Collate < Node
         include Predications
 
+        # @private
         attr_reader :operand, :name
 
         def initialize(operand, name)
@@ -1831,12 +1917,16 @@ module ActiveRecord
           @operand = operand
         end
 
+        # @private
         def to_arel(table, model)
           Dialect.for(model).collate(to_arel_operand(operand, table, model), name, model)
         end
       end
 
+      # An ordering, `"age" DESC`: a direction on a column or an expression,
+      # and through {#nulls_first} and {#nulls_last} a place for the NULLs.
       class Ordering < Node
+        # @private
         attr_reader :operand, :direction, :nulls
 
         def initialize(operand, direction, nulls = nil)
@@ -1861,17 +1951,22 @@ module ActiveRecord
           Ordering.new(operand, direction, :nulls_last)
         end
 
+        # @private
         def to_arel(table, model)
           ordering = to_arel_operand(operand, table, model).public_send(direction)
           nulls ? ordering.public_send(nulls) : ordering
         end
       end
 
+      # A function call, `UPPER(name)`: what the scalar functions of
+      # {BlockContext} build, and {BlockContext#fn} for a function the list
+      # does not name.
       class Function < Node
         include Predications
         include Arithmetics
         include Windowing
 
+        # @private
         attr_reader :name, :args
 
         def initialize(name, args)
@@ -1879,6 +1974,7 @@ module ActiveRecord
           @args = args
         end
 
+        # @private
         def to_arel(table, model)
           arel_args = args.map { |arg| to_arel_argument(arg, table, model) }
           Arel::Nodes::NamedFunction.new(name, arel_args)
@@ -1894,6 +1990,7 @@ module ActiveRecord
         include Predications
         include Arithmetics
 
+        # @private
         attr_reader :operator, :left, :right
 
         def initialize(operator, left, right)
@@ -1902,6 +1999,7 @@ module ActiveRecord
           @right = check_side(right)
         end
 
+        # @private
         def to_arel(table, model)
           Arel::Nodes::Grouping.new(
             Arel::Nodes::InfixOperation.new(
@@ -1932,8 +2030,10 @@ module ActiveRecord
       # On its own this refuses rather than reaching the database as an error
       # there; over asks it for call_arel instead.
       class WindowFunction < Function
+        # @private
         alias_method :call_arel, :to_arel
 
+        # @private
         def to_arel(_table, _model)
           raise ArgumentError, "#{name.downcase} is a window function; it needs over"
         end
@@ -1946,6 +2046,7 @@ module ActiveRecord
         include Predications
         include Arithmetics
 
+        # @private
         attr_reader :field, :operand
 
         def initialize(field, operand)
@@ -1953,6 +2054,7 @@ module ActiveRecord
           @operand = operand
         end
 
+        # @private
         def to_arel(table, model)
           Arel::Nodes::Extract.new(to_arel_argument(operand, table, model), field.to_s)
         end
@@ -1966,6 +2068,7 @@ module ActiveRecord
         include Predications
         include Arithmetics
 
+        # @private
         attr_reader :operand, :sql_type
 
         def initialize(operand, sql_type)
@@ -1973,6 +2076,7 @@ module ActiveRecord
           @sql_type = AST.check_name(sql_type, TYPE_NAME, "SQL type")
         end
 
+        # @private
         def to_arel(table, model)
           Arel::Nodes::NamedFunction.new(
             "CAST",
@@ -1991,6 +2095,7 @@ module ActiveRecord
         include Predications
         include Arithmetics
 
+        # @private
         attr_reader :name, :precision
 
         def initialize(name, precision = nil)
@@ -2002,6 +2107,7 @@ module ActiveRecord
           @precision = precision
         end
 
+        # @private
         def to_arel(_table, _model)
           Arel::Nodes::SqlLiteral.new(
             precision ? "#{name}(#{precision})" : name)
@@ -2018,6 +2124,7 @@ module ActiveRecord
           :> => :gt, :>= => :gteq, :< => :lt, :<= => :lteq
         }.freeze
 
+        # @private
         attr_reader :column, :operator, :value
 
         def initialize(column, operator, value)
@@ -2026,6 +2133,7 @@ module ActiveRecord
           @value = value
         end
 
+        # @private
         def to_arel(table, model)
           arel_column = to_arel_operand(column, table, model)
           arel_value =
@@ -2054,6 +2162,7 @@ module ActiveRecord
       # IS TRUE, IS FALSE and their negations, which every adapter spells the
       # same way and answers alike, NULL included.
       class TruthValue < Predicate
+        # @private
         attr_reader :operand, :value, :negated
 
         def initialize(operand, value, negated: false)
@@ -2062,6 +2171,7 @@ module ActiveRecord
           @negated = negated
         end
 
+        # @private
         def to_arel(table, model)
           Dialect.for(model).truth_value(
             to_arel_operand(operand, table, model), value, negated, model)
@@ -2072,6 +2182,7 @@ module ActiveRecord
       # quantifiers each take.  The treatment is Active Record's own
       # RelationHandler's: without an explicit select list the subquery
       # selects the model's primary key.
+      # @private
       module SetSubquery
         private
           def set_subquery(relation, spelling)
@@ -2095,10 +2206,12 @@ module ActiveRecord
 
         # Range holds its endpoints to Comparable, which a quoted node is
         # not, so this quacks the three methods Arel's between reads.
+        # @private
         QuotedRange = Struct.new(:begin, :end, :exclude_end) do
           def exclude_end? = exclude_end
         end
 
+        # @private
         attr_reader :operand, :values, :negated
 
         def initialize(operand, values, negated: false)
@@ -2107,6 +2220,7 @@ module ActiveRecord
           @negated = negated
         end
 
+        # @private
         def to_arel(table, model)
           arel_operand = to_arel_operand(operand, table, model)
           case values
@@ -2178,6 +2292,7 @@ module ActiveRecord
       class Quantified < Node
         include SetSubquery
 
+        # @private
         attr_reader :kind, :relation
 
         def initialize(kind, relation)
@@ -2192,6 +2307,7 @@ module ActiveRecord
         # The subquery goes in as its own AST rather than as the manager,
         # which would parenthesise it a second time -- and to PostgreSQL
         # `ANY ((SELECT ...))` is ANY of one scalar, which it refuses.
+        # @private
         def to_arel(_table, _model)
           Arel::Nodes::NamedFunction.new(kind, [set_subquery(relation, kind).ast])
         end
@@ -2201,12 +2317,14 @@ module ActiveRecord
       # outer table through qualified columns.  EXISTS only asks whether a row
       # comes back, so unlike In there is no select list to fix up.
       class Exists < Predicate
+        # @private
         attr_reader :relation
 
         def initialize(relation)
           @relation = relation
         end
 
+        # @private
         def to_arel(_table, _model)
           subquery = relation
           if subquery.eager_loading?
@@ -2216,6 +2334,11 @@ module ActiveRecord
         end
       end
 
+      # `LIKE`, negated or case-insensitive as asked.  The pattern of
+      # {Predications#like?} goes as written, `%` and `_` its wildcards; the
+      # shortcuts, {Predications#start_with?} and its kin, escape theirs and
+      # say so with `ESCAPE`, since SQLite reads no escape character unless
+      # told one.
       class Like < Predicate
         # @private
         ESCAPE = "\\"
@@ -2223,17 +2346,20 @@ module ActiveRecord
         # Escapes % and _ so that they match literally. The pattern built from
         # the result must be used with ESCAPE, since SQLite has no default
         # escape character.
+        # @private
         def self.escape(string)
           ActiveRecord::Base.sanitize_sql_like(string, ESCAPE)
         end
 
         # ORs one LIKE per pattern, for the shortcuts that accept several
         # literals the way String#start_with? does.
+        # @private
         def self.any(operand, patterns)
           patterns.map { |pattern| new(operand, pattern, ESCAPE) }.
             inject { |left, right| Or.new(left, right) }
         end
 
+        # @private
         attr_reader :operand, :pattern, :escape, :case_sensitive, :negated
 
         def initialize(operand, pattern, escape = nil, case_sensitive: true,
@@ -2245,6 +2371,7 @@ module ActiveRecord
           @negated = negated
         end
 
+        # @private
         def to_arel(table, model)
           # Arel matches case-insensitively unless told otherwise, which is
           # what picks ILIKE over LIKE on PostgreSQL.
@@ -2258,6 +2385,7 @@ module ActiveRecord
       # MySQL.  NULL compares as a value here, which is what separates these
       # from = and <>.
       class DistinctFrom < Predicate
+        # @private
         attr_reader :operand, :value, :negated
 
         def initialize(operand, value, negated: false)
@@ -2266,6 +2394,7 @@ module ActiveRecord
           @negated = negated
         end
 
+        # @private
         def to_arel(table, model)
           arel_operand = to_arel_operand(operand, table, model)
           arel_value = value.is_a?(Node) ? value.to_arel(table, model) : value
@@ -2287,6 +2416,7 @@ module ActiveRecord
       class ArrayPredicate < Predicate
         # The whole-array comparisons take the collection kinds their
         # namesakes compare against: an Array, or a Set for the Set methods.
+        # @private
         def self.elements(arg, method_name)
           case arg
           when ::Array then arg
@@ -2296,6 +2426,7 @@ module ActiveRecord
           end
         end
 
+        # @private
         attr_reader :operand, :operator, :elements
 
         def initialize(operand, operator, elements)
@@ -2304,6 +2435,7 @@ module ActiveRecord
           @elements = elements
         end
 
+        # @private
         def to_arel(table, model)
           arel_operand = to_arel_operand(operand, table, model)
           quoted = Arel::Nodes.build_quoted(array_literal)
@@ -2334,6 +2466,7 @@ module ActiveRecord
       # Regular expression match: REGEXP on MySQL, ~ on PostgreSQL.  SQLite has
       # no regexp operator built in, so Arel raises NotImplementedError there.
       class Match < Predicate
+        # @private
         attr_reader :operand, :pattern, :negated
 
         def initialize(operand, pattern, negated: false)
@@ -2342,6 +2475,7 @@ module ActiveRecord
           @negated = negated
         end
 
+        # @private
         def to_arel(table, model)
           arel_operand = to_arel_operand(operand, table, model)
           if negated
@@ -2366,7 +2500,9 @@ module ActiveRecord
           end
       end
 
+      # `AND`, which `&` between two conditions builds.
       class And < Predicate
+        # @private
         attr_reader :left, :right
 
         def initialize(left, right)
@@ -2374,12 +2510,15 @@ module ActiveRecord
           @right = right
         end
 
+        # @private
         def to_arel(table, model)
           left.to_arel(table, model).and(right.to_arel(table, model))
         end
       end
 
+      # `OR`, which `|` between two conditions builds.
       class Or < Predicate
+        # @private
         attr_reader :left, :right
 
         def initialize(left, right)
@@ -2387,18 +2526,22 @@ module ActiveRecord
           @right = right
         end
 
+        # @private
         def to_arel(table, model)
           left.to_arel(table, model).or(right.to_arel(table, model))
         end
       end
 
+      # `NOT`, which `!` on a condition builds.
       class Not < Predicate
+        # @private
         attr_reader :operand
 
         def initialize(operand)
           @operand = operand
         end
 
+        # @private
         def to_arel(table, model)
           Arel::Nodes::Not.new(operand.to_arel(table, model))
         end
