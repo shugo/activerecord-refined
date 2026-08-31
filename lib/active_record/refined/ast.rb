@@ -742,7 +742,7 @@ module ActiveRecord
         # The next `WHEN`: a value to compare the operand against, or a condition as a value or a block.
         # @return [AST::Case::When]
         def when(value = nil, &block)
-          Pending.new(self, Case.argument(:when, value, block))
+          When.new(self, Case.argument(:when, value, block))
         end
 
         # `THEN`, which belongs after a `when`; here it says so.
@@ -788,7 +788,7 @@ module ActiveRecord
         # What a `when` is until its `then` arrives.  A Node so that using it
         # as one says what is missing rather than reaching Active Record as
         # something it cannot read.
-        class Pending < Node
+        class When < Node
           def initialize(kase, condition)
             @kase = kase
             @condition = condition
