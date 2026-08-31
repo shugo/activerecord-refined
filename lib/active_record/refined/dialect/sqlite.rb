@@ -6,6 +6,7 @@ module ActiveRecord
       # SQLite: the fewest of the extras, and a JSON path through its own
       # operators.
       class Sqlite < Dialect
+        # @private
         FUNCTIONS = {
           char_length: "LENGTH", greatest: "MAX", least: "MIN",
           now: nil, date_trunc: nil, rand: "RANDOM",

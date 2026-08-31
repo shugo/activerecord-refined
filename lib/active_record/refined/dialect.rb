@@ -88,6 +88,11 @@ module ActiveRecord
       # -- an unclassified adapter -- keeps every standard name.
       FUNCTIONS = {}.freeze
 
+      # The name this family spells a function with, asked for as the block
+      # builds the call; {FUNCTIONS} is where the answer is looked up.
+      # @param name [Symbol] the method's own name, as {BlockContext} has it
+      # @return [String]
+      # @raise [NotImplementedError] where the family has no equivalent
       def function_name(name, model)
         functions = self.class::FUNCTIONS
         return name.to_s.upcase unless functions.key?(name)
@@ -96,9 +101,19 @@ module ActiveRecord
                 "#{name} has no equivalent on #{model.connection_db_config.adapter}")
       end
 
+      # Whether the datetime value functions take a precision,
+      # `current_timestamp(3)`.  SQLite and SQL Server take none.
       def datetime_precision_supported? = true
+
+      # Whether the family has EXTRACT.  SQLite spells the fields as strftime
+      # formats and SQL Server as DATEPART, so neither answers to the name.
       def extract_supported? = true
+
+      # Whether a comparison can be quantified with ANY or ALL.  SQLite has
+      # neither.
       def quantifiers_supported? = true
+
+      # Whether a FULL OUTER JOIN can be written.  The MySQL family has none.
       def full_outer_join_supported? = true
 
       # The FILTER clause, which restricts an aggregate to the rows a condition
@@ -187,15 +202,29 @@ module ActiveRecord
           "#{model.connection_db_config.adapter}; dig_text gives the value"
       end
 
+      # contains?: whether the document holds what is given.  The standard has
+      # no equivalent; PostgreSQL has @> and the MySQL family JSON_CONTAINS,
+      # and both override.
       def json_contains(_document, _json, model)
         raise NotImplementedError,
           "contains? has no equivalent on #{model.connection_db_config.adapter}"
       end
 
+      # key?: whether the object has the key.  The standard asks json_type at
+      # the path, which is NULL where nothing stands there; PostgreSQL has the
+      # ? operator, the MySQL family JSON_CONTAINS_PATH, Oracle JSON_EXISTS
+      # and SQL Server JSON_PATH_EXISTS, and all four override.
+      #
+      # The key arrives spelled both ways -- bare in `name`, as a $ path in
+      # `path` -- since a family reads it as one or as the other.
       def json_has_key(document, _name, path, _model)
         Arel::Nodes::NamedFunction.new("json_type", [document, path]).not_eq(nil)
       end
 
+      # keys: the keys of an object as a JSON array.  The standard is the
+      # MySQL family's JSON_KEYS; SQLite and PostgreSQL gather theirs through
+      # a subquery over their key-listing functions and Oracle has none, all
+      # three overriding.
       def json_keys(document, _model)
         Arel::Nodes::NamedFunction.new("JSON_KEYS", [document])
       end
@@ -203,6 +232,8 @@ module ActiveRecord
       # --- Writing JSON.  A Ruby document or boolean has to be told apart from
       #     a bare scalar, and embedded as the JSON it spells.
 
+      # The test the writing hooks share: a Hash, an Array or a boolean is a
+      # document, and anything else a bare scalar.
       def json_document_value?(value)
         value.is_a?(::Hash) || value.is_a?(::Array) || value == true || value == false
       end
@@ -286,6 +317,8 @@ module ActiveRecord
       # --- Grouping.  GROUPING SETS, ROLLUP and CUBE, which the standard has
       #     none of; PostgreSQL has all three and the MySQL family rollup alone.
 
+      # Whether the family has the kind of grouping asked for.
+      # @param kind [Symbol] `:grouping_sets`, `:rollup` or `:cube`
       def grouping_supported?(_kind) = false
 
       # The MySQL family spells rollup WITH ROLLUP, trailing the group list

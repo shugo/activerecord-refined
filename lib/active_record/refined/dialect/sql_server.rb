@@ -10,6 +10,7 @@ module ActiveRecord
         # would spell RAND, no date_trunc, and none of the bit aggregates.
         # Of the datetime value functions it has CURRENT_TIMESTAMP alone:
         # the other four are reserved words there that stand for nothing.
+        # @private
         FUNCTIONS = {
           char_length: "LEN",
           format: nil, rand: nil, date_trunc: nil,

@@ -6,6 +6,7 @@ module ActiveRecord
       # Oracle, reached through oracle_enhanced.  Loaded only when a query is
       # built for it.
       class Oracle < Dialect
+        # @private
         FUNCTIONS = {
           char_length: "LENGTH",
           degrees: nil, radians: nil, pi: nil, log2: nil, log10: nil,
