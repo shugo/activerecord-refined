@@ -744,13 +744,20 @@ module ActiveRecord
           end
       end
 
-      # A condition: what a comparison or one of the tests gives back, and
-      # what `where`, `having` and a join's block hand the relation.
-      class Predicate < Node
+      # `&`, `|` and `!` -- AND, OR and NOT, what joins conditions into one
+      # and negates them.  A predicate carries them, and so do {Sql} and
+      # {Operation}, whose SQL is read as a condition the moment it is
+      # combined like one.
+      #
+      # Included in those three and never imported into a refinement, as
+      # {Predications} is: a bare symbol is a column, and a column is not a
+      # condition.
+      module Connectives
         # `AND`.
         # @return [AST::Predicate]
         # @example
         #   Author.where { :age.between?(20, 40) & (:country == "JP") }
+        #   Post.where { sql("score > 0") & (:published == true) }
         def &(other)
           And.new(self, other)
         end
@@ -767,9 +774,19 @@ module ActiveRecord
         # @return [AST::Predicate]
         # @example
         #   Author.where { !:name.like?("A%") }
+        #
+        # Being here rather than only on Predicate is what keeps `!` on Sql
+        # and Operation from falling through to Ruby's own, which would
+        # quietly answer false.
         def !
           Not.new(self)
         end
+      end
+
+      # A condition: what a comparison or one of the tests gives back, and
+      # what `where`, `having` and a join's block hand the relation.
+      class Predicate < Node
+        include Connectives
       end
 
       # A literal standing where an expression would: `select { value(0).as(:depth) }`.
@@ -810,6 +827,8 @@ module ActiveRecord
       class Sql < Node
         include Predications
         include Arithmetics
+        # After Arithmetics, whose & and | refuse: here they are AND and OR.
+        include Connectives
 
         # @private
         attr_reader :statement, :binds
@@ -2088,6 +2107,8 @@ module ActiveRecord
       class Operation < Node
         include Predications
         include Arithmetics
+        # After Arithmetics, whose & and | refuse: here they are AND and OR.
+        include Connectives
 
         # @private
         attr_reader :operator, :left, :right

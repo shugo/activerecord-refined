@@ -233,6 +233,9 @@ Post.where { op("= 1 OR 1", :id, 1) }`,
 show Post.where { sql("length(title) > ?", 12) }
 show Post.where { sql("likes + ?", 10) * 2 >= 28 }
 
+# A condition when what it holds is one: & | ! combine it like any other.
+show Post.where { sql("likes > ?", 3) & (:published == true) }
+
 # A string is a value in every other position, and sent .as it is one
 # at the top of a select list too.
 show Post.select { [:title, "listed".as(:state)] }

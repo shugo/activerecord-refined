@@ -3251,6 +3251,27 @@ class TestBlockSyntax < Minitest::Test
       User.select { (sql("1 + 2") * :age).as(:v) }.to_sql)
   end
 
+  # sql() and op() are conditions whenever what they hold is one, so &, |
+  # and ! mean on them what they mean on a predicate, whichever side they
+  # stand on; ! in particular must not fall through to Ruby's own false.
+  def test_sql_and_op_combine_as_conditions
+    User.delete_all
+    User.create!([{ name: "ann", age: 30 }, { name: "bob", age: 5 }])
+    assert_sql(/WHERE \(age > 10\) AND "users"."name" = 'ann'/,
+      User.where { sql("age > 10") & (:name == "ann") }.to_sql)
+    assert_equal(["ann"], User.where { sql("age > 10") & (:name == "ann") }.pluck(:name))
+    assert_sql(/OR \(age > 10\)/,
+      User.where { (:name == "bob") | sql("age > 10") }.to_sql)
+    assert_sql(/\(age > 10\) AND \(age < 90\)/,
+      User.where { sql("age > 10") & sql("age < 90") }.to_sql)
+    assert_equal(["bob"], User.where { !sql("age > 10") }.pluck(:name))
+    assert_sql(/\("users"."age" > 10\) AND "users"."name" = 'ann'/,
+      User.where { op(">", :age, 10) & (:name == "ann") }.to_sql)
+    assert_equal(["bob"], User.where { !op(">", :age, 10) }.pluck(:name))
+    e = assert_raises(ArgumentError) { User.where { sql("age > 10") & 4 } }
+    assert_match(/joins conditions/, e.message)
+  end
+
   def test_sql_takes_the_statement_as_a_string
     e = assert_raises(ArgumentError) { User.select { sql(:foo) } }
     assert_match(/as a string/, e.message)

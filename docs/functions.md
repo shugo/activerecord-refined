@@ -107,10 +107,10 @@ allows an operator, so a letter, a space or a quote is refused rather than
 written into the SQL. Both sides take what `fn`'s arguments take — a
 column, an expression, a value quoted by the adapter — and a value is
 spelled in the adapter's own syntax, `to_json` saying a document, `'{a,b}'`
-an array; a Ruby Hash or Array is refused rather than guessed at. The
-result is parenthesized, its precedence being unknown, and so is an
-expression on either side, so a dug value cannot be re-grouped out from
-under it:
+an array; a Ruby Hash or Array is refused rather than guessed at. What it
+gives combines with `&`, `|` and `!` as a condition does. The result is
+parenthesized, its precedence being unknown, and so is an expression on
+either side, so a dug value cannot be re-grouped out from under it:
 
 ```ruby
 Post.where { op("&&", :tags, "{ruby,sql}") }
@@ -127,14 +127,18 @@ for by name, and an interpolation has a spelling that is not it: `?` and
 `:name` placeholders take values quoted by the adapter, through
 `sanitize_sql_array`. A `?` is rewritten only when there are positional binds
 to put in it, so PostgreSQL's `?` operators can share a statement with named
-binds, or with none. The result carries the predications and arithmetic, and
-is parenthesized where it stands inside a larger expression — its precedence
-is whatever was written — but comes out bare at the top of a select list,
-where parentheses would refuse an alias written into the string:
+binds, or with none. The result carries the predications and arithmetic,
+combines with `&`, `|` and `!` as a condition does, and is parenthesized
+where it stands inside a larger expression — its precedence is whatever was
+written — but comes out bare at the top of a select list, where parentheses
+would refuse an alias written into the string:
 
 ```ruby
 Post.where { sql("length(title) > ?", 10) }
 # WHERE (length(title) > 10)
+
+Post.where { sql("score > 0") & (:published == true) }
+# WHERE (score > 0) AND "posts"."published" = TRUE
 
 Post.where { sql("score + ?", 10) * 2 >= 60 }
 # WHERE (score + 10) * 2 >= 60

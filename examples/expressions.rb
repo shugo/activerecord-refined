@@ -184,6 +184,12 @@ show("sql, for what neither fn nor op can spell",
   LineItem.where { sql("price % ?", 100) == 0 },
   LineItem.where { sql("price % ?", 100) == 0 }.pluck(:sku))
 
+# What sql or op gives is a condition when what it holds is one, and
+# combines with & | ! like any other.
+show("an sql condition combined with a built one",
+  LineItem.where { sql("quantity > 4") & (:category == "tools") },
+  LineItem.where { sql("quantity > 4") & (:category == "tools") }.pluck(:sku))
+
 # A string sent `as` is a value, like a number.
 show("a string literal in a select list",
   LineItem.select { [:sku, "listed".as(:state)] },
