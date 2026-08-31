@@ -796,7 +796,7 @@ module ActiveRecord
     module QueryMethods
       # `WHERE`, from a block: a condition built with the comparisons of
       # {BlockSyntax}, combined with `&`, `|` and `!`.
-      # @yieldreturn [AST::Predicate]
+      # @yieldreturn [AST::Predicate, AST::Sql, AST::Operation]
       # @example
       #   Author.where { :age >= 18 & :country.in?(%w[JP US]) }
       #   Author.where { !:name.like?("A%") }
@@ -822,7 +822,7 @@ module ActiveRecord
       end
 
       # `HAVING`, from a block: a condition over the aggregates of a group.
-      # @yieldreturn [AST::Predicate]
+      # @yieldreturn [AST::Predicate, AST::Sql, AST::Operation]
       # @example
       #   Author.group { :country }.having { count(:*) > 1 }
       def having(opts = nil, *rest, &block)
@@ -989,6 +989,7 @@ module ActiveRecord
       # table within the query, which is what makes a self join expressible.
       # Without a block it is Active Record's own `joins`.
       # @param as [Symbol, nil]
+      # @yieldreturn [AST::Predicate, AST::Sql, AST::Operation]
       # @example
       #   Author.joins(:posts) { :posts[:author_id] == :authors[:id] }
       #   Employee.joins(:employees, as: :managers) { :managers[:id] == :employees[:manager_id] }
@@ -1005,6 +1006,7 @@ module ActiveRecord
 
       # `LEFT OUTER JOIN`, as {#joins} takes it.
       # @param as [Symbol, nil]
+      # @yieldreturn [AST::Predicate, AST::Sql, AST::Operation]
       # @example
       #   Author.left_outer_joins(:posts) { :posts[:author_id] == :authors[:id] }
       def left_outer_joins(*args, as: nil, &block)
@@ -1021,6 +1023,7 @@ module ActiveRecord
       # `RIGHT OUTER JOIN`, as {#joins} takes it, of a table or a relation;
       # an association name is not among what it takes.
       # @param as [Symbol, nil]
+      # @yieldreturn [AST::Predicate, AST::Sql, AST::Operation]
       # @example
       #   Post.right_outer_joins(:authors) { :posts[:author_id] == :authors[:id] }
       #
@@ -1037,6 +1040,7 @@ module ActiveRecord
       # `FULL OUTER JOIN`, as {#right_outer_joins} takes it.  The MySQL
       # family has none.
       # @param as [Symbol, nil]
+      # @yieldreturn [AST::Predicate, AST::Sql, AST::Operation]
       def full_outer_joins(*args, as: nil, &block)
         check_full_outer_support
         outer_joins(:full_outer_joins, Arel::Nodes::FullOuterJoin,
