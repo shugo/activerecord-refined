@@ -27,8 +27,10 @@ module ActiveRecord
       # @!parse include AST::Arithmetics
 
       # @!method as(alias_name, quote: true)
-      #   The column under an alias: `AS "name"`.  The alias is quoted, so
-      #   the name asked for is the name that comes back on every adapter;
+      #   The column under an alias: `AS "name"`.  A number or a string takes
+      #   it too, for a literal in a select list; {BlockContext#value} carries
+      #   the literals that have no `as` of their own.  The alias is quoted,
+      #   so the name asked for is the name that comes back on every adapter;
       #   `quote: false` writes it bare, for a schema that wants the folding,
       #   and then it has to be a plain name.
       #   @param alias_name [Symbol, String]
@@ -36,6 +38,8 @@ module ActiveRecord
       #   @return [AST::As]
       #   @example
       #     Author.select { :name.as(:author) }   # "authors"."name" AS "author"
+      #     Node.select { [:id, 0.as(:depth)] }   # 0 AS "depth"
+      #     Post.select { [:title, "draft".as(:state)] }   # 'draft' AS "state"
 
       # @!method asc
       #   An ascending ordering, which takes `nulls_first` and `nulls_last`.
