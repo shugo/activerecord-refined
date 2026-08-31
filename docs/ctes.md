@@ -18,11 +18,11 @@ Node.with_recursive(
   ]
 ).from_cte(:tree)
 # WITH RECURSIVE "tree" AS (
-#   SELECT "nodes"."id", "nodes"."name", "nodes"."parent_id", 0 AS depth
+#   SELECT "nodes"."id", "nodes"."name", "nodes"."parent_id", 0 AS "depth"
 #     FROM "nodes" WHERE "nodes"."id" = 1
 #   UNION ALL
 #   SELECT "nodes"."id", "nodes"."name", "nodes"."parent_id",
-#          ("tree"."depth" + 1) AS depth
+#          ("tree"."depth" + 1) AS "depth"
 #     FROM "nodes" INNER JOIN "tree" ON "nodes"."parent_id" = "tree"."id"
 # ) SELECT "nodes".* FROM "tree" AS "nodes"
 ```

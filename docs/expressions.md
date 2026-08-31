@@ -79,12 +79,12 @@ since a literal that has been sent `as` has already said it is a value:
 
 ```ruby
 Node.select { [:id, value(0).as(:depth)] }
-# SELECT "nodes"."id", 0 AS depth FROM "nodes"
+# SELECT "nodes"."id", 0 AS "depth" FROM "nodes"
 
 Node.select { [:id, 0.as(:depth)] }         # the same thing
 
 Post.select { [:title, "draft".as(:state)] }
-# SELECT "posts"."title", 'draft' AS state FROM "posts"
+# SELECT "posts"."title", 'draft' AS "state" FROM "posts"
 ```
 
 What the shorthand does not cover, `value` still spells: `value(true)`,
@@ -98,10 +98,10 @@ that does not need it:
 
 ```ruby
 Author.select { :country.when("JP").then("Japan").else("elsewhere").as(:where) }
-# CASE "country" WHEN 'JP' THEN 'Japan' ELSE 'elsewhere' END AS where
+# CASE "country" WHEN 'JP' THEN 'Japan' ELSE 'elsewhere' END AS "where"
 
 Author.select { case_when { :age >= 60 }.then("senior").else("adult").as(:band) }
-# CASE WHEN "age" >= 60 THEN 'senior' ELSE 'adult' END AS band
+# CASE WHEN "age" >= 60 THEN 'senior' ELSE 'adult' END AS "band"
 
 Author.select { self.case(mod(:age, 10)).when(0).then("round").else("not").as(:v) }
 ```
@@ -121,5 +121,5 @@ Author.select {
 }
 
 Author.select { sum(case_when { :age >= 60 }.then(1).else(0)).as(:seniors) }
-# SUM(CASE WHEN "age" >= 60 THEN 1 ELSE 0 END) AS seniors
+# SUM(CASE WHEN "age" >= 60 THEN 1 ELSE 0 END) AS "seniors"
 ```

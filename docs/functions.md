@@ -96,7 +96,7 @@ written, so a case-sensitive one can be spelled exactly:
 
 ```ruby
 Post.select { fn(:date_trunc, "day", :created_at).as(:day) }
-# SELECT date_trunc('day', "posts"."created_at") AS day
+# SELECT date_trunc('day', "posts"."created_at") AS "day"
 ```
 
 `op` is the same escape hatch for operators — PostgreSQL alone has dozens
@@ -195,7 +195,7 @@ Post.where { extract(:year, :created_at) == 2026 }
 # SELECT "posts".* FROM "posts" WHERE EXTRACT(YEAR FROM "posts"."created_at") = 2026
 
 Post.select { cast(:price, "decimal(10,2)").as(:price) }
-# SELECT CAST("posts"."price" AS decimal(10,2)) AS price
+# SELECT CAST("posts"."price" AS decimal(10,2)) AS "price"
 ```
 
 A duration moves a date. Active Support's `7.days` and the rest go on the

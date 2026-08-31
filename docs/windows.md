@@ -7,10 +7,10 @@ The window is built by chaining, as Arel's own is:
 
 ```ruby
 Author.select { avg(:age).over.partition(:country).as(:country_average) }
-# AVG("age") OVER (PARTITION BY "country") AS country_average
+# AVG("age") OVER (PARTITION BY "country") AS "country_average"
 
 Author.select { row_number.over.partition(:country).order(:age.desc).as(:rank) }
-# ROW_NUMBER() OVER (PARTITION BY "country" ORDER BY "age" DESC) AS rank
+# ROW_NUMBER() OVER (PARTITION BY "country" ORDER BY "age" DESC) AS "rank"
 
 Author.select { count(:*).over.as(:total) }   # COUNT(*) OVER () — every row
 ```
