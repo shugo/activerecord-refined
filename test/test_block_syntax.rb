@@ -171,16 +171,19 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_member
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{ruby\}'/,
       User.where { :tags.member?("ruby") }.to_sql)
   end
 
   def test_member_qualified
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{ruby\}'/,
       User.where { :users[:tags].member?("ruby") }.to_sql)
   end
 
   def test_member_negated
+    skip_without_array_columns
     assert_sql(/WHERE NOT \("users"."tags" @> '\{ruby\}'\)/,
       User.where { !:tags.member?("ruby") }.to_sql)
   end
@@ -193,11 +196,13 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_superset
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{ruby,rails\}'/,
       User.where { :tags.superset?(%w[ruby rails]) }.to_sql)
   end
 
   def test_superset_takes_a_set
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{ruby,rails\}'/,
       User.where { :tags.superset?(Set["ruby", "rails"]) }.to_sql)
   end
@@ -207,16 +212,19 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_subset
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" <@ '\{ruby,rails,go\}'/,
       User.where { :tags.subset?(%w[ruby rails go]) }.to_sql)
   end
 
   def test_intersect
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" && '\{ruby,go\}'/,
       User.where { :tags.intersect?(%w[ruby go]) }.to_sql)
   end
 
   def test_intersect_negated
+    skip_without_array_columns
     assert_sql(/WHERE NOT \("users"."tags" && '\{ruby,go\}'\)/,
       User.where { !:tags.intersect?(%w[ruby go]) }.to_sql)
   end
@@ -3472,6 +3480,18 @@ class TestBlockSyntax < Minitest::Test
     end
     assert_equal("UPPER", base.function_name(:upper, model))
     assert_equal("GREATEST", base.function_name(:greatest, model))
+  end
+
+  # The array comparisons are PostgreSQL's own, and every other leg refuses
+  # them alike -- subset? included, whose <@ used to render anywhere while
+  # its three siblings stopped in Arel's visitor.
+  def test_array_comparisons_refuse_off_postgresql
+    skip "postgresql has the array comparisons" if postgresql?
+    e = assert_raises(NotImplementedError) { User.where { :name.member?("x") } }
+    assert_match(/array comparisons/, e.message)
+    assert_raises(NotImplementedError) { User.where { :name.superset?(%w[x]) } }
+    assert_raises(NotImplementedError) { User.where { :name.subset?(%w[x]) } }
+    assert_raises(NotImplementedError) { User.where { :name.intersect?(%w[x]) } }
   end
 
   # excluded is PostgreSQL's name for the row an upsert could not insert,

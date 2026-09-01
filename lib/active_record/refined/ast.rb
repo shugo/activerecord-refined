@@ -2559,7 +2559,16 @@ module ActiveRecord
         end
 
         # @private
+        #
+        # The refusal is the gem's rather than Arel's: the visitor stopped
+        # @> and && off PostgreSQL, but <@ rode an InfixOperation and
+        # rendered anywhere, so subset? alone reached the other servers.
         def to_arel(table, model)
+          unless Dialect.for(model).array_comparisons_supported?
+            raise NotImplementedError,
+              "the array comparisons have no equivalent on " \
+              "#{model.connection_db_config.adapter}"
+          end
           arel_operand = to_arel_operand(operand, table, model)
           quoted = Arel::Nodes.build_quoted(array_literal)
           case operator

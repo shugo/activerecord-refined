@@ -138,6 +138,11 @@ module ActiveRecord
       # BITAND function -- no OR, XOR, shift or NOT to build the rest from.
       def bitwise_operators_supported? = true
 
+      # The array comparisons -- @>, <@ and && against an array column.
+      # The type and its operators are PostgreSQL's alone, so unlike the
+      # capabilities above this one defaults to no.
+      def array_comparisons_supported? = false
+
       # A lateral join is allowed to stand unless the family refuses it here.
       def check_lateral(_model); end
 
