@@ -293,7 +293,7 @@ module ActiveRecord
       #   `COALESCE(a, b, ...)`: the first that is not NULL.
       #   @return [AST::Function]
       # @!method concat(*strings)
-      #   `CONCAT(a, b, ...)`.
+      #   `CONCAT(a, b, ...)`.  Oracle's takes exactly two.
       #   @return [AST::Function]
       # @!method cos(x)
       #   `COS(x)`.
@@ -305,7 +305,9 @@ module ActiveRecord
       #   `FLOOR(x)`.
       #   @return [AST::Function]
       # @!method length(string)
-      #   `LENGTH(string)`: `LEN` on SQL Server.
+      #   `LENGTH(string)`: `LEN` on SQL Server.  What it counts is the
+      #   family's own -- bytes on MySQL, characters elsewhere, and `LEN`
+      #   leaves trailing spaces out; {#char_length} is the portable count.
       #   @return [AST::Function]
       # @!method ln(x)
       #   `LN(x)`: `LOG` on SQL Server.

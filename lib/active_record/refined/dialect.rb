@@ -197,9 +197,12 @@ module ActiveRecord
           Arel::Nodes::InfixOperation.new(subtract ? :- : :+, date, interval))
       end
 
-      # XOR, which no two families spell alike.  The standard is the two
-      # operations it is made of, naming each operand twice, as SQLite needs;
-      # PostgreSQL and the MySQL family have an operator and override.
+      # XOR, which no two families spell alike.  The default is the two
+      # operations it is made of, naming each operand twice -- built only
+      # from the & and | a family has just claimed through
+      # {#bitwise_operators_supported?}, so wherever it can be reached at
+      # all it works.  Of the five that claim them, SQLite alone keeps it;
+      # the rest have an operator of their own and override.
       def bitwise_xor(left, right)
         Arel::Nodes::Subtraction.new(
           Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseOr.new(left, right)),
