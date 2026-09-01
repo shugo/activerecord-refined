@@ -1243,7 +1243,8 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_length_function_in_where
-    assert_sql(/WHERE LENGTH\("users"."name"\) > 3/,
+    expected = sqlserver? ? "LEN" : "LENGTH"
+    assert_sql(/WHERE #{expected}\("users"."name"\) > 3/,
       User.where { length(:name) > 3 }.to_sql)
   end
 
@@ -1402,8 +1403,32 @@ class TestBlockSyntax < Minitest::Test
   def test_scalar_functions_shared_by_every_adapter
     assert_sql(/SELECT CONCAT\(UPPER\("users"."name"\), 'x'\)/,
       User.select { concat(upper(:name), "x") }.to_sql)
-    assert_sql(/WHERE MOD\("users"."age", 7\) = 0/,
-      User.where { mod(:age, 7) == 0 }.to_sql)
+    if sqlserver?
+      assert_raises(NotImplementedError) { User.where { mod(:age, 7) == 0 } }
+    else
+      assert_sql(/WHERE MOD\("users"."age", 7\) = 0/,
+        User.where { mod(:age, 7) == 0 }.to_sql)
+    end
+  end
+
+  # SQL Server's own spellings for the portable names, and the names it has
+  # no function for.
+  def test_scalar_functions_spelled_differently_on_sqlserver
+    substring, ceiling, natural_log, arctan =
+      sqlserver? ? %w[SUBSTRING CEILING LOG ATN2] : %w[SUBSTR CEIL LN ATAN2]
+    assert_sql(/SELECT #{substring}\("users"."name", 1, 3\)/,
+      User.select { substr(:name, 1, 3) }.to_sql)
+    assert_sql(/SELECT #{ceiling}\("users"."age"\)/, User.select { ceil(:age) }.to_sql)
+    assert_sql(/SELECT #{natural_log}\("users"."age"\)/, User.select { ln(:age) }.to_sql)
+    assert_sql(/SELECT #{arctan}\("users"."age", 2\)/,
+      User.select { atan2(:age, 2) }.to_sql)
+    return unless sqlserver?
+    # log is refused rather than renamed: SQL Server's LOG takes the
+    # arguments in the other order, and a rename would quietly swap them.
+    %i[mod trunc log].each do |name|
+      e = assert_raises(NotImplementedError, name.to_s) { User.select { send(name, :age, 2) } }
+      assert_match(/sqlserver/, e.message)
+    end
   end
 
   # SQLite has no CHAR_LENGTH, GREATEST or LEAST, but LENGTH, MAX and MIN
@@ -1473,7 +1498,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_now_is_unsupported_on_sqlite
-    if sqlite? || oracle?
+    if sqlite? || oracle? || sqlserver?
       assert_raises(NotImplementedError) { User.select { now } }
     else
       assert_sql(/SELECT NOW\(\)/, User.select { now }.to_sql)
@@ -1549,8 +1574,6 @@ class TestBlockSyntax < Minitest::Test
 
   def test_math_functions
     assert_sql(/SELECT SIGN\("users"."age"\)/, User.select { sign(:age) }.to_sql)
-    assert_sql(/SELECT ATAN2\("users"."age", 2\)/,
-      User.select { atan2(:age, 2) }.to_sql)
     # Oracle has neither PI nor degrees/radians, and refuses each by name.
     if oracle?
       assert_raises(NotImplementedError) { User.select { pi } }
@@ -1566,6 +1589,13 @@ class TestBlockSyntax < Minitest::Test
     User.delete_all
     User.create!(name: "alice", age: 60)
     assert_equal(1, User.select { sign(:age).as(:v) }.sole.v.to_i)
+    # The renamed spellings answer the same everywhere -- LEN, SUBSTRING,
+    # CEILING, LOG and ATN2 on SQL Server, the portable names elsewhere.
+    assert_equal("ali", User.select { substr(:name, 1, 3).as(:v) }.sole.v)
+    assert_equal(5, User.select { length(:name).as(:v) }.sole.v.to_i)
+    assert_equal(60, User.select { ceil(:age).as(:v) }.sole.v.to_i)
+    assert_equal(0, User.select { ln(1).as(:v) }.sole.v.to_i)
+    assert_equal(0, User.select { atan2(0, 1).as(:v) }.sole.v.to_i)
     # Oracle has neither degrees nor radians, and raises when either is asked.
     if oracle?
       assert_raises(NotImplementedError) { User.select { radians(:age) } }
@@ -1580,7 +1610,7 @@ class TestBlockSyntax < Minitest::Test
 
   # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
   def test_log2_is_unsupported_on_postgresql
-    if postgresql? || oracle?
+    if postgresql? || oracle? || sqlserver?
       assert_raises(NotImplementedError) { User.select { log2(:age) } }
     else
       assert_sql(/SELECT LOG2\("users"."age"\)/, User.select { log2(:age) }.to_sql)
@@ -1590,6 +1620,7 @@ class TestBlockSyntax < Minitest::Test
   # MySQL spells trunc TRUNCATE, and insists on the second argument the
   # others default to zero.
   def test_trunc
+    skip "sqlserver has no numeric TRUNC" if sqlserver?
     expected = mysql? ? "TRUNCATE" : "TRUNC"
     assert_sql(/SELECT #{expected}\("users"."age", 0\)/,
       User.select { trunc(:age, 0) }.to_sql)
