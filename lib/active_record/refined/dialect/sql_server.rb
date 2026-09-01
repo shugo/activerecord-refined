@@ -21,6 +21,12 @@ module ActiveRecord
         # No FILTER clause, so the aggregate node builds the CASE instead.
         def filter_supported? = false
 
+        # ^ is XOR here as on MySQL, sparing the (a | b) - (a & b) the base
+        # spells for SQLite's sake.
+        def bitwise_xor(left, right)
+          Arel::Nodes::BitwiseXor.new(left, right)
+        end
+
         # No EXTRACT (it has DATEPART), and its datetime value functions take
         # no precision.
         def extract_supported? = false

@@ -125,6 +125,11 @@ module ActiveRecord
       # built by the aggregate node.
       def filter_supported? = true
 
+      # The bitwise operators, & | ^ << >> and ~.  Standard in no SQL, but
+      # every family has them except Oracle, whose one bit operation is the
+      # BITAND function -- no OR, XOR, shift or NOT to build the rest from.
+      def bitwise_operators_supported? = true
+
       # A lateral join is allowed to stand unless the family refuses it here.
       def check_lateral(_model); end
 

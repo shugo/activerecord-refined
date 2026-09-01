@@ -1808,6 +1808,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_bitwise_and_or
+    skip_without_bitwise_operators
     assert_sql(/SELECT \("users"."flags" & 4\) AS "masked"/,
       User.select { :flags.bitwise_and(4).as(:masked) }.to_sql)
     assert_sql(/SELECT \("users"."flags" \| 4\) AS "set"/,
@@ -1819,12 +1820,14 @@ class TestBlockSyntax < Minitest::Test
   # adapter's precedence cannot regroup it -- PostgreSQL gives & and | the
   # same one.
   def test_bitwise_in_where_without_parentheses
+    skip_without_bitwise_operators
     assert_sql(/WHERE \("users"."flags" & 4\) > 0/,
       User.where { :flags.bitwise_and(4) > 0 }.to_sql)
   end
 
   # The two that kept their operators answer to a name as well.
   def test_bitwise_xor_and_not_under_their_names
+    skip_without_bitwise_operators
     assert_equal(User.select { (:flags ^ 10).as(:v) }.to_sql,
                  User.select { :flags.bitwise_xor(10).as(:v) }.to_sql)
     assert_equal(User.select { (~:flags).as(:v) }.to_sql,
@@ -1832,11 +1835,13 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_bitwise_shifts
+    skip_without_bitwise_operators
     assert_sql(/SELECT \("users"."flags" << 2\)/, User.select { :flags << 2 }.to_sql)
     assert_sql(/SELECT \("users"."flags" >> 1\)/, User.select { :flags >> 1 }.to_sql)
   end
 
   def test_bitwise_not
+    skip_without_bitwise_operators
     assert_sql(/SELECT \( ~ "users"."flags"\)/, User.select { ~:flags }.to_sql)
   end
 
@@ -1844,10 +1849,11 @@ class TestBlockSyntax < Minitest::Test
   # starts on MySQL, MySQL's ^ is exponentiation to PostgreSQL, and SQLite has
   # neither, so it gets the two operations XOR is made of.
   def test_bitwise_xor_is_spelled_per_adapter
+    skip_without_bitwise_operators
     sql = User.select { :flags ^ 10 }.to_sql
     if postgresql?
       assert_sql(/SELECT \("users"."flags" # 10\)/, sql)
-    elsif mysql?
+    elsif mysql? || sqlserver?
       assert_sql(/SELECT \("users"."flags" \^ 10\)/, sql)
     else
       assert_sql(
@@ -1855,11 +1861,20 @@ class TestBlockSyntax < Minitest::Test
     end
   end
 
+  # Oracle's dialect answer is pinned on every leg; the oracle leg alone also
+  # reaches the refusal through the DSL.
+  def test_bitwise_refuses_where_the_family_has_none
+    refute(ActiveRecord::Refined::Dialect::Oracle.new.bitwise_operators_supported?)
+    return unless oracle?
+    e = assert_raises(NotImplementedError) { User.select { :flags.bitwise_and(4) } }
+    assert_match(/bitwise/, e.message)
+    assert_raises(NotImplementedError) { User.select { (~:flags).as(:v) } }
+    assert_raises(NotImplementedError) { User.select { (:flags << 2).as(:v) } }
+  end
+
   # Whatever the spelling, the answers agree.
   def test_bitwise_execution
-    # Oracle has BITAND but neither the OR/XOR/shift operators nor a spelling
-    # for the rest, so the block's bitwise operators are not carried there.
-    skip "oracle has no bitwise operators" if oracle?
+    skip_without_bitwise_operators
     User.delete_all
     User.create!(name: "a", flags: 12)
     assert_equal(8, User.select { :flags.bitwise_and(10).as(:v) }.take.v.to_i)
@@ -1917,6 +1932,7 @@ class TestBlockSyntax < Minitest::Test
   # MySQL and SQLite would take a boolean for the bit it is stored as and
   # quietly answer as AND would; PostgreSQL has no such operator.
   def test_bitwise_refuses_a_boolean_column
+    skip_without_bitwise_operators
     e = assert_raises(ArgumentError) { User.select { :active.bitwise_and(:active) }.to_sql }
     assert_match(/true\?/, e.message)
     assert_raises(ArgumentError) { User.select { ~:active }.to_sql }

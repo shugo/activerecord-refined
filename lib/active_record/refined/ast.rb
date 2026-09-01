@@ -471,6 +471,7 @@ module ActiveRecord
       # AND and OR between conditions and mean nothing else anywhere.  The
       # rest keep their operators, with {#bitwise_xor} and {#bitwise_not}
       # beside `^` and `~` for a reader who would rather have the name.
+      # Oracle, which has no bitwise operators at all, refuses every one.
       #
       # @example
       #   LineItem.where { :price * :quantity > 1000 }
@@ -1564,6 +1565,16 @@ module ActiveRecord
       # @private
       module BitwiseOperands
         private
+          # Oracle is the family with no bitwise operators at all -- BITAND
+          # is a function, with no OR, XOR, shift or NOT beside it -- so the
+          # node refuses there before its server has to.
+          def check_operators_exist(model)
+            return if Dialect.for(model).bitwise_operators_supported?
+            raise NotImplementedError,
+              "the bitwise operations have no equivalent on " \
+              "#{model.connection_db_config.adapter}"
+          end
+
           # A predicate alone is refused.  The escape hatches are not: what
           # sql() or op() holds is as often an expression as a condition, and
           # here it is being read as the former.
@@ -1613,6 +1624,7 @@ module ActiveRecord
 
         # @private
         def to_arel(table, model)
+          check_operators_exist(model)
           check_not_boolean(left, model)
           check_not_boolean(right, model)
           arel_left = to_arel_operand(left, table, model)
@@ -1653,6 +1665,7 @@ module ActiveRecord
 
         # @private
         def to_arel(table, model)
+          check_operators_exist(model)
           check_not_boolean(operand, model)
           Arel::Nodes::Grouping.new(
             Arel::Nodes::BitwiseNot.new(to_arel_operand(operand, table, model)))

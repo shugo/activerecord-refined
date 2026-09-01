@@ -46,6 +46,10 @@ Post.where { :flags & 4 }
 # ArgumentError: & between conditions is AND; bitwise_and is SQL's bitwise operator
 ```
 
+Oracle has none of the operators — its one bit operation is the `BITAND`
+function — and the block refuses every one there rather than leaving its
+server to.
+
 A boolean column is refused rather than taken for the one bit it is stored as.
 MySQL and SQLite would quietly answer as `AND` would, PostgreSQL has no such
 operator at all, and one block meaning two things is worse than an
