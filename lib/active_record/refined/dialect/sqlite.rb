@@ -65,6 +65,10 @@ module ActiveRecord
           kind == :arrayagg ? "json_group_array" : "json_group_object"
         end
 
+        def excluded(column, _model)
+          AST::Column.new(:excluded, column)
+        end
+
         # group_concat, with the ORDER BY inside the call from 3.44 on.
         def string_agg(operand, separator, orders, _string, model)
           string_agg_call("group_concat", operand, separator, orders, model)

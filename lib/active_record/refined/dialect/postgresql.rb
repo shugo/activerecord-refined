@@ -20,6 +20,10 @@ module ActiveRecord
           Arel::Nodes::InfixOperation.new("#", left, right)
         end
 
+        def excluded(column, _model)
+          AST::Column.new(:excluded, column)
+        end
+
         def json_path(document, _dollar_path, steps, json_value, _model)
           Arel::Nodes::InfixOperation.new(
             json_value ? :"#>" : :"#>>", document, Arel::Nodes.build_quoted(steps))

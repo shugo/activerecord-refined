@@ -150,10 +150,13 @@ module ActiveRecord
           "bit_count has no equivalent on #{model.connection_db_config.adapter}"
       end
 
-      # The row an upsert could not insert.  PostgreSQL and SQLite name it;
-      # MySQL spells the same thing VALUES(column) and overrides.
-      def excluded(column, _model)
-        AST::Column.new(:excluded, column)
+      # The row an upsert could not insert.  `excluded` is PostgreSQL's name
+      # for it, which SQLite took over and the MySQL family spells
+      # VALUES(column), so each of the three carries its own; the families
+      # without an upsert have nothing for the name to stand in.
+      def excluded(_column, model)
+        raise NotImplementedError,
+          "excluded has no equivalent on #{model.connection_db_config.adapter}"
       end
 
       # true? / false? and their negations.  The standard spells them with the

@@ -3474,6 +3474,17 @@ class TestBlockSyntax < Minitest::Test
     assert_equal("GREATEST", base.function_name(:greatest, model))
   end
 
+  # excluded is PostgreSQL's name for the row an upsert could not insert,
+  # which SQLite took over; the base refuses it with the rest of the
+  # spellings that are nobody's standard.
+  def test_the_base_dialect_refuses_excluded
+    e = assert_raises(NotImplementedError) do
+      ActiveRecord::Refined::Dialect.new.excluded(
+        :hits, model_with_adapter("nothing_of_the_sort"))
+    end
+    assert_match(/excluded/, e.message)
+  end
+
   # Oracle and SQL Server have no server here, but their dialect classes are
   # plain Ruby, so what they refuse is pinned here rather than left to CI --
   # SQL Server used to inherit JSON_KEYS, the alternating JSON_OBJECT and the
