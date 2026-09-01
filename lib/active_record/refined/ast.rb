@@ -38,16 +38,6 @@ module ActiveRecord
         raise ArgumentError, "#{name.inspect} is not a plain #{what}"
       end
 
-      # A Ruby document or boolean written where JSON is wanted.  Taken as it
-      # is, a document would be the string that spells it and a boolean
-      # SQLite's own 1.  SQLite's json() marks the literal for the JSON
-      # functions; the MySQL family, which has no json(), reads it with
-      # JSON_EXTRACT.
-      # @private
-      def self.json_argument(value, model)
-        Dialect.for(model).json_argument(value, model)
-      end
-
       # Whether a node is one of the three things a condition can be: a
       # predicate, or either of the escape hatches, which are conditions
       # whenever what was written inside them is one.
@@ -463,7 +453,7 @@ module ActiveRecord
           JsonHasKey.new(self, key)
         end
 
-        # The keys of the object as a JSON array, as Hash#keys gives them.  Oracle has none.
+        # The keys of the object as a JSON array, as Hash#keys gives them.  Oracle and SQL Server have none.
         # @return [AST::JsonKeys]
         #
         # The keys of the document, as Hash#keys gives them: a JSON array.

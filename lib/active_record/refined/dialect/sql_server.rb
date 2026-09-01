@@ -61,6 +61,12 @@ module ActiveRecord
             "string_agg over a window has no equivalent on #{model.connection_db_config.adapter}"
         end
 
+        # No JSON aggregates, so the SQL:2016 names the base keeps would
+        # reach the server as functions it does not have.
+        def json_aggregate_name(kind)
+          raise NotImplementedError, "json_#{kind} has no equivalent on SQL Server"
+        end
+
         # dig_text reads a scalar out with JSON_VALUE; dig keeps JSON with
         # JSON_QUERY, which returns a fragment and NULL for a scalar leaf.
         def json_path(document, dollar_path, _steps, json_value, _model)

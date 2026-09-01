@@ -214,8 +214,8 @@ module ActiveRecord
 
       # The rows of a group gathered into one JSON array, a value from each:
       # `jsonb_agg` on PostgreSQL, `json_group_array` on SQLite,
-      # `JSON_ARRAYAGG` elsewhere.  What it gives is JSON, which compares
-      # as a dug value does.
+      # `JSON_ARRAYAGG` on the MySQL family and Oracle; SQL Server has none.
+      # What it gives is JSON, which compares as a dug value does.
       # @return [AST::JsonAggregate]
       # @example
       #   Post.group { :author_id }.select { json_arrayagg(:title).as(:titles) }
@@ -224,7 +224,7 @@ module ActiveRecord
       end
 
       # The rows of a group gathered into one JSON object, a key and a value
-      # from each.
+      # from each, named as {#json_arrayagg} is; SQL Server has none.
       # @return [AST::JsonAggregate]
       # @example
       #   Post.select { json_objectagg(:title, :meta.dig(:stars)).as(:stars) }
@@ -248,7 +248,8 @@ module ActiveRecord
       # @!endgroup
       # @!group JSON
 
-      # A JSON array built in the row from the values given.
+      # A JSON array built in the row from the values given.  SQL Server
+      # spells the pair its own way and is not carried yet.
       # @return [AST::JsonBuild]
       # @example
       #   Post.select { json_array(:title, :likes).as(:pair) }
@@ -257,7 +258,8 @@ module ActiveRecord
       end
 
       # A JSON object built in the row from a hash whose values are
-      # expressions.
+      # expressions.  SQL Server spells the pair its own way and is not
+      # carried yet.
       # @param pairs [Hash{Symbol, String => Object}]
       # @return [AST::JsonBuild]
       # @example

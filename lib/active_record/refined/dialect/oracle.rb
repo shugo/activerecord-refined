@@ -45,13 +45,6 @@ module ActiveRecord
           Arel::Nodes::NamedFunction.new("JSON_EXISTS", [document, path])
         end
 
-        # No JSON_KEYS, and the keys reach only through a JSON_TABLE unnest not
-        # written yet.
-        def json_keys(_document, model)
-          raise NotImplementedError,
-            "keys has no equivalent on #{model.connection_db_config.adapter}"
-        end
-
         def json_argument(value, model)
           Arel.sql("#{quote(JSON.generate(value), model)} FORMAT JSON")
         end

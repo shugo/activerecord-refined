@@ -6,6 +6,8 @@ module ActiveRecord
       # What MySQL and MariaDB share, which is most of it; the two part company
       # only in the Mysql and Mariadb subclasses.
       class MysqlCompat < Dialect
+        include MysqlishJsonFunctions
+
         # @private
         FUNCTIONS = { trunc: "TRUNCATE", date_trunc: nil, format: nil }.freeze
 
@@ -40,6 +42,18 @@ module ActiveRecord
         def json_has_key(document, _name, path, _model)
           Arel::Nodes::NamedFunction.new(
             "JSON_CONTAINS_PATH", [document, Arel::Nodes.build_quoted("one"), path])
+        end
+
+        def json_keys(document, _model)
+          Arel::Nodes::NamedFunction.new("JSON_KEYS", [document])
+        end
+
+        # A Ruby document or boolean written where the JSON functions want
+        # JSON is marked as it by reading it out whole: JSON_EXTRACT($).
+        def json_argument(value, _model)
+          json = Arel::Nodes.build_quoted(JSON.generate(value))
+          Arel::Nodes::NamedFunction.new(
+            "JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
         end
 
         def json_aggregate_filter_supported? = false

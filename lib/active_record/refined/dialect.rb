@@ -8,11 +8,15 @@ module ActiveRecord
     # and asked, rather than branched on, for whatever a query builds
     # differently from one database to the next.  The base is the standard
     # spelling an unclassified adapter keeps; each subclass overrides only
-    # where its family departs from it.
+    # where its family departs from it.  Where no spelling is anyone's
+    # standard -- most of JSON -- the base refuses instead, and every family
+    # carries its own.
     #
     # The families are loaded as they are met: an application on PostgreSQL
     # never loads the Oracle class, whose adapter it will never resolve to.
     class Dialect
+      autoload :MysqlishJsonFunctions,
+               "active_record/refined/dialect/mysqlish_json_functions"
       autoload :Sqlite, "active_record/refined/dialect/sqlite"
       autoload :Postgresql, "active_record/refined/dialect/postgresql"
       autoload :MysqlCompat, "active_record/refined/dialect/mysql_compat"
@@ -181,17 +185,20 @@ module ActiveRecord
           Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseAnd.new(left, right)))
       end
 
-      # --- Reading JSON.  The defaults are what an unclassified adapter gets,
-      #     which is SQLite's operators for a path and its functions elsewhere.
+      # --- Reading JSON.  No two families spell it alike and the standard
+      #     names only part of it, so the base refuses each piece and every
+      #     family carries its own; what an unclassified adapter would get
+      #     from any one family's spelling is a query that means nothing on
+      #     the next.
 
-      # dig / dig_text.  The standard is SQLite's -> and ->>, whose ->> keeps
-      # the value's type, so dig_text casts to text for a portable comparison.
-      def json_path(document, dollar_path, _steps, json_value, _model)
-        extracted = Arel::Nodes::InfixOperation.new(
-          json_value ? :"->" : :"->>", document, Arel::Nodes.build_quoted(dollar_path))
-        return extracted if json_value
-        Arel::Nodes::NamedFunction.new(
-          "CAST", [Arel::Nodes::As.new(extracted, Arel::Nodes::SqlLiteral.new("text"))])
+      # dig / dig_text.  Nothing reaches every family: SQLite and PostgreSQL
+      # have operators of their own, MySQL its functions, and the two that
+      # spell it as SQL:2016's JSON_VALUE and JSON_QUERY -- Oracle and SQL
+      # Server -- differ over what a scalar leaf comes back as.  Every
+      # family overrides.
+      def json_path(_document, _dollar_path, _steps, _json_value, model)
+        raise NotImplementedError,
+          "dig has no equivalent on #{model.connection_db_config.adapter}"
       end
 
       # A Ruby value on the JSON side of a comparison belongs to a JSON type;
@@ -210,23 +217,26 @@ module ActiveRecord
           "contains? has no equivalent on #{model.connection_db_config.adapter}"
       end
 
-      # key?: whether the object has the key.  The standard asks json_type at
-      # the path, which is NULL where nothing stands there; PostgreSQL has the
-      # ? operator, the MySQL family JSON_CONTAINS_PATH, Oracle JSON_EXISTS
-      # and SQL Server JSON_PATH_EXISTS, and all four override.
+      # key?: whether the object has the key.  SQL:2016 spells it
+      # JSON_EXISTS, which of the five only Oracle answers to; PostgreSQL has
+      # the ? operator, the MySQL family JSON_CONTAINS_PATH, SQLite json_type
+      # at the path and SQL Server JSON_PATH_EXISTS, so every family
+      # overrides.
       #
       # The key arrives spelled both ways -- bare in `name`, as a $ path in
       # `path` -- since a family reads it as one or as the other.
-      def json_has_key(document, _name, path, _model)
-        Arel::Nodes::NamedFunction.new("json_type", [document, path]).not_eq(nil)
+      def json_has_key(_document, _name, _path, model)
+        raise NotImplementedError,
+          "key? has no equivalent on #{model.connection_db_config.adapter}"
       end
 
-      # keys: the keys of an object as a JSON array.  The standard is the
-      # MySQL family's JSON_KEYS; SQLite and PostgreSQL gather theirs through
-      # a subquery over their key-listing functions and Oracle has none, all
-      # three overriding.
-      def json_keys(document, _model)
-        Arel::Nodes::NamedFunction.new("JSON_KEYS", [document])
+      # keys: the keys of an object as a JSON array.  JSON_KEYS is the MySQL
+      # family's own; SQLite and PostgreSQL gather theirs through a subquery
+      # over their key-listing functions, and Oracle and SQL Server would
+      # reach them only through table unnests not written here.
+      def json_keys(_document, model)
+        raise NotImplementedError,
+          "keys has no equivalent on #{model.connection_db_config.adapter}"
       end
 
       # --- Writing JSON.  A Ruby document or boolean has to be told apart from
@@ -239,48 +249,54 @@ module ActiveRecord
       end
 
       # A Ruby document or boolean written where one of the JSON functions
-      # wants JSON.  The standard marks the literal with JSON_EXTRACT($);
-      # SQLite has json() and Oracle FORMAT JSON, and both override.
-      def json_argument(value, _model)
-        json = Arel::Nodes.build_quoted(JSON.generate(value))
-        Arel::Nodes::NamedFunction.new("JSON_EXTRACT", [json, Arel::Nodes.build_quoted("$")])
+      # wants JSON.  Every family marks the literal its own way --
+      # JSON_EXTRACT($) on MySQL, json() on SQLite, FORMAT JSON on Oracle,
+      # JSON_QUERY on SQL Server -- and none of the marks is another's.
+      def json_argument(_value, model)
+        raise NotImplementedError,
+          "a document written as JSON has no equivalent on " \
+          "#{model.connection_db_config.adapter}"
       end
 
-      # bury: setting a value at a path.  The standard is JSON_SET; PostgreSQL
-      # has jsonb_set and Oracle JSON_TRANSFORM, and both override.
-      def json_set(document, _steps, dollar_path, value, expression, model)
-        Arel::Nodes::NamedFunction.new(
-          "JSON_SET",
-          [document, Arel::Nodes.build_quoted(dollar_path),
-           json_set_value(value, expression, model)])
+      # bury: setting a value at a path.  The standard has no editing
+      # functions at all: JSON_SET is {MysqlishJsonFunctions}', jsonb_set
+      # PostgreSQL's, JSON_TRANSFORM Oracle's and JSON_MODIFY SQL Server's.
+      def json_set(_document, _steps, _dollar_path, _value, _expression, model)
+        raise NotImplementedError,
+          "bury has no equivalent on #{model.connection_db_config.adapter}"
       end
 
-      # except: removing keys.  The standard removes a path apiece with
-      # JSON_REMOVE; PostgreSQL subtracts an array of keys and Oracle removes
-      # through JSON_TRANSFORM, and both override.
-      def json_remove(document, dollar_paths, _steps, _model)
-        Arel::Nodes::NamedFunction.new(
-          "JSON_REMOVE",
-          [document, *dollar_paths.map { |path| Arel::Nodes.build_quoted(path) }])
+      # except: removing keys, for which the standard likewise has nothing.
+      # {MysqlishJsonFunctions} removes a path apiece with JSON_REMOVE,
+      # PostgreSQL subtracts an array of keys, Oracle and SQL Server edit
+      # through JSON_TRANSFORM and JSON_MODIFY.
+      def json_remove(_document, _dollar_paths, _steps, model)
+        raise NotImplementedError,
+          "except has no equivalent on #{model.connection_db_config.adapter}"
       end
 
-      # json_array / json_object built in the row.  The standard says JSON_ARRAY
-      # and JSON_OBJECT with the values (and keys alternating); PostgreSQL has
-      # the jsonb_build_* pair and Oracle a keyword syntax, and both override.
-      def json_build(kind, keys, args, _model)
-        Arel::Nodes::NamedFunction.new(
-          kind == :array ? "JSON_ARRAY" : "JSON_OBJECT", json_build_body(kind, keys, args))
+      # json_array / json_object built in the row.  JSON_ARRAY(a, b) is
+      # SQL:2016, but JSON_OBJECT is where the syntaxes part -- the standard
+      # pairs each key as KEY k VALUE v, {MysqlishJsonFunctions} alternates
+      # them, SQL Server writes k : v -- so the pair travels together and
+      # each family says its own; SQL Server's is not written here yet.
+      def json_build(kind, _keys, _args, model)
+        raise NotImplementedError,
+          "json_#{kind} has no equivalent on #{model.connection_db_config.adapter}"
       end
 
-      # A document or boolean built into json_array/json_object.  The standard
-      # marks it JSON as bury does; PostgreSQL casts to jsonb and overrides.
+      # A document or boolean built into json_array/json_object.  The default
+      # rides through {#json_argument}, and refuses or serves with it;
+      # PostgreSQL casts to jsonb and overrides.
       def json_build_argument(value, model)
         json_argument(value, model)
       end
 
       # json_arrayagg / json_objectagg gather rows into a document.  The
-      # standard names are JSON_ARRAYAGG and JSON_OBJECTAGG; SQLite and
-      # PostgreSQL have their own and override.
+      # names are SQL:2016's own, which the MySQL family and Oracle answer
+      # to, so unlike the rest of JSON the base keeps them; SQLite and
+      # PostgreSQL have names of their own, and SQL Server, which has no
+      # JSON aggregates, refuses.
       def json_aggregate_name(kind)
         kind == :arrayagg ? "JSON_ARRAYAGG" : "JSON_OBJECTAGG"
       end
@@ -326,16 +342,9 @@ module ActiveRecord
       def grouping_by_with_rollup? = false
 
       protected
-        # The value beside a path in JSON_SET: an expression as it is, a
-        # document or boolean as JSON, a bare scalar quoted.
-        def json_set_value(value, expression, model)
-          return expression if expression
-          return Arel::Nodes.build_quoted(value) unless json_document_value?(value)
-          json_argument(value, model)
-        end
-
-        # The arguments to JSON_ARRAY/JSON_OBJECT: an array's values as they
-        # are, an object's keys alternating with them.
+        # The values of JSON_ARRAY as they are, JSON_OBJECT's keys
+        # alternating with theirs -- the shape MysqlishJsonFunctions and
+        # PostgreSQL's jsonb_build_* pair both take.
         def json_build_body(kind, keys, args)
           return args if kind == :array
           keys.zip(args).flat_map { |key, arg| [Arel::Nodes.build_quoted(key), arg] }

@@ -3379,6 +3379,43 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(ArgumentError) { d.register("registered_here") }
   end
 
+  # The base dialect refuses the JSON it has no standard spelling for, so an
+  # adapter nobody classifies is told at once rather than handed one family's
+  # SQL; only the aggregates keep their names, which are SQL:2016's own.
+  def test_the_base_dialect_refuses_nonstandard_json
+    base = ActiveRecord::Refined::Dialect.new
+    model = model_with_adapter("nothing_of_the_sort")
+    {
+      "dig" => -> { base.json_path(nil, "$.a", "{a}", true, model) },
+      "key?" => -> { base.json_has_key(nil, "a", "$.a", model) },
+      "keys" => -> { base.json_keys(nil, model) },
+      "bury" => -> { base.json_set(nil, "{a}", "$.a", 1, nil, model) },
+      "except" => -> { base.json_remove(nil, ["$.a"], "{a}", model) },
+      "json_object" => -> { base.json_build(:object, ["a"], [1], model) },
+      "a document as JSON" => -> { base.json_argument({ a: 1 }, model) },
+    }.each do |what, call|
+      e = assert_raises(NotImplementedError, what) { call.call }
+      assert_match(/nothing_of_the_sort/, e.message, what)
+    end
+    assert_equal("JSON_ARRAYAGG", base.json_aggregate_name(:arrayagg))
+    assert_equal("JSON_OBJECTAGG", base.json_aggregate_name(:objectagg))
+  end
+
+  # Oracle and SQL Server have no server here, but their dialect classes are
+  # plain Ruby, so what they refuse is pinned here rather than left to CI --
+  # SQL Server used to inherit JSON_KEYS, the alternating JSON_OBJECT and the
+  # aggregate names, none of which it has.
+  def test_the_serverless_families_refuse_their_json_gaps
+    d = ActiveRecord::Refined::Dialect
+    sqlserver = model_with_adapter("sqlserver")
+    assert_raises(NotImplementedError) { d::SqlServer.new.json_aggregate_name(:arrayagg) }
+    assert_raises(NotImplementedError) { d::SqlServer.new.json_keys(nil, sqlserver) }
+    assert_raises(NotImplementedError) { d::SqlServer.new.json_build(:object, ["a"], [1], sqlserver) }
+    assert_raises(NotImplementedError) {
+      d::Oracle.new.json_keys(nil, model_with_adapter("oracle_enhanced"))
+    }
+  end
+
   private
     def model_with_adapter(adapter, mariadb: false)
       config = Struct.new(:adapter).new(adapter)
