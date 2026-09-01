@@ -187,6 +187,12 @@ CI runs one job per adapter with the servers as service containers, Oracle
 and SQL Server included — those two have no local server here and run on CI
 alone, their clients opted in the same way.
 
+Coverage is opt-in: `COVERAGE=1 rake test` writes an HTML report to
+`coverage/`, and `COVERAGE=1 rake test:all` merges the adapters' runs into
+one — the number worth reading, since a dialect's lines are reached only by
+its own adapter's leg. The Oracle and SQL Server dialects stay mostly
+uncovered locally for the same reason their tests run on CI alone.
+
 ## Releasing
 
 Pushing a `v*` tag runs `.github/workflows/push_gem.yml`, which builds the gem

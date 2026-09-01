@@ -3,6 +3,22 @@
 $LOAD_PATH.unshift(File.join(File.dirname(__FILE__), "..", "lib"))
 $LOAD_PATH.unshift(File.dirname(__FILE__))
 
+# Coverage is asked for by name -- COVERAGE=1 rake test -- and starts before
+# Bundler.require loads the gem, since a line loaded first is a line
+# SimpleCov cannot watch.  Each leg names its run after the adapter, so
+# COVERAGE=1 rake test:all merges the five into one report under coverage/,
+# and that merged number is the one worth reading: a dialect's lines are
+# reached only by its own adapter's leg.  Branch coverage is on because so
+# much of this gem is one small conditional per adapter.
+if ENV["COVERAGE"]
+  require "simplecov"
+  SimpleCov.start do
+    enable_coverage :branch
+    command_name [ENV.fetch("ADAPTER", "sqlite3"), ENV["DB_PORT"]].compact.join(":")
+    add_filter "/test/"
+  end
+end
+
 require "minitest/autorun"
 Bundler.require
 
