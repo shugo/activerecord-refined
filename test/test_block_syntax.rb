@@ -2436,6 +2436,11 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_json_aggregates_are_spelled_per_adapter
+    if sqlserver?
+      e = assert_raises(NotImplementedError) { Doc.select { json_arrayagg(:name) } }
+      assert_match(/json_arrayagg/, e.message)
+      return
+    end
     arrayagg = Doc.select { json_arrayagg(:name) }
     objectagg = Doc.select { json_objectagg(:name, :meta) }
     if sqlite?
@@ -2576,12 +2581,18 @@ class TestBlockSyntax < Minitest::Test
   # An empty document means the same thing on all four, so unlike dig and
   # except the empty call stands.
   def test_json_build_of_nothing
+    skip_without_json_build
     seed_docs
     assert_equal([], json_aggregate(Doc.select { json_array.as(:v) }))
     assert_equal({}, json_aggregate(Doc.select { json_object.as(:v) }))
   end
 
   def test_json_build_is_spelled_per_adapter
+    if sqlserver?
+      e = assert_raises(NotImplementedError) { Doc.select { json_array(:name) } }
+      assert_match(/json_array/, e.message)
+      return
+    end
     relation = Doc.select { [json_array(:name), json_object(a: :name)] }
     if postgresql?
       assert_sql(/jsonb_build_array\("docs"."name"\)/, relation)

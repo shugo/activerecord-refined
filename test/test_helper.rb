@@ -193,11 +193,12 @@ module SqlAssertions
     mariadb? || oracle? || sqlserver? ? JSON.generate(hash) : hash
   end
 
-  # SQL Server 2022 has JSON_ARRAY and JSON_OBJECT, but building one from a
-  # dug scalar needs a scalar JSON_QUERY it has no ALLOW SCALARS for, and it
-  # has no JSON aggregate at all.
+  # SQL Server 2022 has JSON_ARRAY and JSON_OBJECT, but spells the object's
+  # pairs its own way and would build one from a dug scalar only through a
+  # JSON_QUERY it has no ALLOW SCALARS for, so the dialect refuses the pair;
+  # the refusal has tests of its own.
   def skip_without_json_build
-    skip "#{ADAPTER} cannot build JSON from a dug value here" if sqlserver?
+    skip "#{ADAPTER} does not carry json_array and json_object" if sqlserver?
   end
 
   def skip_without_json_aggregate
