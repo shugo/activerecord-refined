@@ -3428,6 +3428,21 @@ class TestBlockSyntax < Minitest::Test
     assert_equal("JSON_OBJECTAGG", base.json_aggregate_name(:objectagg))
   end
 
+  # The base upcases a name most families share, and nils the ones that are
+  # one or two families' own -- an adapter nobody classifies is refused
+  # rather than handed FORMAT, which on MySQL is a different function under
+  # the same name.
+  def test_the_base_functions_refuse_the_minority_names
+    base = ActiveRecord::Refined::Dialect.new
+    model = model_with_adapter("nothing_of_the_sort")
+    %i[format rand date_trunc now log2 bit_and bit_or bit_xor].each do |name|
+      e = assert_raises(NotImplementedError, name.to_s) { base.function_name(name, model) }
+      assert_match(/nothing_of_the_sort/, e.message)
+    end
+    assert_equal("UPPER", base.function_name(:upper, model))
+    assert_equal("GREATEST", base.function_name(:greatest, model))
+  end
+
   # Oracle and SQL Server have no server here, but their dialect classes are
   # plain Ruby, so what they refuse is pinned here rather than left to CI --
   # SQL Server used to inherit JSON_KEYS, the alternating JSON_OBJECT and the

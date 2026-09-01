@@ -88,9 +88,17 @@ module ActiveRecord
 
       # The scalar and datetime functions a family spells differently, or has
       # none of.  A name it does not list it spells like the method, upper
-      # cased; a nil says it has no equivalent, and the block raises.  The base
-      # -- an unclassified adapter -- keeps every standard name.
-      FUNCTIONS = {}.freeze
+      # cased; a nil says it has no equivalent, and the block raises.  The
+      # base -- an unclassified adapter -- keeps the names most families
+      # share and nils the ones that are one or two families' own: printf
+      # FORMAT, whose name MySQL hands to a different function entirely,
+      # RAND, DATE_TRUNC, NOW, LOG2 and the three bit aggregates.  A family
+      # that has one of them says so in a table of its own, since the tables
+      # shadow rather than merge.
+      FUNCTIONS = {
+        format: nil, rand: nil, date_trunc: nil, now: nil, log2: nil,
+        bit_and: nil, bit_or: nil, bit_xor: nil,
+      }.freeze
 
       # The name this family spells a function with, asked for as the block
       # builds the call; {FUNCTIONS} is where the answer is looked up.
