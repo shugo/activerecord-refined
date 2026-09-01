@@ -29,6 +29,9 @@ module ActiveRecord
         # No FILTER clause, so the aggregate node builds the CASE instead.
         def filter_supported? = false
 
+        # The operators are all here, the shifts included -- CI executes them.
+        def bitwise_operators_supported? = true
+
         # ^ is XOR here as on MySQL, sparing the (a | b) - (a & b) the base
         # spells for SQLite's sake.
         def bitwise_xor(left, right)

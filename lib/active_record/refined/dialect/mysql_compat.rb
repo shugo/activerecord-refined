@@ -13,6 +13,7 @@ module ActiveRecord
 
         def full_outer_join_supported? = false
         def filter_supported? = false
+        def bitwise_operators_supported? = true
 
         def bit_count(expr, _model)
           AST::Function.new("BIT_COUNT", [expr])

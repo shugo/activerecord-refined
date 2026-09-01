@@ -6,6 +6,7 @@ module ActiveRecord
       # PostgreSQL, and the adapters that answer for the same server.
       class Postgresql < Dialect
         def array_comparisons_supported? = true
+        def bitwise_operators_supported? = true
 
         # @private
         FUNCTIONS = { log2: nil, rand: "RANDOM" }.freeze

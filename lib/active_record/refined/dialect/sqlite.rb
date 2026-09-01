@@ -19,6 +19,7 @@ module ActiveRecord
         def datetime_precision_supported? = false
         def extract_supported? = false
         def quantifiers_supported? = false
+        def bitwise_operators_supported? = true
 
         def check_lateral(model)
           raise NotImplementedError,

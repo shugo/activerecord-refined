@@ -1900,9 +1900,10 @@ class TestBlockSyntax < Minitest::Test
     end
   end
 
-  # Oracle's dialect answer is pinned on every leg; the oracle leg alone also
-  # reaches the refusal through the DSL.
+  # The base and Oracle's dialect answers are pinned on every leg; the
+  # oracle leg alone also reaches the refusal through the DSL.
   def test_bitwise_refuses_where_the_family_has_none
+    refute(ActiveRecord::Refined::Dialect.new.bitwise_operators_supported?)
     refute(ActiveRecord::Refined::Dialect::Oracle.new.bitwise_operators_supported?)
     return unless oracle?
     e = assert_raises(NotImplementedError) { User.select { :flags.bitwise_and(4) } }

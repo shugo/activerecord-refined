@@ -6,8 +6,6 @@ module ActiveRecord
       # Oracle, reached through oracle_enhanced.  Loaded only when a query is
       # built for it.
       class Oracle < Dialect
-        def bitwise_operators_supported? = false
-
         # @private
         FUNCTIONS = {
           char_length: "LENGTH",

@@ -133,14 +133,14 @@ module ActiveRecord
       # built by the aggregate node.
       def filter_supported? = true
 
-      # The bitwise operators, & | ^ << >> and ~.  Standard in no SQL, but
-      # every family has them except Oracle, whose one bit operation is the
-      # BITAND function -- no OR, XOR, shift or NOT to build the rest from.
-      def bitwise_operators_supported? = true
+      # The bitwise operators, & | ^ << >> and ~.  No SQL standard has them,
+      # so unlike the capabilities above the base refuses and each family
+      # that has the operators says so itself -- which of the seven is every
+      # one but Oracle, whose single bit operation is the BITAND function.
+      def bitwise_operators_supported? = false
 
       # The array comparisons -- @>, <@ and && against an array column.
-      # The type and its operators are PostgreSQL's alone, so unlike the
-      # capabilities above this one defaults to no.
+      # The type and its operators are PostgreSQL's alone.
       def array_comparisons_supported? = false
 
       # A lateral join is allowed to stand unless the family refuses it here.
