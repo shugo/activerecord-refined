@@ -171,16 +171,19 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_member
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{ruby\}'/,
       User.where { :tags.member?("ruby") }.to_sql)
   end
 
   def test_member_qualified
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{ruby\}'/,
       User.where { :users[:tags].member?("ruby") }.to_sql)
   end
 
   def test_member_negated
+    skip_without_array_columns
     assert_sql(/WHERE NOT \("users"."tags" @> '\{ruby\}'\)/,
       User.where { !:tags.member?("ruby") }.to_sql)
   end
@@ -193,11 +196,13 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_superset
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{ruby,rails\}'/,
       User.where { :tags.superset?(%w[ruby rails]) }.to_sql)
   end
 
   def test_superset_takes_a_set
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" @> '\{ruby,rails\}'/,
       User.where { :tags.superset?(Set["ruby", "rails"]) }.to_sql)
   end
@@ -207,16 +212,19 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_subset
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" <@ '\{ruby,rails,go\}'/,
       User.where { :tags.subset?(%w[ruby rails go]) }.to_sql)
   end
 
   def test_intersect
+    skip_without_array_columns
     assert_sql(/WHERE "users"."tags" && '\{ruby,go\}'/,
       User.where { :tags.intersect?(%w[ruby go]) }.to_sql)
   end
 
   def test_intersect_negated
+    skip_without_array_columns
     assert_sql(/WHERE NOT \("users"."tags" && '\{ruby,go\}'\)/,
       User.where { !:tags.intersect?(%w[ruby go]) }.to_sql)
   end
@@ -1243,7 +1251,8 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_length_function_in_where
-    assert_sql(/WHERE LENGTH\("users"."name"\) > 3/,
+    expected = sqlserver? ? "LEN" : "LENGTH"
+    assert_sql(/WHERE #{expected}\("users"."name"\) > 3/,
       User.where { length(:name) > 3 }.to_sql)
   end
 
@@ -1402,8 +1411,32 @@ class TestBlockSyntax < Minitest::Test
   def test_scalar_functions_shared_by_every_adapter
     assert_sql(/SELECT CONCAT\(UPPER\("users"."name"\), 'x'\)/,
       User.select { concat(upper(:name), "x") }.to_sql)
-    assert_sql(/WHERE MOD\("users"."age", 7\) = 0/,
-      User.where { mod(:age, 7) == 0 }.to_sql)
+    if sqlserver?
+      assert_raises(NotImplementedError) { User.where { mod(:age, 7) == 0 } }
+    else
+      assert_sql(/WHERE MOD\("users"."age", 7\) = 0/,
+        User.where { mod(:age, 7) == 0 }.to_sql)
+    end
+  end
+
+  # SQL Server's own spellings for the portable names, and the names it has
+  # no function for.
+  def test_scalar_functions_spelled_differently_on_sqlserver
+    substring, ceiling, natural_log, arctan =
+      sqlserver? ? %w[SUBSTRING CEILING LOG ATN2] : %w[SUBSTR CEIL LN ATAN2]
+    assert_sql(/SELECT #{substring}\("users"."name", 1, 3\)/,
+      User.select { substr(:name, 1, 3) }.to_sql)
+    assert_sql(/SELECT #{ceiling}\("users"."age"\)/, User.select { ceil(:age) }.to_sql)
+    assert_sql(/SELECT #{natural_log}\("users"."age"\)/, User.select { ln(:age) }.to_sql)
+    assert_sql(/SELECT #{arctan}\("users"."age", 2\)/,
+      User.select { atan2(:age, 2) }.to_sql)
+    return unless sqlserver?
+    # log is refused rather than renamed: SQL Server's LOG takes the
+    # arguments in the other order, and a rename would quietly swap them.
+    %i[mod trunc log].each do |name|
+      e = assert_raises(NotImplementedError, name.to_s) { User.select { send(name, :age, 2) } }
+      assert_match(/sqlserver/, e.message)
+    end
   end
 
   # SQLite has no CHAR_LENGTH, GREATEST or LEAST, but LENGTH, MAX and MIN
@@ -1473,7 +1506,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_now_is_unsupported_on_sqlite
-    if sqlite? || oracle?
+    if sqlite? || oracle? || sqlserver?
       assert_raises(NotImplementedError) { User.select { now } }
     else
       assert_sql(/SELECT NOW\(\)/, User.select { now }.to_sql)
@@ -1549,8 +1582,6 @@ class TestBlockSyntax < Minitest::Test
 
   def test_math_functions
     assert_sql(/SELECT SIGN\("users"."age"\)/, User.select { sign(:age) }.to_sql)
-    assert_sql(/SELECT ATAN2\("users"."age", 2\)/,
-      User.select { atan2(:age, 2) }.to_sql)
     # Oracle has neither PI nor degrees/radians, and refuses each by name.
     if oracle?
       assert_raises(NotImplementedError) { User.select { pi } }
@@ -1566,6 +1597,13 @@ class TestBlockSyntax < Minitest::Test
     User.delete_all
     User.create!(name: "alice", age: 60)
     assert_equal(1, User.select { sign(:age).as(:v) }.sole.v.to_i)
+    # The renamed spellings answer the same everywhere -- LEN, SUBSTRING,
+    # CEILING, LOG and ATN2 on SQL Server, the portable names elsewhere.
+    assert_equal("ali", User.select { substr(:name, 1, 3).as(:v) }.sole.v)
+    assert_equal(5, User.select { length(:name).as(:v) }.sole.v.to_i)
+    assert_equal(60, User.select { ceil(:age).as(:v) }.sole.v.to_i)
+    assert_equal(0, User.select { ln(1).as(:v) }.sole.v.to_i)
+    assert_equal(0, User.select { atan2(0, 1).as(:v) }.sole.v.to_i)
     # Oracle has neither degrees nor radians, and raises when either is asked.
     if oracle?
       assert_raises(NotImplementedError) { User.select { radians(:age) } }
@@ -1580,7 +1618,7 @@ class TestBlockSyntax < Minitest::Test
 
   # PostgreSQL spells log2(x) as log(2, x), which no renaming carries.
   def test_log2_is_unsupported_on_postgresql
-    if postgresql? || oracle?
+    if postgresql? || oracle? || sqlserver?
       assert_raises(NotImplementedError) { User.select { log2(:age) } }
     else
       assert_sql(/SELECT LOG2\("users"."age"\)/, User.select { log2(:age) }.to_sql)
@@ -1590,6 +1628,7 @@ class TestBlockSyntax < Minitest::Test
   # MySQL spells trunc TRUNCATE, and insists on the second argument the
   # others default to zero.
   def test_trunc
+    skip "sqlserver has no numeric TRUNC" if sqlserver?
     expected = mysql? ? "TRUNCATE" : "TRUNC"
     assert_sql(/SELECT #{expected}\("users"."age", 0\)/,
       User.select { trunc(:age, 0) }.to_sql)
@@ -1808,6 +1847,7 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_bitwise_and_or
+    skip_without_bitwise_operators
     assert_sql(/SELECT \("users"."flags" & 4\) AS "masked"/,
       User.select { :flags.bitwise_and(4).as(:masked) }.to_sql)
     assert_sql(/SELECT \("users"."flags" \| 4\) AS "set"/,
@@ -1819,12 +1859,14 @@ class TestBlockSyntax < Minitest::Test
   # adapter's precedence cannot regroup it -- PostgreSQL gives & and | the
   # same one.
   def test_bitwise_in_where_without_parentheses
+    skip_without_bitwise_operators
     assert_sql(/WHERE \("users"."flags" & 4\) > 0/,
       User.where { :flags.bitwise_and(4) > 0 }.to_sql)
   end
 
   # The two that kept their operators answer to a name as well.
   def test_bitwise_xor_and_not_under_their_names
+    skip_without_bitwise_operators
     assert_equal(User.select { (:flags ^ 10).as(:v) }.to_sql,
                  User.select { :flags.bitwise_xor(10).as(:v) }.to_sql)
     assert_equal(User.select { (~:flags).as(:v) }.to_sql,
@@ -1832,11 +1874,13 @@ class TestBlockSyntax < Minitest::Test
   end
 
   def test_bitwise_shifts
+    skip_without_bitwise_operators
     assert_sql(/SELECT \("users"."flags" << 2\)/, User.select { :flags << 2 }.to_sql)
     assert_sql(/SELECT \("users"."flags" >> 1\)/, User.select { :flags >> 1 }.to_sql)
   end
 
   def test_bitwise_not
+    skip_without_bitwise_operators
     assert_sql(/SELECT \( ~ "users"."flags"\)/, User.select { ~:flags }.to_sql)
   end
 
@@ -1844,10 +1888,11 @@ class TestBlockSyntax < Minitest::Test
   # starts on MySQL, MySQL's ^ is exponentiation to PostgreSQL, and SQLite has
   # neither, so it gets the two operations XOR is made of.
   def test_bitwise_xor_is_spelled_per_adapter
+    skip_without_bitwise_operators
     sql = User.select { :flags ^ 10 }.to_sql
     if postgresql?
       assert_sql(/SELECT \("users"."flags" # 10\)/, sql)
-    elsif mysql?
+    elsif mysql? || sqlserver?
       assert_sql(/SELECT \("users"."flags" \^ 10\)/, sql)
     else
       assert_sql(
@@ -1855,11 +1900,21 @@ class TestBlockSyntax < Minitest::Test
     end
   end
 
+  # The base and Oracle's dialect answers are pinned on every leg; the
+  # oracle leg alone also reaches the refusal through the DSL.
+  def test_bitwise_refuses_where_the_family_has_none
+    refute(ActiveRecord::Refined::Dialect.new.bitwise_operators_supported?)
+    refute(ActiveRecord::Refined::Dialect::Oracle.new.bitwise_operators_supported?)
+    return unless oracle?
+    e = assert_raises(NotImplementedError) { User.select { :flags.bitwise_and(4) } }
+    assert_match(/bitwise/, e.message)
+    assert_raises(NotImplementedError) { User.select { (~:flags).as(:v) } }
+    assert_raises(NotImplementedError) { User.select { (:flags << 2).as(:v) } }
+  end
+
   # Whatever the spelling, the answers agree.
   def test_bitwise_execution
-    # Oracle has BITAND but neither the OR/XOR/shift operators nor a spelling
-    # for the rest, so the block's bitwise operators are not carried there.
-    skip "oracle has no bitwise operators" if oracle?
+    skip_without_bitwise_operators
     User.delete_all
     User.create!(name: "a", flags: 12)
     assert_equal(8, User.select { :flags.bitwise_and(10).as(:v) }.take.v.to_i)
@@ -1917,6 +1972,7 @@ class TestBlockSyntax < Minitest::Test
   # MySQL and SQLite would take a boolean for the bit it is stored as and
   # quietly answer as AND would; PostgreSQL has no such operator.
   def test_bitwise_refuses_a_boolean_column
+    skip_without_bitwise_operators
     e = assert_raises(ArgumentError) { User.select { :active.bitwise_and(:active) }.to_sql }
     assert_match(/true\?/, e.message)
     assert_raises(ArgumentError) { User.select { ~:active }.to_sql }
@@ -3410,6 +3466,44 @@ class TestBlockSyntax < Minitest::Test
     end
     assert_equal("JSON_ARRAYAGG", base.json_aggregate_name(:arrayagg))
     assert_equal("JSON_OBJECTAGG", base.json_aggregate_name(:objectagg))
+  end
+
+  # The base upcases a name most families share, and nils the ones that are
+  # one or two families' own -- an adapter nobody classifies is refused
+  # rather than handed FORMAT, which on MySQL is a different function under
+  # the same name.
+  def test_the_base_functions_refuse_the_minority_names
+    base = ActiveRecord::Refined::Dialect.new
+    model = model_with_adapter("nothing_of_the_sort")
+    %i[format rand date_trunc now log2 bit_and bit_or bit_xor].each do |name|
+      e = assert_raises(NotImplementedError, name.to_s) { base.function_name(name, model) }
+      assert_match(/nothing_of_the_sort/, e.message)
+    end
+    assert_equal("UPPER", base.function_name(:upper, model))
+    assert_equal("GREATEST", base.function_name(:greatest, model))
+  end
+
+  # The array comparisons are PostgreSQL's own, and every other leg refuses
+  # them alike -- subset? included, whose <@ used to render anywhere while
+  # its three siblings stopped in Arel's visitor.
+  def test_array_comparisons_refuse_off_postgresql
+    skip "postgresql has the array comparisons" if postgresql?
+    e = assert_raises(NotImplementedError) { User.where { :name.member?("x") } }
+    assert_match(/array comparisons/, e.message)
+    assert_raises(NotImplementedError) { User.where { :name.superset?(%w[x]) } }
+    assert_raises(NotImplementedError) { User.where { :name.subset?(%w[x]) } }
+    assert_raises(NotImplementedError) { User.where { :name.intersect?(%w[x]) } }
+  end
+
+  # excluded is PostgreSQL's name for the row an upsert could not insert,
+  # which SQLite took over; the base refuses it with the rest of the
+  # spellings that are nobody's standard.
+  def test_the_base_dialect_refuses_excluded
+    e = assert_raises(NotImplementedError) do
+      ActiveRecord::Refined::Dialect.new.excluded(
+        :hits, model_with_adapter("nothing_of_the_sort"))
+    end
+    assert_match(/excluded/, e.message)
   end
 
   # Oracle and SQL Server have no server here, but their dialect classes are

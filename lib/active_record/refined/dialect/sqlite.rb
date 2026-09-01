@@ -19,6 +19,7 @@ module ActiveRecord
         def datetime_precision_supported? = false
         def extract_supported? = false
         def quantifiers_supported? = false
+        def bitwise_operators_supported? = true
 
         def check_lateral(model)
           raise NotImplementedError,
@@ -63,6 +64,10 @@ module ActiveRecord
 
         def json_aggregate_name(kind)
           kind == :arrayagg ? "json_group_array" : "json_group_object"
+        end
+
+        def excluded(column, _model)
+          AST::Column.new(:excluded, column)
         end
 
         # group_concat, with the ORDER BY inside the call from 3.44 on.

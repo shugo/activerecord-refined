@@ -5,6 +5,9 @@ module ActiveRecord
     class Dialect
       # PostgreSQL, and the adapters that answer for the same server.
       class Postgresql < Dialect
+        def array_comparisons_supported? = true
+        def bitwise_operators_supported? = true
+
         # @private
         FUNCTIONS = { log2: nil, rand: "RANDOM" }.freeze
 
@@ -18,6 +21,10 @@ module ActiveRecord
         # PostgreSQL's XOR is #, where ^ is exponentiation.
         def bitwise_xor(left, right)
           Arel::Nodes::InfixOperation.new("#", left, right)
+        end
+
+        def excluded(column, _model)
+          AST::Column.new(:excluded, column)
         end
 
         def json_path(document, _dollar_path, steps, json_value, _model)

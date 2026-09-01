@@ -88,9 +88,17 @@ module ActiveRecord
 
       # The scalar and datetime functions a family spells differently, or has
       # none of.  A name it does not list it spells like the method, upper
-      # cased; a nil says it has no equivalent, and the block raises.  The base
-      # -- an unclassified adapter -- keeps every standard name.
-      FUNCTIONS = {}.freeze
+      # cased; a nil says it has no equivalent, and the block raises.  The
+      # base -- an unclassified adapter -- keeps the names most families
+      # share and nils the ones that are one or two families' own: printf
+      # FORMAT, whose name MySQL hands to a different function entirely,
+      # RAND, DATE_TRUNC, NOW, LOG2 and the three bit aggregates.  A family
+      # that has one of them says so in a table of its own, since the tables
+      # shadow rather than merge.
+      FUNCTIONS = {
+        format: nil, rand: nil, date_trunc: nil, now: nil, log2: nil,
+        bit_and: nil, bit_or: nil, bit_xor: nil,
+      }.freeze
 
       # The name this family spells a function with, asked for as the block
       # builds the call; {FUNCTIONS} is where the answer is looked up.
@@ -125,6 +133,16 @@ module ActiveRecord
       # built by the aggregate node.
       def filter_supported? = true
 
+      # The bitwise operators, & | ^ << >> and ~.  No SQL standard has them,
+      # so unlike the capabilities above the base refuses and each family
+      # that has the operators says so itself -- which of the seven is every
+      # one but Oracle, whose single bit operation is the BITAND function.
+      def bitwise_operators_supported? = false
+
+      # The array comparisons -- @>, <@ and && against an array column.
+      # The type and its operators are PostgreSQL's alone.
+      def array_comparisons_supported? = false
+
       # A lateral join is allowed to stand unless the family refuses it here.
       def check_lateral(_model); end
 
@@ -137,10 +155,13 @@ module ActiveRecord
           "bit_count has no equivalent on #{model.connection_db_config.adapter}"
       end
 
-      # The row an upsert could not insert.  PostgreSQL and SQLite name it;
-      # MySQL spells the same thing VALUES(column) and overrides.
-      def excluded(column, _model)
-        AST::Column.new(:excluded, column)
+      # The row an upsert could not insert.  `excluded` is PostgreSQL's name
+      # for it, which SQLite took over and the MySQL family spells
+      # VALUES(column), so each of the three carries its own; the families
+      # without an upsert have nothing for the name to stand in.
+      def excluded(_column, model)
+        raise NotImplementedError,
+          "excluded has no equivalent on #{model.connection_db_config.adapter}"
       end
 
       # true? / false? and their negations.  The standard spells them with the
@@ -176,9 +197,12 @@ module ActiveRecord
           Arel::Nodes::InfixOperation.new(subtract ? :- : :+, date, interval))
       end
 
-      # XOR, which no two families spell alike.  The standard is the two
-      # operations it is made of, naming each operand twice, as SQLite needs;
-      # PostgreSQL and the MySQL family have an operator and override.
+      # XOR, which no two families spell alike.  The default is the two
+      # operations it is made of, naming each operand twice -- built only
+      # from the & and | a family has just claimed through
+      # {#bitwise_operators_supported?}, so wherever it can be reached at
+      # all it works.  Of the five that claim them, SQLite alone keeps it;
+      # the rest have an operator of their own and override.
       def bitwise_xor(left, right)
         Arel::Nodes::Subtraction.new(
           Arel::Nodes::Grouping.new(Arel::Nodes::BitwiseOr.new(left, right)),

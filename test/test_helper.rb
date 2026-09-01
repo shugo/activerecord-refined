@@ -261,6 +261,12 @@ module SqlAssertions
     skip "#{ADAPTER} has no bit aggregates" if sqlite? || oracle? || sqlserver?
   end
 
+  # Oracle's one bit operation is the BITAND function; the dialect refuses
+  # the operators, and the refusal has a test of its own.
+  def skip_without_bitwise_operators
+    skip "#{ADAPTER} has no bitwise operators" if oracle?
+  end
+
   def skip_without_array_columns
     skip "#{ADAPTER} has no array columns" unless postgresql?
   end

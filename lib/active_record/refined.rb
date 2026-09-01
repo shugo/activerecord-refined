@@ -284,16 +284,16 @@ module ActiveRecord
       #   `ATAN(x)`.
       #   @return [AST::Function]
       # @!method atan2(y, x)
-      #   `ATAN2(y, x)`.
+      #   `ATAN2(y, x)`: `ATN2` on SQL Server.
       #   @return [AST::Function]
       # @!method ceil(x)
-      #   `CEIL(x)`.
+      #   `CEIL(x)`: `CEILING` on SQL Server.
       #   @return [AST::Function]
       # @!method coalesce(*values)
       #   `COALESCE(a, b, ...)`: the first that is not NULL.
       #   @return [AST::Function]
       # @!method concat(*strings)
-      #   `CONCAT(a, b, ...)`.
+      #   `CONCAT(a, b, ...)`.  Oracle's takes exactly two.
       #   @return [AST::Function]
       # @!method cos(x)
       #   `COS(x)`.
@@ -305,13 +305,15 @@ module ActiveRecord
       #   `FLOOR(x)`.
       #   @return [AST::Function]
       # @!method length(string)
-      #   `LENGTH(string)`.
+      #   `LENGTH(string)`: `LEN` on SQL Server.  What it counts is the
+      #   family's own -- bytes on MySQL, characters elsewhere, and `LEN`
+      #   leaves trailing spaces out; {#char_length} is the portable count.
       #   @return [AST::Function]
       # @!method ln(x)
-      #   `LN(x)`.
+      #   `LN(x)`: `LOG` on SQL Server.
       #   @return [AST::Function]
       # @!method log(base, x)
-      #   `LOG(base, x)`.
+      #   `LOG(base, x)`.  SQL Server takes the arguments the other way round, and is refused.
       #   @return [AST::Function]
       # @!method lower(string)
       #   `LOWER(string)`.
@@ -320,7 +322,7 @@ module ActiveRecord
       #   `LTRIM(string)`.
       #   @return [AST::Function]
       # @!method mod(x, y)
-      #   `MOD(x, y)`.
+      #   `MOD(x, y)`.  SQL Server has only the % operator.
       #   @return [AST::Function]
       # @!method nullif(x, y)
       #   `NULLIF(x, y)`: NULL where the two are equal, x otherwise.
@@ -347,7 +349,7 @@ module ActiveRecord
       #   `SQRT(x)`.
       #   @return [AST::Function]
       # @!method substr(string, from, length = nil)
-      #   `SUBSTR(string, from, length)`.
+      #   `SUBSTR(string, from, length)`: `SUBSTRING` on SQL Server, which insists on the length.
       #   @return [AST::Function]
       # @!method tan(x)
       #   `TAN(x)`.
@@ -377,16 +379,16 @@ module ActiveRecord
       #   `LEAST(a, b, ...)`: `MIN` on SQLite.
       #   @return [AST::Function]
       # @!method log2(x)
-      #   `LOG2(x)`.  PostgreSQL and Oracle have none; `log(2, x)` is their spelling.
+      #   `LOG2(x)`.  PostgreSQL and Oracle have none -- `log(2, x)` is their spelling -- and SQL Server has neither.
       #   @return [AST::Function]
       # @!method log10(x)
       #   `LOG10(x)`.  Oracle has none.
       #   @return [AST::Function]
       # @!method trunc(x, places = 0)
-      #   `TRUNC(x, places)`: `TRUNCATE` on MySQL, which insists on the places.
+      #   `TRUNC(x, places)`: `TRUNCATE` on MySQL, which insists on the places.  SQL Server has none.
       #   @return [AST::Function]
       # @!method now
-      #   `NOW()`.  SQLite and Oracle have none; {#current_timestamp} reaches both.
+      #   `NOW()`.  SQLite, Oracle and SQL Server have none; {#current_timestamp} reaches all three.
       #   @return [AST::Function]
       # @!method bit_and(column)
       #   `BIT_AND(column)`, an aggregate.  PostgreSQL and MySQL have it.

@@ -6,13 +6,21 @@ module ActiveRecord
       # Microsoft SQL Server, reached through the sqlserver adapter over
       # tiny_tds.  Loaded only when a query is built for it.
       class SqlServer < Dialect
-        # LEN is its length; it has no printf FORMAT, no per-row random it
-        # would spell RAND, no date_trunc, and none of the bit aggregates.
-        # Of the datetime value functions it has CURRENT_TIMESTAMP alone:
-        # the other four are reserved words there that stand for nothing.
+        # LEN is its length, CEILING its ceil, ATN2 its atan2, and LOG --
+        # natural by default -- its ln; SUBSTRING insists on the length, so
+        # substr wants all three arguments here.  It has no printf FORMAT, no
+        # per-row random it would spell RAND, no date_trunc, no NOW or LOG2,
+        # none of the bit aggregates, no MOD beside the % operator, and no
+        # numeric TRUNC.  log is nil for a sharper reason: its LOG(x, base)
+        # takes the arguments in the other order, so a rename would quietly
+        # swap them.  Of the datetime value functions it has
+        # CURRENT_TIMESTAMP alone: the other four are reserved words there
+        # that stand for nothing.
         # @private
         FUNCTIONS = {
-          char_length: "LEN",
+          char_length: "LEN", length: "LEN", substr: "SUBSTRING",
+          ceil: "CEILING", atan2: "ATN2", ln: "LOG",
+          mod: nil, trunc: nil, log: nil, log2: nil, now: nil,
           format: nil, rand: nil, date_trunc: nil,
           bit_and: nil, bit_or: nil, bit_xor: nil,
           current_date: nil, current_time: nil, localtime: nil, localtimestamp: nil,
@@ -20,6 +28,15 @@ module ActiveRecord
 
         # No FILTER clause, so the aggregate node builds the CASE instead.
         def filter_supported? = false
+
+        # The operators are all here, the shifts included -- CI executes them.
+        def bitwise_operators_supported? = true
+
+        # ^ is XOR here as on MySQL, sparing the (a | b) - (a & b) the base
+        # spells for SQLite's sake.
+        def bitwise_xor(left, right)
+          Arel::Nodes::BitwiseXor.new(left, right)
+        end
 
         # No EXTRACT (it has DATEPART), and its datetime value functions take
         # no precision.
