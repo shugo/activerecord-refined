@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# BigDecimal is refined below and is a bundled gem, so nothing loads it
+# before this file does.
+require "bigdecimal"
+require "active_record/refined/ast"
+require "active_record/refined/dialect"
+
 module ActiveRecord
   module Refined
     # What a symbol answers to inside a block.  A symbol names a column
