@@ -1,4 +1,4 @@
-# ActiveRecord::Refined
+# activerecord-refined
 
 Adding clean and powerful query syntax on Active Record using refinements.
 

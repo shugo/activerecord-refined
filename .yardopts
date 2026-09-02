@@ -1,6 +1,6 @@
 --markup markdown
 --no-private
---title "ActiveRecord::Refined"
+--title "activerecord-refined"
 --readme docs/index.md
 lib/**/*.rb
 -
