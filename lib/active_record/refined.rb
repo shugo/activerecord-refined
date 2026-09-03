@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "active_record/refined/version"
 require "active_record/refined/ast"
 require "active_record/refined/dialect"
 require "active_record/refined/block_syntax"

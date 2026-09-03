@@ -45,7 +45,7 @@ choice in step 2, not the checks around it.
 
        bundle exec bump <level> --tag
 
-   It rewrites `lib/activerecord-refined/version.rb`, commits that one file
+   It rewrites `lib/active_record/refined/version.rb`, commits that one file
    with the version as the message -- `v0.9.0`, the way every release commit
    here reads, with no trailer -- and tags the commit `v0.9.0`.  It also runs
    `bundle`, which touches only the gitignored `Gemfile.lock`.  Check its

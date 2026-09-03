@@ -3,11 +3,11 @@
 
 lib = File.expand_path("../lib", __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
-require "activerecord-refined/version"
+require "active_record/refined/version"
 
 Gem::Specification.new do |gem|
   gem.name          = "activerecord-refined"
-  gem.version       = Activerecord::Refined::VERSION
+  gem.version       = ActiveRecord::Refined::VERSION
   gem.authors       = ["Shugo Maeda"]
   gem.email         = ["shugo@ruby-lang.org"]
   gem.description   = "Adding clean and powerful query syntax on Active Record using refinements"
