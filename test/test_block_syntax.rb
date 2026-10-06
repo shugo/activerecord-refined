@@ -1803,14 +1803,14 @@ class TestBlockSyntax < Minitest::Test
     assert_raises(TypeError) { User.select { (0.5 * :age).as(:v) }.to_sql }
   end
 
-  # Refining an operator of Integer or Float, used or not, turns off the
-  # interpreter's fast path for it in the whole process.
-  def test_loading_leaves_the_numeric_operators_alone
+  # Refining an operator of a number or of true, false and nil, used or
+  # not, turns off the interpreter's fast path for it in the whole process.
+  def test_loading_leaves_the_basic_operators_alone
     lib = File.expand_path("../lib", __dir__)
     out, status = Open3.capture2e(RbConfig.ruby, "-W:performance", "-I", lib, "-e",
       'require "active_record"; require "active_record/refined"')
     assert_predicate(status, :success?, out)
-    refute_match(/Redefining '(Integer|Float)#/, out)
+    refute_match(/Redefining '(Integer|Float|TrueClass|FalseClass|NilClass)#/, out)
   end
 
   # BigDecimal is a number here -- what a decimal column's values are --
@@ -1963,23 +1963,6 @@ class TestBlockSyntax < Minitest::Test
     assert_match(/parentheses/, e.message)
     e = assert_raises(ArgumentError) { User.where { (:age == 1) & 4 } }
     assert_match(/joins conditions/, e.message)
-  end
-
-  # true, false and nil carry & | ^ of Ruby's own, which answer a bare
-  # boolean: :active == true & cond is :active == (true & cond), and the
-  # condition would vanish from the query without a word.
-  def test_a_literal_refuses_to_swallow_a_condition
-    e = assert_raises(ArgumentError) { User.where { :active == true & :name.like?("a%") } }
-    assert_match(/parentheses/, e.message)
-    e = assert_raises(ArgumentError) { User.where { :active == false | :name.like?("a%") } }
-    assert_match(/Ruby's own/, e.message)
-    assert_raises(ArgumentError) { User.where { :active == true ^ :name.like?("a%") } }
-    assert_raises(ArgumentError) { User.where { :age == nil | :name.like?("a%") } }
-    # Over plain values the three stay Ruby's own, so a flag computed in the
-    # block still computes.
-    User.delete_all
-    User.create!(name: "a", active: false)
-    assert_equal(1, User.where { :active == (true & false) }.count)
   end
 
   # AND and OR are the conditions' own & and |, and a condition handed to a

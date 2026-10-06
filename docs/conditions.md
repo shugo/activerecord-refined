@@ -196,7 +196,9 @@ Author.where { !:country.null? }            # NOT (country IS NULL)
 
 Combine predicates with `&`, `|` and `!`. Ruby's operator precedence makes the
 parentheses around each comparison necessary, though the `?` methods above need
-none:
+none. Leaving them off is mostly refused, but beside `true`, `false` or `nil`
+it is Ruby's own `&` that runs, and the condition to its right is lost without
+a word: `:active == true & cond` is `:active == true`.
 
 ```ruby
 Author.where { (:age >= 18) & ((:country == "JP") | (:country == "US")) }
