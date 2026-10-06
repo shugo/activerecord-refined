@@ -1809,7 +1809,7 @@ class TestBlockSyntax < Minitest::Test
     lib = File.expand_path("../lib", __dir__)
     out, status = Open3.capture2e(RbConfig.ruby, "-W:performance", "-I", lib, "-e",
       'require "active_record"; require "active_record/refined"')
-    assert(status.success?, out)
+    assert_predicate(status, :success?, out)
     refute_match(/Redefining '(Integer|Float)#/, out)
   end
 
