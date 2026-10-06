@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "open3"
 
 class TestBlockSyntax < Minitest::Test
   def test_equal
@@ -1779,18 +1780,37 @@ class TestBlockSyntax < Minitest::Test
       User.select { :users[:age] - 1 }.to_sql)
   end
 
-  # The number may stand on the left.  Only a column or an expression on
-  # the right builds a query; plain Ruby arithmetic still folds, so the
-  # 10 + 20 here reaches the SQL as 30.
+  # The number may stand on the left of an expression, and before a bare
+  # column as a value.  Plain Ruby arithmetic still folds, so the 10 + 20
+  # here reaches the SQL as 30.
   def test_arithmetic_with_the_number_on_the_left
     User.delete_all
     User.create!(name: "a", age: 30, flags: 3)
-    assert_sql(/\(100 - "users"."age"\)/, User.select { (100 - :age).as(:v) })
-    assert_equal(70, User.select { (100 - :age).as(:v) }.first.v.to_i)
-    assert_equal(15, User.select { (0.5 * :age).as(:v) }.first.v.to_f.to_i)
+    assert_sql(/\(100 - "users"."age"\)/, User.select { (value(100) - :age).as(:v) })
+    assert_equal(70, User.select { (value(100) - :age).as(:v) }.first.v.to_i)
+    assert_equal(69, User.select { (100 - (:age + 1)).as(:v) }.first.v.to_i)
+    assert_equal(15, User.select { (0.5 * (:age + 0)).as(:v) }.first.v.to_f.to_i)
+    assert_equal(1, User.where { 40 > :age + 1 }.count)
     # Oracle has no bitwise & operator, so that operand is left to the others.
     assert_equal(0, User.select { 4.bitwise_and(:flags).as(:v) }.first.v.to_i) unless oracle?
     assert_sql(/> 30/, User.where { :age > 10 + 20 })
+  end
+
+  # A number before a bare symbol is Ruby's own operator, which cannot
+  # take a symbol and says so; value() is the spelling.
+  def test_a_number_before_a_bare_column_is_rubys_own
+    assert_raises(TypeError) { User.select { (100 - :age).as(:v) }.to_sql }
+    assert_raises(TypeError) { User.select { (0.5 * :age).as(:v) }.to_sql }
+  end
+
+  # Refining an operator of Integer or Float, used or not, turns off the
+  # interpreter's fast path for it in the whole process.
+  def test_loading_leaves_the_numeric_operators_alone
+    lib = File.expand_path("../lib", __dir__)
+    out, status = Open3.capture2e(RbConfig.ruby, "-W:performance", "-I", lib, "-e",
+      'require "active_record"; require "active_record/refined"')
+    assert(status.success?, out)
+    refute_match(/Redefining '(Integer|Float)#/, out)
   end
 
   # BigDecimal is a number here -- what a decimal column's values are --
@@ -1798,8 +1818,8 @@ class TestBlockSyntax < Minitest::Test
   def test_arithmetic_with_a_bigdecimal
     User.delete_all
     User.create!(name: "a", age: 30)
-    assert_sql(/1\.5 \* "users"\."age"/, User.select { (BigDecimal("1.5") * :age).as(:v) })
-    assert_equal(45, User.select { (BigDecimal("1.5") * :age).as(:v) }.first.v.to_f.to_i)
+    assert_sql(/1\.5 \* "users"\."age"/, User.select { (value(BigDecimal("1.5")) * :age).as(:v) })
+    assert_equal(45, User.select { (BigDecimal("1.5") * (:age + 0)).as(:v) }.first.v.to_f.to_i)
     assert_equal(45, User.select { (:age * BigDecimal("1.5")).as(:v) }.first.v.to_f.to_i)
     assert_sql(/9\.9 AS "v"/, User.select { BigDecimal("9.9").as(:v) })
   end

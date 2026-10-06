@@ -9,15 +9,18 @@ Item.where { :price * :quantity > 1000 }
 Item.select { sum(:price * :quantity).as(:total) }
 ```
 
-The number may stand on the left — only a column or an expression on the
-right builds a query, so Ruby's own arithmetic is untouched — and
-`BigDecimal` is a number here, being what a decimal column's values are,
-quoted as the exact decimal on either side. A `Rational` is refused: no
-decimal spells `1/3r` exactly, and `to_d` is what says the decimal meant.
+A number may stand on the left of an expression, and Ruby's own arithmetic
+is untouched. Before a bare column, though, the number is written with
+`value`: to Ruby, `20 - :quantity` is a number minus a symbol, and the number
+has no way to know the symbol is a column. `BigDecimal` is a number here,
+being what a decimal column's values are, quoted as the exact decimal on
+either side. A `Rational` is refused: no decimal spells `1/3r` exactly, and
+`to_d` is what says the decimal meant.
 
 ```ruby
-Item.select { greatest(20 - :quantity, 0).as(:shortfall) }
-Item.where { BigDecimal("1.08") * :price > 500 }
+Item.select { greatest(value(20) - :quantity, 0).as(:shortfall) }
+Item.select { (100 - (:price * :quantity)).as(:headroom) }
+Item.where { :price * BigDecimal("1.08") > 500 }
 ```
 
 `bitwise_and`, `bitwise_or`, `^`, `~`, `<<` and `>>` are SQL's bitwise

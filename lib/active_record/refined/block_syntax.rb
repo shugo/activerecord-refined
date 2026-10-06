@@ -17,8 +17,9 @@ module ActiveRecord
     # The comparisons and the rest of the conditions are listed under
     # {AST::Predications}, the arithmetic under {AST::Arithmetics}; a number
     # or a string in a block takes `as` too, for a literal in a select list
-    # -- `0.as(:depth)` -- and a number on the left of an operator builds the
-    # same expression a column on the left would.
+    # -- `0.as(:depth)`.  A number may stand on the left of an operator when
+    # an expression stands on the right; before a bare column it is written
+    # `value(20) - :quantity`.
     #
     # @example A column compared, aliased and ordered
     #   Author.where { :age >= 18 }
@@ -102,9 +103,9 @@ module ActiveRecord
         end
       end
 
-      # Shorthand for `value(0).as(:depth)` and the like, and arithmetic with
-      # the number on the left: 20 - :quantity.  BigDecimal is a number here
-      # because that is what a decimal column's values are.
+      # Shorthand for `value(0).as(:depth)` and the like, and the named
+      # bitwise operations with the number on the left.  BigDecimal is a
+      # number here because that is what a decimal column's values are.
       [Integer, Float, BigDecimal].each do |klass|
         refine klass do
           import_methods AST::NumericArithmetics

@@ -45,6 +45,19 @@ module ActiveRecord
           Collate.new(self, name)
         end
 
+        # What lets a number stand on the left of an expression: Ruby hands
+        # `20 - (:a + :b)` over to the expression, which takes the number as
+        # a {Value} and builds what `value(20) - (:a + :b)` builds.
+        # @private
+        #
+        # Ruby calls this from C, where no refinement is seen, so a bare
+        # symbol on the right cannot answer it; refining Integer#- and its
+        # kin instead would turn off the interpreter's fast path for every
+        # integer in the process.
+        def coerce(number)
+          [Value.new(number), self]
+        end
+
         private
           # Resolves an operand denoting a column or an expression.  A number
           # rides along for Arel to write out, which it can do for Integer and

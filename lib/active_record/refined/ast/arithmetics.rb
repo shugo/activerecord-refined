@@ -5,8 +5,9 @@ module ActiveRecord
     module AST
       # The arithmetic and the bitwise operations on a column or an
       # expression.  Ruby puts the operators above the comparisons, so
-      # `:price * :quantity > 100` groups the way it reads, and a number on
-      # the left -- `20 - :quantity` -- builds the same expression.
+      # `:price * :quantity > 100` groups the way it reads.  A number may
+      # stand on the left of an expression, `20 - (:a + :b)`, but before a
+      # bare column it is written as a value: `value(20) - :quantity`.
       #
       # Bitwise AND and OR are named, not spelled `&` and `|`: those two are
       # AND and OR between conditions and mean nothing else anywhere.  The
@@ -114,59 +115,11 @@ module ActiveRecord
         end
       end
 
-      # Arithmetic with the number on the left, imported into the numeric
-      # refinements: 20 - :quantity builds what :quantity + 20 builds.  Only
-      # a column or an expression on the right means a query; anything else
-      # goes back to the number through super, so 1 + 2 is 3 inside a block
-      # too, and 4 & 5 is 4.  & and | refuse a query the way they do on a
-      # column, bitwise_and and its kin carrying those two operations.
+      # The named bitwise operations for a number on the left, imported into
+      # the numeric refinements: 4.bitwise_and(:flags).  The operators reach
+      # an expression on the right through {Node#coerce} instead.
       # @private
       module NumericArithmetics
-        def +(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Arithmetic.new(self, :+, other)
-        end
-
-        def -(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Arithmetic.new(self, :-, other)
-        end
-
-        def *(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Arithmetic.new(self, :*, other)
-        end
-
-        def /(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Arithmetic.new(self, :/, other)
-        end
-
-        def &(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          AST.refuse_logical(:&, "AND", "bitwise_and", other)
-        end
-
-        def |(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          AST.refuse_logical(:|, "OR", "bitwise_or", other)
-        end
-
-        def ^(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Bitwise.new(self, :^, other)
-        end
-
-        def <<(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Bitwise.new(self, :<<, other)
-        end
-
-        def >>(other)
-          return super unless other.is_a?(::Symbol) || other.is_a?(Node)
-          Bitwise.new(self, :>>, other)
-        end
-
         def bitwise_and(other)
           Bitwise.new(self, :&, other)
         end

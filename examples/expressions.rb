@@ -58,17 +58,17 @@ show("an aggregate over an expression",
   LineItem.select { sum(:price * :quantity).as(:total) },
   LineItem.select { sum(:price * :quantity).as(:total) }.first.total)
 
-# The number may stand on the left; only a column or an expression on the
-# right builds a query, so Ruby's own arithmetic is untouched.  BigDecimal
-# is a number here too -- what a decimal column's values are.
-show("the number on the left, and a BigDecimal",
-  LineItem.select { [:sku, (12 - :quantity).as(:to_the_dozen)] },
-  LineItem.select { [:sku, (12 - :quantity).as(:to_the_dozen)] }.
+# A number may stand on the left of an expression; before a bare column it
+# is written with value().  BigDecimal is a number here too -- what a
+# decimal column's values are.
+show("the number on the left",
+  LineItem.select { [:sku, (value(12) - :quantity).as(:to_the_dozen)] },
+  LineItem.select { [:sku, (value(12) - :quantity).as(:to_the_dozen)] }.
     map { |i| [i.sku, i.to_the_dozen] })
 
 show("a tax through BigDecimal, exact on the wire",
-  LineItem.select { [:sku, (BigDecimal("1.1") * :price).as(:taxed)] },
-  LineItem.select { [:sku, (BigDecimal("1.1") * :price).as(:taxed)] }.
+  LineItem.select { [:sku, (BigDecimal("1.1") * (:price * :quantity)).as(:taxed)] },
+  LineItem.select { [:sku, (BigDecimal("1.1") * (:price * :quantity)).as(:taxed)] }.
     map { |i| [i.sku, i.taxed] })
 
 # A duration moves a date.  Each adapter spells the move its own way; SQLite
